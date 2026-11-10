@@ -53,6 +53,9 @@ type Options struct {
 	Root   string // carpeta de los stacks; obligatoria
 	Docker string // binario de docker; "docker" si está vacío
 	Git    string // binario de git; "git" si está vacío
+	// Author firma los commits ("Nombre <mail>"); DefaultAuthor si está
+	// vacío.
+	Author string
 }
 
 // Manager implementa agent.StackSource.
@@ -60,6 +63,7 @@ type Manager struct {
 	root       string // absoluta y con los symlinks resueltos
 	docker     string
 	git        string
+	gitEnv     []string // autor y committer de los commits
 	containers ContainerLister
 	logger     *slog.Logger
 
@@ -82,10 +86,15 @@ func New(opts Options, containers ContainerLister, logger *slog.Logger) (*Manage
 	if fi, err := os.Stat(root); err != nil || !fi.IsDir() {
 		return nil, fmt.Errorf("stacks: %s no es una carpeta", root)
 	}
+	gitEnv, err := gitEnvFor(cmp.Or(opts.Author, DefaultAuthor))
+	if err != nil {
+		return nil, fmt.Errorf("stacks: %w", err)
+	}
 	m := &Manager{
 		root:       root,
 		docker:     cmp.Or(opts.Docker, "docker"),
 		git:        cmp.Or(opts.Git, "git"),
+		gitEnv:     gitEnv,
 		containers: containers,
 		logger:     logger,
 		busy:       make(map[string]string),
@@ -300,7 +309,9 @@ func (m *Manager) Write(ctx context.Context, project, name string, content []byt
 		return agent.WriteResult{}, err
 	}
 	m.logger.Info("archivo escrito", "project", project, "file", target)
-	return agent.WriteResult{Hash: newHash, Diff: diff}, nil
+	res := agent.WriteResult{Hash: newHash, Diff: diff}
+	res.Commit, res.Notice = m.commit(ctx, project, target)
+	return res, nil
 }
 
 // stage escribe content en un archivo temporal al lado de target, con los
@@ -442,9 +453,14 @@ func (m *Manager) diff(ctx context.Context, target, tmp string) (string, error) 
 // salida. err es solo para cuando no se pudo correr (binario inexistente,
 // contexto vencido), no para un código distinto de cero.
 func (m *Manager) run(ctx context.Context, dir, bin string, args ...string) ([]byte, int, error) {
+	return m.runEnv(ctx, dir, nil, bin, args...)
+}
+
+// runEnv es run con variables de entorno de más.
+func (m *Manager) runEnv(ctx context.Context, dir string, env []string, bin string, args ...string) ([]byte, int, error) {
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = dir
-	cmd.Env = childEnv()
+	cmd.Env = append(childEnv(), env...)
 	out, err := cmd.CombinedOutput()
 	if ee := (*exec.ExitError)(nil); errors.As(err, &ee) && ctx.Err() == nil {
 		return out, ee.ExitCode(), nil
