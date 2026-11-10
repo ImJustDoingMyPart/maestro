@@ -15,6 +15,7 @@ import (
 
 	"github.com/ImJustDoingMyPart/maestro/internal/agent"
 	"github.com/ImJustDoingMyPart/maestro/internal/catalog"
+	"github.com/ImJustDoingMyPart/maestro/internal/store"
 )
 
 // logOpener abre los logs de un contenedor de un host. Lo cumple *Poller,
@@ -54,7 +55,8 @@ type logEvent struct {
 // reconecta solo y manda Last-Event-ID, y el stream sigue desde ahí sin
 // repetir.
 //
-// Eventos con nombre: "notice" (un contenedor no se pudo leer; el resto
+// Eventos con nombre: "state" (un cambio de estado del servicio, intercalado
+// por hora con las líneas), "notice" (un contenedor no se pudo leer; el resto
 // sigue) y "end" (no queda nada que seguir: los contenedores se
 // detuvieron). Después de "end" el cliente tiene que cerrar el
 // EventSource, o el navegador reconectaría.
@@ -93,6 +95,12 @@ func (s *server) streamLogs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Suscripto antes de leer el historial, para no perder un cambio que
+	// pase en el medio; los repetidos se descartan por ID.
+	states, unsubscribe := s.mon.Subscribe(svc.ID)
+	defer unsubscribe()
+	var lastState int64
+
 	multi := len(svc.Containers) > 1
 	since := make(map[string]time.Time, len(cs)) // por contenedor: desde dónde seguir
 	if resume.IsZero() {
@@ -100,8 +108,22 @@ func (s *server) streamLogs(w http.ResponseWriter, r *http.Request) {
 		for _, n := range notices {
 			sse.event("notice", n)
 		}
+		// Los cambios de estado desde la línea más vieja (o del último
+		// día, si no hay líneas), intercalados por hora.
+		from := time.Now().Add(-historySpan)
+		if len(lines) > 0 {
+			from = lines[0].TS
+		}
+		events := s.stateEvents(ctx, svc.ID, from)
 		for _, l := range lines {
+			for len(events) > 0 && !events[0].At.After(l.TS) {
+				lastState = sse.state(events[0])
+				events = events[1:]
+			}
 			sse.line(l)
+		}
+		for _, e := range events {
+			lastState = sse.state(e)
 		}
 		for _, l := range lines {
 			since[l.containerID] = later(since[l.containerID], l.TS)
@@ -110,12 +132,25 @@ func (s *server) streamLogs(w http.ResponseWriter, r *http.Request) {
 		for _, c := range cs {
 			since[c.ID] = resume
 		}
+		for _, e := range s.stateEvents(ctx, svc.ID, resume.Add(time.Nanosecond)) {
+			lastState = sse.state(e)
+		}
 	}
 	if sse.flush() != nil {
 		return
 	}
 
-	s.followLogs(ctx, sse, cs, since, multi)
+	s.followLogs(ctx, sse, cs, since, multi, states, lastState)
+}
+
+// stateEvents lee los cambios de estado de un servicio desde from. Si la
+// base falla, la línea de tiempo sigue sin ellos.
+func (s *server) stateEvents(ctx context.Context, id string, from time.Time) []store.StateEvent {
+	_, events, err := s.mon.History(ctx, id, from)
+	if err != nil {
+		s.logger.Warn("leer cambios de estado", "service", id, "err", err)
+	}
+	return events
 }
 
 // taggedEvent es un logEvent con el ID del contenedor del que salió.
@@ -168,7 +203,10 @@ func (s *server) initialLogs(ctx context.Context, cs []catalog.Container, multi 
 
 // followLogs sigue a todos los contenedores a la vez hasta que se corte el
 // pedido o terminen todos, y manda lo que llega en tandas.
-func (s *server) followLogs(ctx context.Context, sse *sseWriter, cs []catalog.Container, since map[string]time.Time, multi bool) {
+//
+// states trae los cambios de estado en vivo; los de ID hasta lastState ya
+// se mandaron.
+func (s *server) followLogs(ctx context.Context, sse *sseWriter, cs []catalog.Container, since map[string]time.Time, multi bool, states <-chan store.StateEvent, lastState int64) {
 	type msg struct {
 		ev     *logEvent // nil si es un aviso
 		notice string
@@ -251,6 +289,12 @@ func (s *server) followLogs(ctx context.Context, sse *sseWriter, cs []catalog.Co
 			}
 			_ = sse.flush()
 			return
+		case e := <-states:
+			if e.ID != 0 && e.ID <= lastState {
+				continue
+			}
+			lastState = max(lastState, e.ID)
+			sse.state(e)
 		case now := <-ticker.C:
 			if n := lim.expired(now); n > 0 {
 				skippedNotice(n)
@@ -402,6 +446,22 @@ func (s *sseWriter) line(ev taggedEvent) {
 		s.raw("id: " + ev.TS.Format(time.RFC3339Nano) + "\n")
 	}
 	s.raw("data: " + string(data) + "\n\n")
+}
+
+// stateEvent es el data de un evento "state".
+type stateEvent struct {
+	TS     time.Time `json:"ts"`
+	State  string    `json:"state"` // "up", "degraded", "down"
+	Label  string    `json:"label"` // "Caído"
+	Reason string    `json:"reason"`
+}
+
+// state manda un cambio de estado y devuelve su ID. No lleva id de SSE: el
+// id es la hora de la última línea de log, desde donde se reconecta.
+func (s *sseWriter) state(e store.StateEvent) int64 {
+	data, _ := json.Marshal(stateEvent{TS: e.At, State: e.To, Label: State(e.To).Label(), Reason: e.Reason})
+	s.raw("event: state\ndata: " + string(data) + "\n\n")
+	return e.ID
 }
 
 // event manda un evento con nombre y un texto. El texto va como JSON para

@@ -19,7 +19,7 @@
       <i>cloud_off</i>
       <div class="max">
         <div class="bold">El agent de {{.Name}} no responde</div>
-        <div class="small-text">{{if .LastOK.IsZero}}Nunca respondió{{else}}Último dato: {{.LastOK.Format "15:04:05"}}{{end}}. Sus servicios figuran sin datos. {{.Err}}</div>
+        <div class="small-text">{{if .LastOK.IsZero}}Nunca respondió{{else}}Último dato: {{localTime .LastOK "time"}}{{end}}. Sus servicios figuran sin datos. {{.Err}}</div>
       </div>
     </nav>
   </article>
@@ -27,9 +27,10 @@
 
   <nav class="wrap small-space">
     <span class="chip no-border surface-container"><span class="dot up"></span>{{.Summary.Up}} arriba</span>
+    {{if .Summary.Degraded}}<span class="chip no-border surface-container"><span class="dot degraded"></span>{{.Summary.Degraded}} degradados</span>{{end}}
     <span class="chip no-border surface-container"><span class="dot down"></span>{{.Summary.Down}} caídos</span>
     <span class="chip no-border surface-container"><span class="dot unknown"></span>{{.Summary.Unknown}} sin datos</span>
-    {{if .Updated}}<span class="small-text secondary-text updated">Actualizado {{.Updated}}</span>{{end}}
+    {{if not .Updated.IsZero}}<span class="small-text secondary-text updated">Actualizado {{localTime .Updated "time"}}</span>{{end}}
   </nav>
 
   {{if not .Groups}}
@@ -49,8 +50,9 @@
           <div class="max">
             <div class="bold">{{if .Href}}<a class="stretched" href="{{.Href}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</div>
             <div class="small-text secondary-text">{{.Description}}</div>
+            {{if and .Reason (ne .State "up")}}<div class="small-text state-reason {{.State}}">{{.Reason}}</div>{{end}}
           </div>
-          <span class="status {{.State}}" title="{{.State.Label}}">
+          <span class="status {{.State}}" title="{{.State.Label}}{{with .Reason}}: {{.}}{{end}}">
             <span class="dot {{.State}}"></span>
             <span class="small-text">{{.State.Label}}</span>
           </span>

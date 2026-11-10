@@ -50,9 +50,10 @@ header.fixed.topbar {
   flex: none;
 }
 
-.dot.up      { background: var(--status-up); }
-.dot.down    { background: var(--error); }
-.dot.unknown { background: var(--outline); }
+.dot.up       { background: var(--status-up); }
+.dot.degraded { background: var(--status-warn); }
+.dot.down     { background: var(--error); }
+.dot.unknown  { background: var(--outline); }
 
 .chip .dot {
   margin-inline-end: 0.5rem;
@@ -68,6 +69,11 @@ header.fixed.topbar {
 
 .status.down {
   color: var(--error);
+  font-weight: 500;
+}
+
+.status.degraded {
+  color: var(--status-warn);
   font-weight: 500;
 }
 
@@ -353,3 +359,63 @@ body.dark  { --status-warn: #ffb74d; }
 .diff .diff-del  { background: color-mix(in srgb, var(--error) 18%, transparent); }
 .diff .diff-hunk { color: var(--on-surface-variant); background: var(--surface-container); }
 .diff .diff-meta { color: var(--on-surface-variant); font-style: italic; }
+
+/* Etapa 4: estado combinado y checks. */
+
+/* Motivo del estado en la tarjeta de la portada. */
+.state-reason.down     { color: var(--error); }
+.state-reason.degraded { color: var(--status-warn); }
+
+/* Motivos en la página del servicio. */
+.state-reasons {
+  margin-block: 0.5rem;
+  background: var(--surface-container-low);
+  border-inline-start: 0.25rem solid var(--outline);
+}
+.state-reasons.down     { border-inline-start-color: var(--error); }
+.state-reasons.down i   { color: var(--error); }
+.state-reasons.degraded { border-inline-start-color: var(--status-warn); }
+.state-reasons.degraded i { color: var(--status-warn); }
+
+.checks {
+  display: grid;
+  gap: 0.5rem;
+  margin-block: 0.5rem 1rem;
+}
+.check {
+  margin: 0;
+  padding: 0.75rem 1rem;
+}
+.check-target {
+  overflow-wrap: anywhere;
+}
+
+/* Historial: una barra por media hora, como el de Uptime Kuma. */
+.check-bars {
+  display: flex;
+  gap: 2px;
+  block-size: 1.5rem;
+  margin-block: 0.5rem;
+}
+.check-bars .bar {
+  flex: 1;
+  min-inline-size: 2px;
+  border-radius: 2px;
+}
+.bar.up      { background: var(--status-up); }
+.bar.partial { background: var(--status-warn); }
+.bar.down    { background: var(--error); }
+.bar.none    { background: var(--surface-container-highest); }
+
+.cert-warn { color: var(--status-warn); }
+
+.state-events .dot { margin-inline-end: 0.25rem; }
+
+/* Cambios de estado dentro del visor de logs: en negrita, con el punto
+   del semáforo, y fondo tonal para que se vean al pasar rápido. */
+.log-line.state {
+  font-weight: 500;
+  background: var(--surface-container-high);
+}
+.log-line.state .dot { margin-inline-end: 0.5rem; vertical-align: middle; }
+.log-line.state-up { border-inline-start-color: var(--status-up); }

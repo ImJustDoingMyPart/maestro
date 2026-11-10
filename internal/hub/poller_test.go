@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/ImJustDoingMyPart/maestro/internal/agent"
-	"github.com/ImJustDoingMyPart/maestro/internal/catalog"
 )
 
 // fakeAgent devuelve lo que se le cargue; se puede cambiar entre vueltas.
@@ -78,7 +77,7 @@ func TestPollerAgentQueFallaYVuelve(t *testing.T) {
 	if !snap.HostOK("vm") || snap.HostOK("lxc") {
 		t.Errorf("hosts = %+v", snap.Hosts)
 	}
-	if got := serviceState(snap.Services[0], snap); got != StateUp {
+	if got := snapState(snap.Services[0].ID, snap); got != StateUp {
 		t.Errorf("estado = %s, quería up", got)
 	}
 
@@ -91,7 +90,7 @@ func TestPollerAgentQueFallaYVuelve(t *testing.T) {
 	if len(snap.Services) != 1 {
 		t.Fatalf("el servicio desapareció al caerse el agent: %+v", snap.Services)
 	}
-	if got := serviceState(snap.Services[0], snap); got != StateUnknown {
+	if got := snapState(snap.Services[0].ID, snap); got != StateUnknown {
 		t.Errorf("estado con el agent caído = %s, quería unknown", got)
 	}
 	for _, h := range snap.Hosts {
@@ -107,7 +106,7 @@ func TestPollerAgentQueFallaYVuelve(t *testing.T) {
 	if !snap.HostOK("vm") {
 		t.Error("vm sigue caído después de responder")
 	}
-	if got := serviceState(snap.Services[0], snap); got != StateDown {
+	if got := snapState(snap.Services[0].ID, snap); got != StateDown {
 		t.Errorf("estado = %s, quería down", got)
 	}
 }
@@ -128,40 +127,6 @@ func (panicAgent) Containers(context.Context) ([]agent.Container, error) { panic
 
 func (panicAgent) Logs(context.Context, string, agent.LogOptions) (iter.Seq2[agent.LogLine, error], error) {
 	panic("boom")
-}
-
-func TestServiceState(t *testing.T) {
-	snap := Snapshot{Hosts: []HostStatus{{Name: "vm", OK: true}, {Name: "lxc", OK: false}}}
-	c := func(state, health string) catalog.Container {
-		return catalog.Container{State: state, Health: health}
-	}
-	svc := func(src catalog.Source, host string, cs ...catalog.Container) catalog.Service {
-		return catalog.Service{Source: src, Host: host, Containers: cs}
-	}
-	tests := []struct {
-		name string
-		svc  catalog.Service
-		want State
-	}{
-		{"corriendo sin healthcheck", svc(catalog.SourceCompose, "vm", c("running", "")), StateUp},
-		{"corriendo y sano", svc(catalog.SourceCompose, "vm", c("running", "healthy")), StateUp},
-		{"corriendo pero enfermo", svc(catalog.SourceCompose, "vm", c("running", "unhealthy")), StateDown},
-		{"arrancando", svc(catalog.SourceCompose, "vm", c("running", "starting")), StateUnknown},
-		{"detenido", svc(catalog.SourceCompose, "vm", c("exited", "")), StateDown},
-		{"reiniciando", svc(catalog.SourceCompose, "vm", c("restarting", "")), StateDown},
-		{"una réplica caída", svc(catalog.SourceCompose, "vm", c("running", ""), c("exited", "")), StateDown},
-		{"contenedor suelto", svc(catalog.SourceContainer, "vm", c("running", "")), StateUp},
-		{"host sin respuesta", svc(catalog.SourceCompose, "lxc", c("running", "")), StateUnknown},
-		{"systemd todavía sin datos", svc(catalog.SourceSystemd, "vm"), StateUnknown},
-		{"externo todavía sin datos", svc(catalog.SourceExternal, ""), StateUnknown},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := serviceState(tt.svc, snap); got != tt.want {
-				t.Errorf("serviceState = %s, quería %s", got, tt.want)
-			}
-		})
-	}
 }
 
 func TestShortImage(t *testing.T) {

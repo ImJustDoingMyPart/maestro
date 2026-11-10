@@ -211,6 +211,7 @@ export class Viewer {
     es.onopen = () => this.setStatus("up", "En vivo");
     es.onmessage = (e) => this.enqueue(JSON.parse(e.data));
     es.addEventListener("notice", (e) => this.enqueueNotice(JSON.parse(e.data), WARN));
+    es.addEventListener("state", (e) => this.enqueueState(JSON.parse(e.data)));
     es.addEventListener("end", (e) => {
       // Sin cerrar, el navegador reconectaría solo a los 3 s.
       es.close();
@@ -267,6 +268,17 @@ export class Viewer {
   enqueueNotice(text, level) {
     const ts = new Date();
     this.pending.push({ ts, time: timeFmt.format(ts), stream: "maestro", c: "", text, lower: null, level, notice: true });
+    this.schedule();
+  }
+
+  // enqueueState agrega un cambio de estado del servicio. Pasa el filtro de
+  // nivel como los avisos (es parte de la línea de tiempo, no del log), y
+  // su nivel es el del estado: caído es error, degradado es aviso.
+  enqueueState(ev) {
+    const ts = new Date(ev.ts);
+    const level = ev.state === "down" ? ERROR : ev.state === "degraded" ? WARN : INFO;
+    const text = `${ev.label}: ${ev.reason}`;
+    this.pending.push({ ts, time: timeFmt.format(ts), stream: "estado", c: "", text, lower: null, level, notice: true, state: ev.state });
     this.schedule();
   }
 
@@ -360,8 +372,12 @@ export class Viewer {
   }
 
   fillRow(row, l) {
-    row.className = "log-line" + (l.notice ? " notice" : "") + (l.level ? " " + LEVEL_CLASS[l.level] : "");
+    row.className =
+      "log-line" +
+      (l.state ? " state state-" + l.state : l.notice ? " notice" : "") +
+      (l.level ? " " + LEVEL_CLASS[l.level] : "");
     const parts = [el("span", "log-time", l.time)];
+    if (l.state) parts.push(el("span", "dot " + l.state));
     if (l.c) parts.push(el("span", "log-container", l.c));
     parts.push(this.highlight(l.text));
     row.replaceChildren(...parts);

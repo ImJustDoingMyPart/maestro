@@ -4,12 +4,15 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/ImJustDoingMyPart/maestro/internal/auth"
 	"github.com/ImJustDoingMyPart/maestro/internal/config"
 	"github.com/ImJustDoingMyPart/maestro/internal/httpserver"
+	"github.com/ImJustDoingMyPart/maestro/internal/status"
 	"github.com/ImJustDoingMyPart/maestro/internal/store"
 	"github.com/ImJustDoingMyPart/maestro/web"
 )
@@ -45,10 +48,17 @@ func Serve(ctx context.Context, opts Options, logger *slog.Logger) error {
 		logger.Warn("modo --dev: la cookie de sesión viaja sin Secure; usarlo solo en local")
 	}
 
+	mon, err := NewMonitor(ctx, st, logger)
+	if err != nil {
+		return fmt.Errorf("monitor: %w", err)
+	}
+	go mon.Run(ctx)
+
 	poller := NewPoller(cfg, logger)
+	poller.onPoll = mon.Update
 	go poller.Run(ctx)
 
-	h, err := newHandler(poller, poller, poller, auth.NewSessions(st, !opts.Dev, logger), logger)
+	h, err := newHandler(poller, poller, poller, mon, auth.NewSessions(st, !opts.Dev, logger), logger)
 	if err != nil {
 		return err
 	}
@@ -60,28 +70,42 @@ type snapshotter interface {
 	Snapshot() Snapshot
 }
 
+// monitorView es lo que los handlers necesitan del monitor. Lo cumple
+// *Monitor; los tests pasan uno falso.
+type monitorView interface {
+	Status(id string) status.Status
+	Checks(id string) []CheckView
+	History(ctx context.Context, id string, since time.Time) ([]store.CheckResult, []store.StateEvent, error)
+	Subscribe(id string) (<-chan store.StateEvent, func())
+	Push(token string) bool
+}
+
 type server struct {
 	poller   snapshotter
 	logs     logOpener
 	stacks   stackClient
+	mon      monitorView
 	runs     *runStore
 	sessions *auth.Sessions
 	pages    pages
 	logger   *slog.Logger
 }
 
-func newHandler(poller snapshotter, logs logOpener, stacks stackClient, sessions *auth.Sessions, logger *slog.Logger) (http.Handler, error) {
+func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon monitorView, sessions *auth.Sessions, logger *slog.Logger) (http.Handler, error) {
 	p, err := parsePages(web.Templates, "services", "service", "stack", "hardware", "login")
 	if err != nil {
 		return nil, err
 	}
-	s := &server{poller: poller, logs: logs, stacks: stacks, runs: newRunStore(), sessions: sessions, pages: p, logger: logger}
+	s := &server{poller: poller, logs: logs, stacks: stacks, mon: mon, runs: newRunStore(), sessions: sessions, pages: p, logger: logger}
 
 	mux := http.NewServeMux()
 	mux.Handle("GET /static/", http.StripPrefix("/static/", staticHandler()))
 	mux.HandleFunc("GET /login", s.loginPage)
 	mux.HandleFunc("POST /login", s.login)
 	mux.HandleFunc("POST /logout", s.logout)
+	// Push: lo llaman scripts, sin sesión. El token es la credencial.
+	mux.HandleFunc("GET /push/{token}", s.push)
+	mux.HandleFunc("POST /push/{token}", s.push)
 
 	private := http.NewServeMux()
 	private.HandleFunc("GET /{$}", s.servicesPage)
@@ -93,6 +117,7 @@ func newHandler(poller snapshotter, logs logOpener, stacks stackClient, sessions
 	// /services/<id>/logs, "a/logs" sería ambiguo.
 	private.HandleFunc("GET /services/{id...}", s.servicePage)
 	private.HandleFunc("GET /logs/{id...}", s.streamLogs)
+	private.HandleFunc("GET /fragments/checks/{id...}", s.checksFragment)
 	// Un stack se nombra por host y proyecto, no por servicio: después de
 	// un down no le quedan contenedores ni servicios, y hay que poder
 	// levantarlo de nuevo.
@@ -142,13 +167,15 @@ func (s *server) servicesData() pageData {
 
 	var others *group // los servicios sin grupo van al final
 	for _, svc := range snap.Services {
+		st := s.mon.Status(svc.ID)
 		card := serviceCard{
 			Href:        servicePath(svc.ID),
 			Name:        svc.Name,
 			Description: describe(svc),
 			Icon:        sourceIcon(svc.Source),
 			URL:         svc.URL,
-			State:       serviceState(svc, snap),
+			State:       State(st.State),
+			Reason:      st.Reason(),
 		}
 		if svc.Group == "" {
 			if others == nil {
@@ -174,10 +201,21 @@ func (s *server) servicesData() pageData {
 			data.HostProblems = append(data.HostProblems, h)
 		}
 	}
-	if !snap.At.IsZero() {
-		data.Updated = snap.At.Format("15:04:05")
-	}
+	data.Updated = snap.At
 	return data
+}
+
+// push atiende /push/{token}. Responde lo mismo exista o no el token: la
+// ruta no tiene login y no tiene que servir para probar tokens. El que no
+// existe queda en el log, para ver un script mal configurado.
+func (s *server) push(w http.ResponseWriter, r *http.Request) {
+	if !s.mon.Push(r.PathValue("token")) {
+		s.logger.Warn("push con un token desconocido", "remote", r.RemoteAddr,
+			"forwarded_for", r.Header.Get("X-Forwarded-For"))
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = io.WriteString(w, "ok\n")
 }
 
 func (s *server) loginPage(w http.ResponseWriter, r *http.Request) {

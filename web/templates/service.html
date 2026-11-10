@@ -35,6 +35,19 @@
   {{if .URL}}<a class="chip no-border surface-container s" href="{{.URL}}" target="_blank" rel="noopener"><i>open_in_new</i><span>Abrir</span></a>{{end}}
 </nav>
 
+{{if and .Reasons (ne .State "up")}}
+<article class="small-round no-elevate state-reasons {{.State}}">
+  <nav>
+    <i>{{if eq .State "down"}}error{{else if eq .State "degraded"}}warning{{else}}help{{end}}</i>
+    <div class="max">
+      {{range .Reasons}}<div>{{.}}</div>{{end}}
+    </div>
+  </nav>
+</article>
+{{end}}
+
+{{if .ChecksURL}}{{template "checks" $}}{{end}}
+
 <div class="tabs left-align">
   <a class="active"><i>history</i><span>Actividad</span></a>
   {{if .StackURL}}<a href="{{.StackURL}}"><i>stacks</i><span>Compose</span></a>{{end}}
@@ -50,6 +63,21 @@
 <article class="small-round no-elevate surface-container-low center-align">
   <p>{{.NoLogs}}</p>
 </article>
+{{if .Events}}
+<ul class="list border state-events">
+  {{range .Events}}
+  <li>
+    <span class="dot {{.State}}"></span>
+    <div class="max">
+      <div>{{.State.Label}} · {{.Reason}}</div>
+    </div>
+    <span class="small-text secondary-text">{{localTime .At "datetime"}}</span>
+  </li>
+  {{end}}
+</ul>
+{{else if .ChecksURL}}
+<p class="small-text secondary-text center-align">Sin cambios de estado en las últimas 24 horas.</p>
+{{end}}
 {{end}}
 {{else}}
 <article class="small-round no-elevate surface-container-low center-align">
@@ -57,5 +85,34 @@
   <p>Puede que se haya dado de baja o que su agent todavía no haya respondido.</p>
   <a class="button" href="/">Volver a Servicios</a>
 </article>
+{{end}}
+{{end}}
+
+{{/* Panel de checks: htmx lo vuelve a pedir cada minuto y lo reemplaza
+     entero, por eso el elemento con hx-get va adentro. */}}
+{{define "checks"}}
+{{with .Svc}}
+<section id="checks" class="checks" hx-get="{{.ChecksURL}}" hx-trigger="every 60s" hx-swap="outerHTML">
+  {{range .Checks}}
+  <article class="small-round no-elevate surface-container-low check">
+    <nav class="wrap small-space">
+      <span class="dot {{.State}}" title="{{.State.Label}}"></span>
+      <span class="bold">{{.Kind}}</span>
+      {{if .Target}}<span class="small-text secondary-text check-target">{{.Target}}</span>{{end}}
+      <div class="max"></div>
+      {{if .Uptime}}<span class="small-text" title="Disponibilidad en las últimas 24 horas">{{.Uptime}}</span>{{end}}
+    </nav>
+    <div class="check-bars" role="img" aria-label="Historial de las últimas 24 horas">
+      {{range .Bars}}<span class="bar {{.Class}}" data-from="{{.From.UTC.Format "2006-01-02T15:04:05Z07:00"}}" data-to="{{.To.UTC.Format "2006-01-02T15:04:05Z07:00"}}" data-summary="{{.Summary}}" title="{{.Summary}}"></span>{{end}}
+    </div>
+    <div class="small-text secondary-text">
+      {{if .LastAt.IsZero}}Todavía no corrió.{{else}}
+      {{.Last}}{{with .Latency}} · {{.}}{{end}} · {{localTime .LastAt "time"}}
+      {{end}}
+      {{if .Cert}}<span{{if .CertWarn}} class="cert-warn"{{end}}>· {{.Cert}}</span>{{end}}
+    </div>
+  </article>
+  {{end}}
+</section>
 {{end}}
 {{end}}

@@ -68,6 +68,8 @@ type Poller struct {
 	timeout  time.Duration
 	logger   *slog.Logger
 	now      func() time.Time
+	// onPoll recibe cada foto nueva (el monitor). Se fija antes de Run.
+	onPoll func(Snapshot)
 
 	mu    sync.RWMutex
 	hosts map[string]*hostState
@@ -186,6 +188,9 @@ func (p *Poller) safePoll(ctx context.Context) {
 		}
 	}()
 	p.poll(ctx)
+	if p.onPoll != nil {
+		p.onPoll(p.Snapshot())
+	}
 }
 
 // poll pide los contenedores a todos los agents a la vez y rearma la foto.
@@ -256,30 +261,6 @@ func (p *Poller) poll(ctx context.Context) {
 		}
 	}
 	p.snap = Snapshot{Services: p.catalog.Build(all, p.file), Hosts: hosts, At: now}
-}
-
-// serviceState resume un servicio en el semáforo. En la etapa 1 solo se mira
-// el estado de los contenedores: los checks y las unidades systemd llegan
-// en las etapas 4 y 6, así que esos servicios quedan sin datos.
-func serviceState(svc catalog.Service, snap Snapshot) State {
-	switch svc.Source {
-	case catalog.SourceCompose, catalog.SourceContainer:
-	default:
-		return StateUnknown
-	}
-	if !snap.HostOK(svc.Host) {
-		return StateUnknown // datos viejos: no se afirma nada
-	}
-	state := StateUp
-	for _, c := range svc.Containers {
-		switch {
-		case c.State != "running" || c.Health == "unhealthy":
-			return StateDown
-		case c.Health == "starting":
-			state = StateUnknown
-		}
-	}
-	return state
 }
 
 // describe es el texto chico de la tarjeta: la descripción declarada o, si no

@@ -8,15 +8,18 @@ import (
 	"log/slog"
 	"net/http"
 	"path"
+	"time"
 )
 
 // State es el semáforo de un servicio en la portada.
 type State string
 
+// Los valores son los de status.State: se convierten con State(st.State).
 const (
-	StateUp      State = "up"
-	StateDown    State = "down"
-	StateUnknown State = "unknown"
+	StateUp       State = "up"
+	StateDegraded State = "degraded"
+	StateDown     State = "down"
+	StateUnknown  State = "unknown"
 )
 
 // Label es el texto que acompaña al color, para no depender solo de él.
@@ -24,6 +27,8 @@ func (s State) Label() string {
 	switch s {
 	case StateUp:
 		return "Arriba"
+	case StateDegraded:
+		return "Degradado"
 	case StateDown:
 		return "Caído"
 	default:
@@ -40,6 +45,7 @@ type serviceCard struct {
 	Icon        string // nombre de un ícono de Material Symbols
 	URL         string
 	State       State
+	Reason      string // motivo principal del estado; vacío si está arriba
 }
 
 type group struct {
@@ -48,7 +54,7 @@ type group struct {
 }
 
 type summary struct {
-	Up, Down, Unknown int
+	Up, Degraded, Down, Unknown int
 }
 
 func summarize(groups []group) summary {
@@ -58,6 +64,8 @@ func summarize(groups []group) summary {
 			switch svc.State {
 			case StateUp:
 				s.Up++
+			case StateDegraded:
+				s.Degraded++
 			case StateDown:
 				s.Down++
 			default:
@@ -83,7 +91,7 @@ type pageData struct {
 	Groups       []group
 	Summary      summary
 	HostProblems []HostStatus
-	Updated      string // hora de la última vuelta del poller
+	Updated      time.Time // hora de la última vuelta del poller; cero si no hubo
 
 	// Login
 	Error    string
@@ -93,6 +101,17 @@ type pageData struct {
 // funcs son las funciones que pueden usar las plantillas.
 var funcs = template.FuncMap{
 	"base": path.Base, // nombre de un archivo sin la carpeta
+	// localTime escribe una hora como <time> que web/static/localtime.js
+	// pasa a la zona del navegador. layout es "time" (15:04:05) o
+	// "datetime" (02/01 15:04).
+	"localTime": func(t time.Time, layout string) template.HTML {
+		fallback := t.UTC().Format("15:04:05") + " UTC"
+		if layout == "datetime" {
+			fallback = t.UTC().Format("02/01 15:04") + " UTC"
+		}
+		return template.HTML(fmt.Sprintf(`<time datetime="%s" data-local="%s">%s</time>`,
+			t.UTC().Format(time.RFC3339), template.HTMLEscapeString(layout), fallback))
+	},
 }
 
 // pages tiene una plantilla compilada por página: cada una es layout.html y

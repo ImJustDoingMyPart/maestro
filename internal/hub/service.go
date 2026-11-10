@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/ImJustDoingMyPart/maestro/internal/catalog"
+	"github.com/ImJustDoingMyPart/maestro/internal/status"
 )
 
 // serviceDetail es lo que muestra la página de un servicio.
@@ -16,12 +17,18 @@ type serviceDetail struct {
 	Icon        string
 	URL         string
 	State       State
-	Source      string // de dónde sale, en palabras
+	Reasons     []string // motivos del estado; vacío si está arriba
+	Source      string   // de dónde sale, en palabras
 	Host        string
 	Containers  []containerRow
 	StackURL    string // pestaña Compose; vacío si no es de compose
 	LogsURL     string // vacío si el servicio no tiene logs que mostrar
 	NoLogs      string // por qué no hay logs, si LogsURL está vacío
+	ChecksURL   string // fragmento con el historial de checks; vacío si no tiene
+	Checks      []checkPanel
+	// Events son los cambios de estado recientes, para un servicio sin logs
+	// (la línea de tiempo de los que tienen logs va por el visor).
+	Events []eventRow
 }
 
 type containerRow struct {
@@ -41,20 +48,28 @@ func (s *server) servicePage(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	d := detail(svc, snap)
+	d := detail(svc, s.mon.Status(svc.ID))
+	if len(svc.Checks) > 0 {
+		d.ChecksURL = "/fragments/checks/" + escapeID(svc.ID)
+	}
+	d.Checks, d.Events = s.checkPanels(r, svc)
+	if d.LogsURL != "" {
+		d.Events = nil
+	}
 	s.pages.render(w, s.logger, "service", pageData{
 		Title: svc.Name, Active: "services", ShowNav: true, Svc: &d,
 	})
 }
 
-func detail(svc catalog.Service, snap Snapshot) serviceDetail {
+func detail(svc catalog.Service, st status.Status) serviceDetail {
 	d := serviceDetail{
 		ID:          svc.ID,
 		Name:        svc.Name,
 		Description: describe(svc),
 		Icon:        sourceIcon(svc.Source),
 		URL:         svc.URL,
-		State:       serviceState(svc, snap),
+		State:       State(st.State),
+		Reasons:     st.Reasons,
 		Host:        svc.Host,
 	}
 	switch svc.Source {
@@ -68,7 +83,7 @@ func detail(svc catalog.Service, snap Snapshot) serviceDetail {
 		d.NoLogs = "Los logs de unidades systemd (el journal) llegan con los agents de otros hosts."
 	case catalog.SourceExternal:
 		d.Source = "externo"
-		d.NoLogs = "Un servicio externo no tiene logs: solo checks."
+		d.NoLogs = "Un servicio externo no tiene logs: solo checks. Abajo, sus cambios de estado."
 	}
 	for _, c := range svc.Containers {
 		d.Containers = append(d.Containers, containerRow{

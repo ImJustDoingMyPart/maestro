@@ -34,6 +34,11 @@ func testServerLogs(t *testing.T, snap Snapshot, logs logOpener) *httptest.Serve
 
 func testServerWith(t *testing.T, snap Snapshot, logs logOpener, stacks stackClient) *httptest.Server {
 	t.Helper()
+	return testServerMon(t, snap, logs, stacks, &fakeMonitor{snap: snap})
+}
+
+func testServerMon(t *testing.T, snap Snapshot, logs logOpener, stacks stackClient, mon monitorView) *httptest.Server {
+	t.Helper()
 	st, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "t.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -46,7 +51,7 @@ func testServerWith(t *testing.T, snap Snapshot, logs logOpener, stacks stackCli
 	logger := slog.New(slog.DiscardHandler)
 	// secure=false: el servidor de prueba es HTTP y el cliente no mandaría
 	// una cookie Secure.
-	h, err := newHandler(fixedSnapshot(snap), logs, stacks, auth.NewSessions(st, false, logger), logger)
+	h, err := newHandler(fixedSnapshot(snap), logs, stacks, mon, auth.NewSessions(st, false, logger), logger)
 	if err != nil {
 		t.Fatal(err)
 	}
