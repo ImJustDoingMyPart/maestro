@@ -11,3 +11,4 @@ maestro.yaml
 
 # Config local de Claude Code
 .claude/settings.local.json
+web/node_modules/
