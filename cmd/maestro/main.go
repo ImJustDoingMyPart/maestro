@@ -14,6 +14,9 @@ import (
 	"runtime/debug"
 	"syscall"
 
+	"github.com/ImJustDoingMyPart/maestro/internal/agent"
+	"github.com/ImJustDoingMyPart/maestro/internal/docker"
+	"github.com/ImJustDoingMyPart/maestro/internal/httpserver"
 	"github.com/ImJustDoingMyPart/maestro/internal/hub"
 )
 
@@ -87,14 +90,32 @@ func runServe(ctx context.Context, args []string, stderr io.Writer) error {
 	return hub.ServeDemo(ctx, *listen, logger)
 }
 
-func runAgent(_ context.Context, args []string, stderr io.Writer) error {
+func runAgent(ctx context.Context, args []string, stderr io.Writer) error {
 	fs := flag.NewFlagSet("agent", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	_ = fs.String("listen", "127.0.0.1:9101", "dirección donde escucha el agent")
+	listen := fs.String("listen", "127.0.0.1:9101", "dirección donde escucha el agent")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	return errors.New("agent: todavía no implementado (etapa 1, paso 5)")
+
+	// El token va por entorno y no por flag: los flags se ven en ps.
+	token := os.Getenv("MAESTRO_AGENT_TOKEN")
+	if token == "" {
+		return errors.New("agent: falta MAESTRO_AGENT_TOKEN (generalo con: openssl rand -hex 32)")
+	}
+
+	logger := slog.New(slog.NewTextHandler(stderr, nil))
+	dc, err := docker.New()
+	if err != nil {
+		return fmt.Errorf("agent: cliente de Docker: %w", err)
+	}
+	defer dc.Close()
+
+	h, err := agent.NewHandler(dc, token, logger)
+	if err != nil {
+		return fmt.Errorf("agent: %w", err)
+	}
+	return httpserver.Run(ctx, *listen, h, logger)
 }
 
 // currentVersion prefiere la versión de -ldflags; si no la hay (go run, go
