@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"path"
 	"slices"
 	"strconv"
@@ -29,7 +30,14 @@ type Store struct {
 }
 
 // Open abre (o crea) la base en path y corre las migraciones pendientes.
+//
+// La base tiene hashes de contraseñas y de sesiones: se crea con permisos
+// 600 y, si ya existía con permisos más abiertos, se le cierran. SQLite crea
+// el -wal y el -shm con los permisos de la base.
 func Open(ctx context.Context, path string) (*Store, error) {
+	if err := restrictPerms(path); err != nil {
+		return nil, err
+	}
 	// WAL deja leer mientras otro escribe; busy_timeout espera un lock en
 	// vez de fallar enseguida; foreign_keys no viene activado por defecto.
 	dsn := path + "?_pragma=journal_mode(WAL)&_pragma=busy_timeout(5000)" +
@@ -44,6 +52,33 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		return nil, fmt.Errorf("migraciones: %w", err)
 	}
 	return s, nil
+}
+
+// restrictPerms crea path vacío con permisos 600 si no existe, y le saca
+// los permisos de grupo y otros si los tiene.
+func restrictPerms(path string) error {
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
+	if err == nil {
+		return f.Close()
+	}
+	if !errors.Is(err, fs.ErrExist) {
+		return err
+	}
+	for _, p := range []string{path, path + "-wal", path + "-shm"} {
+		info, err := os.Stat(p)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if info.Mode().Perm()&0o077 != 0 {
+			if err := os.Chmod(p, info.Mode().Perm()&0o700); err != nil {
+				return fmt.Errorf("cerrar permisos de %s: %w", p, err)
+			}
+		}
+	}
+	return nil
 }
 
 // Close cierra la base.
