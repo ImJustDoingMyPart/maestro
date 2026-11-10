@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"flag"
@@ -12,12 +13,18 @@ import (
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"strings"
 	"syscall"
+	"time"
+
+	"golang.org/x/term"
 
 	"github.com/ImJustDoingMyPart/maestro/internal/agent"
+	"github.com/ImJustDoingMyPart/maestro/internal/auth"
 	"github.com/ImJustDoingMyPart/maestro/internal/docker"
 	"github.com/ImJustDoingMyPart/maestro/internal/httpserver"
 	"github.com/ImJustDoingMyPart/maestro/internal/hub"
+	"github.com/ImJustDoingMyPart/maestro/internal/store"
 )
 
 // version se inyecta al compilar:
@@ -30,6 +37,7 @@ const usage = `uso: maestro <comando> [opciones]
 comandos:
   serve     hub web (portada, login, checks)
   agent     agent de un host (Docker, /proc, systemd)
+  passwd    crea el usuario del panel o le cambia la contraseña
   version   imprime la versión
 
 "maestro <comando> -h" muestra las opciones de cada comando.
@@ -62,6 +70,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return runServe(ctx, rest, stderr)
 	case "agent":
 		return runAgent(ctx, rest, stderr)
+	case "passwd":
+		return runPasswd(ctx, rest, os.Stdin, stderr)
 	case "version":
 		fmt.Fprintln(stdout, currentVersion())
 		return nil
@@ -78,16 +88,83 @@ func runServe(ctx context.Context, args []string, stderr io.Writer) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	listen := fs.String("listen", "127.0.0.1:8090", "dirección donde escucha la web")
+	cfgPath := fs.String("config", "maestro.yaml", "archivo de configuración")
+	dbPath := fs.String("db", "maestro.db", "base SQLite")
+	dev := fs.Bool("dev", false, "cookie sin Secure, para probar por HTTP en local")
 	demo := fs.Bool("demo", false, "portada con servicios falsos, sin login ni agents")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if !*demo {
-		return errors.New("serve: por ahora solo existe el modo --demo")
-	}
 
 	logger := slog.New(slog.NewTextHandler(stderr, nil))
-	return hub.ServeDemo(ctx, *listen, logger)
+	if *demo {
+		return hub.ServeDemo(ctx, *listen, logger)
+	}
+	return hub.Serve(ctx, hub.Options{Listen: *listen, ConfigPath: *cfgPath, DBPath: *dbPath, Dev: *dev}, logger)
+}
+
+// runPasswd crea el usuario o le cambia la contraseña. La contraseña se pide
+// por la terminal, sin eco; si stdin no es una terminal (un script, un
+// docker exec sin -t) se lee la primera línea.
+func runPasswd(ctx context.Context, args []string, stdin *os.File, stderr io.Writer) error {
+	fs := flag.NewFlagSet("passwd", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	dbPath := fs.String("db", "maestro.db", "base SQLite")
+	user := fs.String("user", "admin", "usuario")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+
+	password, err := readPassword(stdin, stderr)
+	if err != nil {
+		return err
+	}
+	if len(password) < 12 {
+		return errors.New("passwd: la contraseña tiene que tener al menos 12 caracteres")
+	}
+
+	hash, err := auth.HashPassword(password)
+	if err != nil {
+		return err
+	}
+	st, err := store.Open(ctx, *dbPath)
+	if err != nil {
+		return err
+	}
+	defer st.Close()
+	if err := st.SetPassword(ctx, *user, hash, time.Now()); err != nil {
+		return err
+	}
+	fmt.Fprintf(stderr, "contraseña de %q guardada en %s; sus sesiones abiertas se cerraron\n", *user, *dbPath)
+	return nil
+}
+
+func readPassword(stdin *os.File, stderr io.Writer) (string, error) {
+	fd := int(stdin.Fd())
+	if !term.IsTerminal(fd) {
+		line, err := bufio.NewReader(stdin).ReadString('\n')
+		if err != nil && line == "" {
+			return "", fmt.Errorf("passwd: leer la contraseña de stdin: %w", err)
+		}
+		return strings.TrimRight(line, "\r\n"), nil
+	}
+
+	fmt.Fprint(stderr, "Contraseña: ")
+	first, err := term.ReadPassword(fd)
+	fmt.Fprintln(stderr)
+	if err != nil {
+		return "", err
+	}
+	fmt.Fprint(stderr, "Repetila: ")
+	second, err := term.ReadPassword(fd)
+	fmt.Fprintln(stderr)
+	if err != nil {
+		return "", err
+	}
+	if string(first) != string(second) {
+		return "", errors.New("passwd: las contraseñas no coinciden")
+	}
+	return string(first), nil
 }
 
 func runAgent(ctx context.Context, args []string, stderr io.Writer) error {

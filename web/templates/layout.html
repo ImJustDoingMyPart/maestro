@@ -10,6 +10,7 @@
   <script src="/static/htmx-2.0.11.min.js" defer></script>
 </head>
 <body>
+  {{if .ShowNav}}
   {{/* Barra superior en pantallas medianas y grandes */}}
   <header class="fixed m l topbar">
     <nav>
@@ -23,6 +24,8 @@
         <i>memory</i>
         <span>Hardware</span>
       </a>
+      <div class="max"></div>
+      {{if not .Demo}}{{template "logout" .}}{{end}}
     </nav>
   </header>
 
@@ -37,10 +40,17 @@
       <span>Hardware</span>
     </a>
   </nav>
+  {{end}}
 
   <main class="responsive">
     {{template "content" .}}
   </main>
 </body>
 </html>
+{{end}}
+
+{{define "logout"}}
+<form method="post" action="/logout">
+  <button class="circle transparent" title="Salir" aria-label="Salir"><i>logout</i></button>
+</form>
 {{end}}

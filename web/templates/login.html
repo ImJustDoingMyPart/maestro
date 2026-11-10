@@ -1,0 +1,26 @@
+{{define "content"}}
+<div class="login">
+  <article class="small-round no-elevate surface-container-low">
+    <nav class="center-align">
+      <i class="primary-text extra">hub</i>
+    </nav>
+    <h5 class="center-align">Maestro</h5>
+    {{if .Error}}
+    <p class="error-text center-align" role="alert">{{.Error}}</p>
+    {{end}}
+    <form method="post" action="/login">
+      <div class="field label border">
+        <input type="text" name="username" id="username" autocomplete="username" required autofocus value="{{.Username}}">
+        <label for="username">Usuario</label>
+      </div>
+      <div class="field label border">
+        <input type="password" name="password" id="password" autocomplete="current-password" required>
+        <label for="password">Contraseña</label>
+      </div>
+      <nav class="right-align">
+        <button type="submit">Entrar</button>
+      </nav>
+    </form>
+  </article>
+</div>
+{{end}}

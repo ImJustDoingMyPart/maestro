@@ -70,3 +70,17 @@ header.fixed.topbar {
   color: var(--error);
   font-weight: 500;
 }
+
+.updated {
+  margin-inline-start: auto;
+}
+
+.host-problem {
+  margin-block-end: 1rem;
+}
+
+/* Login: una tarjeta angosta centrada. */
+.login {
+  max-inline-size: 24rem;
+  margin: 4rem auto 0;
+}

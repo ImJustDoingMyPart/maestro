@@ -47,13 +47,14 @@ func newDemoHandler(logger *slog.Logger) (http.Handler, error) {
 		p.render(w, logger, "services", pageData{
 			Title:   "Servicios",
 			Active:  "services",
+			ShowNav: true,
 			Demo:    true,
 			Groups:  demoGroups,
 			Summary: summarize(demoGroups),
 		})
 	})
 	mux.HandleFunc("GET /hardware", func(w http.ResponseWriter, r *http.Request) {
-		p.render(w, logger, "hardware", pageData{Title: "Hardware", Active: "hardware", Demo: true})
+		p.render(w, logger, "hardware", pageData{Title: "Hardware", Active: "hardware", ShowNav: true, Demo: true})
 	})
 	return mux, nil
 }

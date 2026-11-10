@@ -3,43 +3,70 @@
   <nav>
     <h5 class="max">Servicios</h5>
     {{if .Demo}}<span class="chip small tertiary-container no-border">demo</span>{{end}}
+    {{if not .Demo}}<div class="s">{{template "logout" .}}</div>{{end}}
   </nav>
 </header>
+{{template "grid" .}}
+{{end}}
 
-<nav class="wrap small-space">
-  <span class="chip no-border surface-container"><span class="dot up"></span>{{.Summary.Up}} arriba</span>
-  <span class="chip no-border surface-container"><span class="dot down"></span>{{.Summary.Down}} caídos</span>
-  <span class="chip no-border surface-container"><span class="dot unknown"></span>{{.Summary.Unknown}} sin datos</span>
-</nav>
-
-{{range .Groups}}
-<h6 class="group-title">{{.Name}}</h6>
-<div class="grid small-space">
-  {{range .Services}}
-  <div class="s12 m6 l4">
-    <article class="small-round no-elevate surface-container-low service">
-      <div class="row">
-        <span class="icon-badge secondary-container"><i class="extra">{{.Icon}}</i></span>
-        <div class="max">
-          <div class="bold">{{.Name}}</div>
-          <div class="small-text secondary-text">{{.Description}}</div>
-        </div>
-        <span class="status {{.State}}" title="{{.State.Label}}">
-          <span class="dot {{.State}}"></span>
-          <span class="small-text">{{.State.Label}}</span>
-        </span>
+{{/* "grid" es lo que htmx vuelve a pedir cada 15 s y reemplaza entero
+     (outerHTML): por eso el div con hx-get va adentro del fragmento. */}}
+{{define "grid"}}
+<div id="services"{{if .Live}} hx-get="/fragments/services" hx-trigger="every 15s" hx-swap="outerHTML"{{end}}>
+  {{range .HostProblems}}
+  <article class="small-round no-elevate error-container host-problem">
+    <nav>
+      <i>cloud_off</i>
+      <div class="max">
+        <div class="bold">El agent de {{.Name}} no responde</div>
+        <div class="small-text">{{if .LastOK.IsZero}}Nunca respondió{{else}}Último dato: {{.LastOK.Format "15:04:05"}}{{end}}. Sus servicios figuran sin datos. {{.Err}}</div>
       </div>
-      {{if .URL}}
-      <nav class="right-align no-space">
-        <a class="button transparent small" href="{{.URL}}" target="_blank" rel="noopener">
-          <span>Abrir</span>
-          <i>open_in_new</i>
-        </a>
-      </nav>
-      {{end}}
-    </article>
+    </nav>
+  </article>
+  {{end}}
+
+  <nav class="wrap small-space">
+    <span class="chip no-border surface-container"><span class="dot up"></span>{{.Summary.Up}} arriba</span>
+    <span class="chip no-border surface-container"><span class="dot down"></span>{{.Summary.Down}} caídos</span>
+    <span class="chip no-border surface-container"><span class="dot unknown"></span>{{.Summary.Unknown}} sin datos</span>
+    {{if .Updated}}<span class="small-text secondary-text updated">Actualizado {{.Updated}}</span>{{end}}
+  </nav>
+
+  {{if not .Groups}}
+  <article class="small-round no-elevate surface-container-low center-align">
+    <p>{{if .Live}}Todavía no hay servicios: esperando a los agents.{{else}}No hay servicios.{{end}}</p>
+  </article>
+  {{end}}
+
+  {{range .Groups}}
+  <h6 class="group-title">{{.Name}}</h6>
+  <div class="grid small-space">
+    {{range .Services}}
+    <div class="s12 m6 l4">
+      <article class="small-round no-elevate surface-container-low service">
+        <div class="row">
+          <span class="icon-badge secondary-container"><i class="extra">{{.Icon}}</i></span>
+          <div class="max">
+            <div class="bold">{{.Name}}</div>
+            <div class="small-text secondary-text">{{.Description}}</div>
+          </div>
+          <span class="status {{.State}}" title="{{.State.Label}}">
+            <span class="dot {{.State}}"></span>
+            <span class="small-text">{{.State.Label}}</span>
+          </span>
+        </div>
+        {{if .URL}}
+        <nav class="right-align no-space">
+          <a class="button transparent small" href="{{.URL}}" target="_blank" rel="noopener">
+            <span>Abrir</span>
+            <i>open_in_new</i>
+          </a>
+        </nav>
+        {{end}}
+      </article>
+    </div>
+    {{end}}
   </div>
   {{end}}
 </div>
-{{end}}
 {{end}}

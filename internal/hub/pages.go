@@ -71,9 +71,18 @@ func summarize(groups []group) summary {
 type pageData struct {
 	Title   string
 	Active  string // destino resaltado en la navegación
+	ShowNav bool   // false en el login
 	Demo    bool
-	Groups  []group
-	Summary summary
+	Live    bool // la grilla se refresca sola (no en el demo)
+
+	Groups       []group
+	Summary      summary
+	HostProblems []HostStatus
+	Updated      string // hora de la última vuelta del poller
+
+	// Login
+	Error    string
+	Username string
 }
 
 // pages tiene una plantilla compilada por página: cada una es layout.html más
@@ -96,6 +105,11 @@ func parsePages(tfs fs.FS, names ...string) (pages, error) {
 // render ejecuta primero en un buffer: si la plantilla falla a la mitad, el
 // cliente recibe un 500 limpio en vez de media página.
 func (p pages) render(w http.ResponseWriter, logger *slog.Logger, name string, data pageData) {
+	p.renderCode(w, logger, http.StatusOK, name, data)
+}
+
+// renderCode es render con un código de estado distinto de 200.
+func (p pages) renderCode(w http.ResponseWriter, logger *slog.Logger, code int, name string, data pageData) {
 	t, ok := p[name]
 	if !ok {
 		logger.Error("página inexistente", "page", name)
@@ -105,6 +119,26 @@ func (p pages) render(w http.ResponseWriter, logger *slog.Logger, name string, d
 	var buf bytes.Buffer
 	if err := t.ExecuteTemplate(&buf, "layout", data); err != nil {
 		logger.Error("render", "page", name, "err", err)
+		http.Error(w, "error interno", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(code)
+	_, _ = buf.WriteTo(w)
+}
+
+// renderFragment ejecuta solo el bloque block de la página, sin el layout:
+// es lo que htmx pide para reemplazar una parte.
+func (p pages) renderFragment(w http.ResponseWriter, logger *slog.Logger, page, block string, data pageData) {
+	t, ok := p[page]
+	if !ok {
+		logger.Error("página inexistente", "page", page)
+		http.Error(w, "error interno", http.StatusInternalServerError)
+		return
+	}
+	var buf bytes.Buffer
+	if err := t.ExecuteTemplate(&buf, block, data); err != nil {
+		logger.Error("render", "page", page, "block", block, "err", err)
 		http.Error(w, "error interno", http.StatusInternalServerError)
 		return
 	}
