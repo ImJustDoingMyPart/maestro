@@ -109,6 +109,28 @@ body.dark  { --status-warn: #ffb74d; }
   color: inherit;
 }
 
+/* Nombre, descripción y motivo ocupan lo que deja el resto y se cortan con
+   "…" en una línea: una imagen larga ("ghcr.io/blakeblackshear/…") no
+   agranda la tarjeta ni corre el semáforo. El texto entero queda en el
+   title. min-inline-size: 0 hace falta para que un ítem flex se achique
+   por debajo de su contenido. */
+.service .row > .max {
+  min-inline-size: 0;
+}
+.service .row > .max > div {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* El semáforo tiene un ancho fijo (el de "Degradado", el más largo), con el
+   punto a la izquierda: en una columna de tarjetas los puntos quedan
+   alineados y el texto no empuja al resto. */
+.service .status {
+  inline-size: 6.5rem;
+  justify-content: flex-start;
+}
+
 /* Beer pone position: relative a casi todo; entre el enlace y la tarjeta
    tiene que ser static, o el ::after cubre solo el nombre. */
 .service .row,

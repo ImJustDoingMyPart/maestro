@@ -48,9 +48,9 @@
         <div class="row">
           <span class="icon-badge secondary-container"><i class="extra">{{.Icon}}</i></span>
           <div class="max">
-            <div class="bold">{{if .Href}}<a class="stretched" href="{{.Href}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</div>
-            <div class="small-text secondary-text">{{.Description}}</div>
-            {{if and .Reason (ne .State "up")}}<div class="small-text state-reason {{.State}}">{{.Reason}}</div>{{end}}
+            <div class="bold" title="{{.Name}}">{{if .Href}}<a class="stretched" href="{{.Href}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</div>
+            <div class="small-text secondary-text" title="{{.Description}}">{{.Description}}</div>
+            {{if and .Reason (ne .State "up")}}<div class="small-text state-reason {{.State}}" title="{{.Reason}}">{{.Reason}}</div>{{end}}
           </div>
           <span class="status {{.State}}" title="{{.State.Label}}{{with .Reason}}: {{.}}{{end}}">
             <span class="dot {{.State}}"></span>
