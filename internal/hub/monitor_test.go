@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -121,29 +122,49 @@ func TestMonitorReinicio(t *testing.T) {
 	st, path := openStore(t)
 	m, cancel := newTestMonitor(t, st)
 	const id = "web/app"
-	t0 := time.Now().Add(-time.Hour)
-	snap := func(started time.Time, exit int) Snapshot {
+	t0 := time.Now().Add(-5 * time.Minute)
+	snapState := func(state string, started time.Time, exit int) Snapshot {
 		return Snapshot{
 			Hosts: []HostStatus{{Name: "vm", OK: true}},
 			Services: []catalog.Service{{
 				ID: id, Source: catalog.SourceCompose, Host: "vm",
-				Containers: []catalog.Container{{ID: "c1", Name: "app", State: "running", Host: "vm", StartedAt: started, ExitCode: exit}},
+				Containers: []catalog.Container{{ID: "c1", Name: "app", State: state, Host: "vm", StartedAt: started, ExitCode: exit}},
 			}},
 		}
 	}
-	m.Update(snap(t0, 0))
+	snap := func(started time.Time) Snapshot { return snapState("running", started, 0) }
+	m.Update(snap(t0))
 	if s := m.Status(id); s.State != "up" {
 		t.Fatalf("Status = %+v", s)
 	}
-	m.Update(snap(t0, 0)) // sin cambios: nada
-	m.Update(snap(time.Now(), 137))
-	if s := m.Status(id); s.State != "degraded" || s.Reason() != "app reiniciado (exit 137)" {
+	m.Update(snap(t0)) // sin cambios: nada
+	// Reinicio rápido: el hub no vio el exit code (Docker lo borra al
+	// arrancar).
+	t1 := t0.Add(time.Minute)
+	m.Update(snap(t1))
+	if s := m.Status(id); s.State != "degraded" || s.Reason() != "app reiniciado" {
 		t.Errorf("después del reinicio: %+v", s)
+	}
+	// Uno que se cae y el hub lo ve en "restarting": con exit code.
+	m.Update(snapState("restarting", t1, 137))
+	if s := m.Status(id); s.State != "down" {
+		t.Errorf("en restarting: %+v", s)
+	}
+	t2 := t1.Add(time.Minute)
+	m.Update(snap(t2))
+	if s := m.Status(id); s.State != "degraded" || s.Reason() != "app reiniciado (exit 137)" {
+		t.Errorf("después de restarting: %+v", s)
+	}
+	// Detenido y vuelto a levantar a mano: es un arranque, no un reinicio.
+	m.now = func() time.Time { return time.Now().Add(11 * time.Minute) }
+	m.Update(snapState("exited", t2, 0))
+	m.Update(snap(t2.Add(time.Minute)))
+	if s := m.Status(id); s.State != "up" {
+		t.Errorf("start después de un stop: %+v", s)
 	}
 
 	// Pasada la ventana, vuelve a arriba.
-	m.now = func() time.Time { return time.Now().Add(11 * time.Minute) }
-	m.Update(snap(time.Now(), 137))
+	m.Update(snap(t2.Add(time.Minute)))
 	if s := m.Status(id); s.State != "up" {
 		t.Errorf("pasada la ventana: %+v", s)
 	}
@@ -159,10 +180,15 @@ func TestMonitorReinicio(t *testing.T) {
 	}
 	defer st2.Close()
 	m2, _ := newTestMonitor(t, st2)
-	m2.Update(snap(time.Now(), 137))
+	m2.Update(snap(t2.Add(time.Minute)))
 	_, evs, _ := m2.History(context.Background(), id, time.Time{})
-	if len(evs) != 3 {
-		t.Errorf("eventos = %+v, quería 3 (up, degraded, up)", evs)
+	var seq []string
+	for _, e := range evs {
+		seq = append(seq, e.To+":"+e.Reason)
+	}
+	want := "up:arriba degraded:app reiniciado down:app reiniciándose (exit 137) degraded:app reiniciado (exit 137) down:app detenido (exit 0) up:arriba"
+	if strings.Join(seq, " ") != want {
+		t.Errorf("eventos:\n got %s\nwant %s", strings.Join(seq, " "), want)
 	}
 }
 

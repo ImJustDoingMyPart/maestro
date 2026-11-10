@@ -37,8 +37,17 @@ type checkState struct {
 // containerSeen es lo que se recuerda de un contenedor entre vueltas para
 // ver si reinició.
 type containerSeen struct {
-	startedAt   time.Time
+	startedAt time.Time
+	// up es si en la última vuelta corría o estaba en "restarting": un
+	// arranque nuevo después de eso es un reinicio; después de "exited" es
+	// alguien que lo volvió a levantar.
+	up bool
+	// lastExit es el exit code visto en "restarting" desde el último
+	// arranque. Docker lo borra al arrancar, así que solo se conoce si el
+	// hub llegó a ver ese estado.
+	lastExit    *int
 	restartedAt time.Time // cero si el hub no lo vio reiniciar
+	restartExit *int
 }
 
 // Monitor junta los checks, el estado de los contenedores y los eventos.
@@ -230,21 +239,29 @@ func (m *Monitor) Update(snap Snapshot) {
 }
 
 // trackContainer anota la hora de arranque y, si cambió desde la vuelta
-// anterior, que reinició. Con el host sin responder los datos son viejos y
-// no se tocan.
+// anterior con el contenedor arriba, que reinició. Con el host sin
+// responder los datos son viejos y no se tocan.
 func (m *Monitor) trackContainer(c catalog.Container, hostOK bool) {
 	if !hostOK {
 		return
 	}
+	up := c.State == "running" || c.State == "restarting"
 	cs := m.containers[c.ID]
 	if cs == nil {
-		m.containers[c.ID] = &containerSeen{startedAt: c.StartedAt}
+		m.containers[c.ID] = &containerSeen{startedAt: c.StartedAt, up: up}
 		return
 	}
-	if !c.StartedAt.IsZero() && c.StartedAt.After(cs.startedAt) && !cs.startedAt.IsZero() {
-		cs.restartedAt = c.StartedAt
+	if c.State == "restarting" {
+		code := c.ExitCode
+		cs.lastExit = &code
 	}
-	cs.startedAt = c.StartedAt
+	if cs.up && !cs.startedAt.IsZero() && c.StartedAt.After(cs.startedAt) {
+		cs.restartedAt, cs.restartExit, cs.lastExit = c.StartedAt, cs.lastExit, nil
+	}
+	if c.StartedAt.After(cs.startedAt) {
+		cs.startedAt = c.StartedAt
+	}
+	cs.up = up
 }
 
 // onResult guarda un resultado y recalcula el estado de su servicio. Lo
@@ -284,12 +301,7 @@ func (m *Monitor) onResult(r checks.Result) {
 func (m *Monitor) evaluate(id string) {
 	svc := m.services[id]
 	in := buildInput(svc, m.hostOK[svc.Host],
-		func(containerID string) time.Time {
-			if seen := m.containers[containerID]; seen != nil {
-				return seen.restartedAt
-			}
-			return time.Time{}
-		},
+		func(containerID string) *containerSeen { return m.containers[containerID] },
 		func(k checks.Key) *checkState { return m.checks[k] })
 
 	now := m.now()
@@ -320,7 +332,7 @@ func (m *Monitor) evaluate(id string) {
 
 // buildInput arma lo que status.Evaluate necesita de un servicio.
 // restarted y check pueden ser nil (sin reinicios vistos, sin resultados).
-func buildInput(svc catalog.Service, hostOK bool, restarted func(containerID string) time.Time, check func(checks.Key) *checkState) status.Input {
+func buildInput(svc catalog.Service, hostOK bool, restarted func(containerID string) *containerSeen, check func(checks.Key) *checkState) status.Input {
 	in := status.Input{
 		FromContainers: svc.Source == catalog.SourceCompose || svc.Source == catalog.SourceContainer,
 		HostOK:         hostOK,
@@ -328,7 +340,9 @@ func buildInput(svc catalog.Service, hostOK bool, restarted func(containerID str
 	for _, c := range svc.Containers {
 		sc := status.Container{Name: c.Name, State: c.State, Health: c.Health, ExitCode: c.ExitCode}
 		if restarted != nil {
-			sc.RestartedAt = restarted(c.ID)
+			if seen := restarted(c.ID); seen != nil {
+				sc.RestartedAt, sc.RestartExit = seen.restartedAt, seen.restartExit
+			}
 		}
 		in.Containers = append(in.Containers, sc)
 	}

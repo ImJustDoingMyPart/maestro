@@ -25,10 +25,13 @@ type Container struct {
 	Name     string
 	State    string // State de Docker: "running", "exited", "restarting", "paused", "created", "dead"
 	Health   string // "healthy", "unhealthy", "starting" o "" sin healthcheck
-	ExitCode int    // exit code de la última vez que terminó
+	ExitCode int    // exit code de la última vez que terminó (0 mientras corre: Docker lo borra al arrancar)
 	// RestartedAt es la última vez que el hub lo vio reiniciar (mismo
 	// contenedor, arranque nuevo); cero si no lo vio.
 	RestartedAt time.Time
+	// RestartExit es el exit code de antes de ese reinicio, si el hub lo
+	// vio (en el estado "restarting"); nil si no.
+	RestartExit *int
 }
 
 // Check es el estado acumulado de un check del servicio.
@@ -112,7 +115,8 @@ func (s Status) Reason() string {
 // Motivos de degradado (Degraded):
 //   - contenedor corriendo con Health "unhealthy": "<name> unhealthy".
 //   - contenedor corriendo con RestartedAt no cero y now - RestartedAt <
-//     RestartWindow: "<name> reiniciado (exit <ExitCode>)". Un contenedor
+//     RestartWindow: "<name> reiniciado (exit <RestartExit>)", o "<name>
+//     reiniciado" si RestartExit es nil. Un contenedor
 //     puede dar este motivo y el de unhealthy, en ese orden: primero
 //     unhealthy.
 //   - check http o tcp con 0 < Failures < FailThreshold: "check <kind>
@@ -153,7 +157,11 @@ func Evaluate(in Input, now time.Time, p Params) Status {
 				degraded = append(degraded, c.Name+" unhealthy")
 			}
 			if !c.RestartedAt.IsZero() && now.Sub(c.RestartedAt) < p.RestartWindow {
-				degraded = append(degraded, fmt.Sprintf("%s reiniciado (exit %d)", c.Name, c.ExitCode))
+				r := c.Name + " reiniciado"
+				if c.RestartExit != nil {
+					r += fmt.Sprintf(" (exit %d)", *c.RestartExit)
+				}
+				degraded = append(degraded, r)
 			}
 			if c.Health == "starting" {
 				unknown = append(unknown, c.Name+" arrancando")

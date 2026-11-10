@@ -12,6 +12,8 @@ func running(name string) Container { return Container{Name: name, State: "runni
 
 func up() Status { return Status{State: Up} }
 
+func exit(n int) *int { return &n }
+
 func TestEvaluate(t *testing.T) {
 	p := DefaultParams
 	tests := []struct {
@@ -51,15 +53,16 @@ func TestEvaluate(t *testing.T) {
 		{
 			name: "reinicio reciente degrada; uno viejo no",
 			in: Input{FromContainers: true, HostOK: true, Containers: []Container{
-				{Name: "a", State: "running", ExitCode: 137, RestartedAt: now.Add(-9 * time.Minute)},
-				{Name: "b", State: "running", ExitCode: 1, RestartedAt: now.Add(-11 * time.Minute)},
+				{Name: "a", State: "running", RestartExit: exit(137), RestartedAt: now.Add(-9 * time.Minute)},
+				{Name: "b", State: "running", RestartExit: exit(1), RestartedAt: now.Add(-11 * time.Minute)},
+				{Name: "c", State: "running", RestartedAt: now.Add(-time.Minute)},
 			}},
-			want: Status{Degraded, []string{"a reiniciado (exit 137)"}},
+			want: Status{Degraded, []string{"a reiniciado (exit 137)", "c reiniciado"}},
 		},
 		{
 			name: "unhealthy antes que reiniciado en el mismo contenedor",
 			in: Input{FromContainers: true, HostOK: true, Containers: []Container{
-				{Name: "a", State: "running", Health: "unhealthy", ExitCode: 2, RestartedAt: now.Add(-time.Minute)},
+				{Name: "a", State: "running", Health: "unhealthy", RestartExit: exit(2), RestartedAt: now.Add(-time.Minute)},
 			}},
 			want: Status{Degraded, []string{"a unhealthy", "a reiniciado (exit 2)"}},
 		},
