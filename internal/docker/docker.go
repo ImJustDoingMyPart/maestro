@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	cerrdefs "github.com/containerd/errdefs"
 	"github.com/moby/moby/api/types/container"
@@ -52,13 +53,15 @@ func (c *Client) Containers(ctx context.Context) ([]agent.Container, error) {
 		if err != nil {
 			return nil, fmt.Errorf("inspeccionar %s: %w", s.ID, err)
 		}
-		out = append(out, fromSummary(s, ins.Container.RestartCount))
+		out = append(out, fromSummary(s, ins.Container.State, ins.Container.RestartCount))
 	}
 	return out, nil
 }
 
-// fromSummary pasa del tipo del SDK al que viaja al hub.
-func fromSummary(s container.Summary, restarts int) agent.Container {
+// fromSummary pasa del tipo del SDK al que viaja al hub. st es el estado
+// del inspect (puede ser nil): de ahí salen el exit code y la hora de
+// arranque, que el listado no trae.
+func fromSummary(s container.Summary, st *container.State, restarts int) agent.Container {
 	var name string
 	if len(s.Names) > 0 {
 		name = strings.TrimPrefix(s.Names[0], "/") // la API los da como "/nombre"
@@ -67,7 +70,7 @@ func fromSummary(s container.Summary, restarts int) agent.Container {
 	if s.Health != nil && s.Health.Status != container.NoHealthcheck {
 		health = string(s.Health.Status)
 	}
-	return agent.Container{
+	c := agent.Container{
 		ID:       s.ID,
 		Name:     name,
 		Image:    s.Image,
@@ -76,4 +79,13 @@ func fromSummary(s container.Summary, restarts int) agent.Container {
 		Restarts: restarts,
 		Labels:   s.Labels,
 	}
+	if st != nil {
+		c.ExitCode = st.ExitCode
+		// Un contenedor que nunca arrancó tiene "0001-01-01T00:00:00Z", que
+		// parsea al tiempo cero: queda igual que si no viniera.
+		if t, err := time.Parse(time.RFC3339Nano, st.StartedAt); err == nil && !t.IsZero() {
+			c.StartedAt = t
+		}
+	}
+	return c
 }

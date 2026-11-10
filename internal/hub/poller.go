@@ -250,7 +250,8 @@ func (p *Poller) poll(ctx context.Context) {
 		for _, c := range h.containers {
 			all = append(all, catalog.Container{
 				Host: name, ID: c.ID, Name: c.Name, Image: c.Image,
-				State: c.State, Health: c.Health, Restarts: c.Restarts, Labels: c.Labels,
+				State: c.State, Health: c.Health, Restarts: c.Restarts,
+				ExitCode: c.ExitCode, StartedAt: c.StartedAt, Labels: c.Labels,
 			})
 		}
 	}

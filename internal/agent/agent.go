@@ -15,13 +15,18 @@ import (
 
 // Container es un contenedor tal como viaja del agent al hub.
 type Container struct {
-	ID       string            `json:"id"`
-	Name     string            `json:"name"`
-	Image    string            `json:"image"`
-	State    string            `json:"state"`  // "running", "exited", …
-	Health   string            `json:"health"` // "healthy", "unhealthy", "starting" o ""
-	Restarts int               `json:"restarts"`
-	Labels   map[string]string `json:"labels"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Image    string `json:"image"`
+	State    string `json:"state"`  // "running", "exited", …
+	Health   string `json:"health"` // "healthy", "unhealthy", "starting" o ""
+	Restarts int    `json:"restarts"`
+	// ExitCode es el de la última vez que terminó; StartedAt, la última vez
+	// que arrancó (cero si nunca). Con los dos el hub ve un reinicio y su
+	// causa.
+	ExitCode  int               `json:"exit_code"`
+	StartedAt time.Time         `json:"started_at,omitzero"`
+	Labels    map[string]string `json:"labels"`
 }
 
 // ContainersResponse es el cuerpo de GET /v1/containers. Va envuelto en un

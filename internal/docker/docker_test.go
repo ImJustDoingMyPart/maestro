@@ -3,6 +3,7 @@ package docker
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/moby/moby/api/types/container"
 
@@ -14,6 +15,7 @@ func TestFromSummary(t *testing.T) {
 	tests := []struct {
 		name     string
 		in       container.Summary
+		state    *container.State
 		restarts int
 		want     agent.Container
 	}{
@@ -24,19 +26,22 @@ func TestFromSummary(t *testing.T) {
 				State: container.StateRunning, Labels: labels,
 				Health: &container.HealthSummary{Status: container.Healthy},
 			},
+			state:    &container.State{ExitCode: 137, StartedAt: "2026-11-10T15:04:05.123456789Z"},
 			restarts: 3,
 			want: agent.Container{
 				ID: "abc", Name: "jellyfin", Image: "jellyfin/jellyfin:latest",
 				State: "running", Health: "healthy", Restarts: 3, Labels: labels,
+				ExitCode: 137, StartedAt: time.Date(2026, 11, 10, 15, 4, 5, 123456789, time.UTC),
 			},
 		},
 		{
-			name: "sin healthcheck declarado",
+			name: "sin healthcheck declarado, nunca arrancó",
 			in: container.Summary{
 				ID: "def", Names: []string{"/caddy"}, State: container.StateExited,
 				Health: &container.HealthSummary{Status: container.NoHealthcheck},
 			},
-			want: agent.Container{ID: "def", Name: "caddy", State: "exited"},
+			state: &container.State{StartedAt: "0001-01-01T00:00:00Z"},
+			want:  agent.Container{ID: "def", Name: "caddy", State: "exited"},
 		},
 		{
 			name: "sin datos de health ni nombre",
@@ -46,7 +51,7 @@ func TestFromSummary(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := fromSummary(tt.in, tt.restarts); !reflect.DeepEqual(got, tt.want) {
+			if got := fromSummary(tt.in, tt.state, tt.restarts); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("fromSummary:\n got %+v\nwant %+v", got, tt.want)
 			}
 		})
