@@ -4,6 +4,9 @@
 package status
 
 import (
+	"fmt"
+	"slices"
+	"strings"
 	"time"
 )
 
@@ -130,7 +133,68 @@ func (s Status) Reason() string {
 //
 // Los checks con Results == 0 se ignoran del todo.
 func Evaluate(in Input, now time.Time, p Params) Status {
-	panic("sin implementar")
+	var down, degraded, unknown []string
+	useContainers := in.FromContainers && in.HostOK
+
+	if useContainers {
+		for _, c := range in.Containers {
+			if c.State != "running" {
+				switch c.State {
+				case "exited":
+					down = append(down, fmt.Sprintf("%s detenido (exit %d)", c.Name, c.ExitCode))
+				case "restarting":
+					down = append(down, fmt.Sprintf("%s reiniciándose (exit %d)", c.Name, c.ExitCode))
+				default:
+					down = append(down, fmt.Sprintf("%s: %s", c.Name, c.State))
+				}
+				continue
+			}
+			if c.Health == "unhealthy" {
+				degraded = append(degraded, c.Name+" unhealthy")
+			}
+			if !c.RestartedAt.IsZero() && now.Sub(c.RestartedAt) < p.RestartWindow {
+				degraded = append(degraded, fmt.Sprintf("%s reiniciado (exit %d)", c.Name, c.ExitCode))
+			}
+			if c.Health == "starting" {
+				unknown = append(unknown, c.Name+" arrancando")
+			}
+		}
+	}
+
+	withData := false
+	for _, ch := range in.Checks {
+		if ch.Results == 0 {
+			continue
+		}
+		withData = true
+		switch {
+		case ch.Kind == "push" && ch.Failures >= 1:
+			down = append(down, "push: "+ch.Detail)
+		case ch.Kind != "push" && ch.Failures >= p.FailThreshold:
+			down = append(down, fmt.Sprintf("check %s falla: %s", ch.Kind, ch.Detail))
+		case ch.Failures > 0:
+			degraded = append(degraded, fmt.Sprintf("check %s falla: %s", ch.Kind, ch.Detail))
+		case !ch.CertExpiry.IsZero() && ch.CertExpiry.Sub(now) < p.CertWarn:
+			degraded = append(degraded, "certificado vence el "+ch.CertExpiry.UTC().Format("2006-01-02"))
+		}
+	}
+
+	switch {
+	case len(down) > 0:
+		return Status{Down, down}
+	case len(degraded) > 0:
+		return Status{Degraded, degraded}
+	case !useContainers && !withData:
+		if in.FromContainers {
+			return Status{Unknown, []string{"sin datos del agent"}}
+		}
+		return Status{Unknown, []string{"sin datos todavía"}}
+	case useContainers && len(in.Containers) == 0:
+		return Status{Unknown, []string{"sin contenedores"}}
+	case len(unknown) > 0:
+		return Status{Unknown, unknown}
+	}
+	return Status{State: Up}
 }
 
 // Event es un cambio de estado que se guarda.
@@ -153,5 +217,22 @@ type Event struct {
 // "volvió a responder" si algún motivo de prev empieza con "check " o con
 // "push:"; si no, "arriba".
 func Change(prev, next Status) (Event, bool) {
-	panic("sin implementar")
+	if next.State == Unknown {
+		return Event{}, false
+	}
+	if prev.State == next.State && prev.Reason() == next.Reason() {
+		return Event{}, false
+	}
+	reason := next.Reason()
+	if next.State == Up {
+		reason = "arriba"
+		// Si lo que lo tenía caído o degradado eran los checks, "volvió a
+		// responder" dice más que "arriba".
+		if slices.ContainsFunc(prev.Reasons, func(r string) bool {
+			return strings.HasPrefix(r, "check ") || strings.HasPrefix(r, "push:")
+		}) {
+			reason = "volvió a responder"
+		}
+	}
+	return Event{From: prev.State, To: next.State, Reason: reason}, true
 }
