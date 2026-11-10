@@ -100,11 +100,11 @@ El estado de un servicio:
 | Sin datos | el agent de su host no responde y no hay checks con resultados; un contenedor está arrancando (`starting`); un servicio propio cuyos checks todavía no corrieron |
 | Arriba | ninguna de las anteriores |
 
-Cada cambio de estado se guarda con su motivo (`check http falla: timeout (10s)`, `jellyfin detenido (exit 137)`, `volvió a responder`). No tener datos no es un cambio: si el agent deja de responder y vuelve con todo igual, no queda nada. Un reinicio es una hora de arranque nueva en un contenedor que estaba corriendo; si estaba detenido, volver a levantarlo es un arranque y no cuenta. Docker borra el exit code al arrancar, así que el motivo de un reinicio lleva el exit code solo si el hub llegó a ver el contenedor en `restarting`.
+Cada cambio de estado se guarda con su motivo (`check http falla: timeout (10s)`, `jellyfin detenido (exit 137)`, `volvió a responder`). No tener datos no es un cambio: si el agent deja de responder y vuelve con todo igual, no queda nada. Un reinicio es una hora de arranque nueva en un contenedor que estaba corriendo; si estaba detenido, volver a levantarlo es un arranque y no cuenta. Docker borra el exit code al arrancar, así que el agent escucha los eventos `die` de Docker y manda el último exit code de cada contenedor: con eso el motivo dice `reiniciado (exit 137)`. Al arrancar el hub, un contenedor que terminó y volvió a arrancar en menos de un minuto cuenta como reiniciado aunque el hub no lo haya visto.
 
 Los resultados se guardan 7 días; después quedan resúmenes por hora (cantidad, buenos y latencia media) durante un año. La compactación corre cada hora. La base se crea con permisos `600`, y una base con permisos más abiertos se cierra al abrirla.
 
-En la página del servicio, cada check muestra su último resultado, la latencia, el certificado, la disponibilidad de las últimas 24 horas y una barra por media hora. Se refresca cada minuto. La pestaña Actividad intercala los cambios de estado con las líneas de log; un servicio sin logs (externo) muestra la lista. Las horas se ven en la zona del navegador.
+En la página del servicio, cada check muestra su último resultado, la latencia, el certificado, la disponibilidad de las últimas 24 horas y una barra por media hora. Se refresca cada minuto; el semáforo, los contenedores y los motivos, cada 15 segundos. La disponibilidad de un push es por tiempo: cada llamada cubre su intervalo más la gracia, y cuenta la parte del día que estuvo cubierta. La pestaña Actividad intercala los cambios de estado con las líneas de log; un servicio sin logs (externo) muestra la lista. Las horas se ven en la zona del navegador.
 
 ## Pestaña Compose
 
