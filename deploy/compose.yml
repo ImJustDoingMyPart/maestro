@@ -1,0 +1,58 @@
+# Ejemplo de despliegue: hub y agent en el mismo host.
+#
+# Al lado de este archivo van:
+#   maestro.yaml  hosts y servicios (ver maestro.example.yaml); el host local
+#                 apunta a la IP LAN del agent, por ejemplo
+#                 agent: http://192.168.0.11:9101
+#   .env          MAESTRO_AGENT_TOKEN, MAESTRO_TOKEN_VM (el mismo valor),
+#                 AGENT_LISTEN y DOCKER_GID
+#
+# Primer usuario:
+#   docker compose run --rm hub passwd --db /data/maestro.db --user <usuario>
+
+services:
+  hub:
+    build: ..
+    image: maestro:dev
+    restart: unless-stopped
+    # Sin socket de Docker: el hub solo le pide datos al agent.
+    command: ["serve", "--listen", "0.0.0.0:8090", "--config", "/config/maestro.yaml", "--db", "/data/maestro.db"]
+    environment:
+      MAESTRO_TOKEN_VM: ${MAESTRO_TOKEN_VM:?falta en .env}
+    volumes:
+      - ./maestro.yaml:/config/maestro.yaml:ro
+      - maestro-data:/data
+    networks:
+      - caddy_net        # Caddy publica el puerto 8090; no se expone nada más
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+  agent:
+    image: maestro:dev
+    restart: unless-stopped
+    # Red del host: hace falta para leer las métricas de red del host
+    # (etapa 6) y para que el hub, desde caddy_net, llegue por la IP LAN.
+    network_mode: host
+    command: ["agent", "--listen", "${AGENT_LISTEN:?falta en .env, p. ej. 192.168.0.11:9101}"]
+    environment:
+      MAESTRO_AGENT_TOKEN: ${MAESTRO_AGENT_TOKEN:?falta en .env}
+    # El usuario nonroot de la imagen lee el socket por el grupo docker del
+    # host (en debian-vm, 989: getent group docker).
+    group_add:
+      - ${DOCKER_GID:?falta en .env}
+    volumes:
+      # Ojo: ":ro" impide reemplazar el archivo del socket, no limita la API.
+      # Quien habla con el socket puede hacer todo; lo que acota al agent es
+      # su código, que en esta etapa solo lista e inspecciona.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+volumes:
+  maestro-data:
+
+networks:
+  caddy_net:
+    external: true

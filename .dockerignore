@@ -1,0 +1,13 @@
+.git
+.claude
+*.db
+*.db-shm
+*.db-wal
+.env
+maestro.yaml
+PLAN.md
+TAREAS.md
+CLAUDE.md
+GEMINI.md
+deploy
+Dockerfile
