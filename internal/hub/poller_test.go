@@ -3,6 +3,7 @@ package hub
 import (
 	"context"
 	"errors"
+	"iter"
 	"log/slog"
 	"strings"
 	"sync"
@@ -26,6 +27,10 @@ func (f *fakeAgent) Containers(context.Context) ([]agent.Container, error) {
 	return f.cs, f.err
 }
 
+func (f *fakeAgent) Logs(context.Context, string, agent.LogOptions) (iter.Seq2[agent.LogLine, error], error) {
+	return nil, errors.New("fakeAgent no tiene logs")
+}
+
 func (f *fakeAgent) set(cs []agent.Container, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -45,7 +50,7 @@ func composeContainer(name, project, service, state, health string) agent.Contai
 func TestPollerAgentQueFallaYVuelve(t *testing.T) {
 	vm := &fakeAgent{cs: []agent.Container{composeContainer("jellyfin", "media", "jellyfin", "running", "healthy")}}
 	lxc := &fakeAgent{err: errors.New("connection refused")}
-	p := newPoller(map[string]containerLister{"vm": vm, "lxc": lxc}, nil, slog.New(slog.DiscardHandler))
+	p := newPoller(map[string]agentClient{"vm": vm, "lxc": lxc}, nil, slog.New(slog.DiscardHandler))
 	t0 := time.Unix(1_800_000_000, 0)
 	p.now = func() time.Time { return t0 }
 
@@ -92,7 +97,7 @@ func TestPollerAgentQueFallaYVuelve(t *testing.T) {
 }
 
 func TestPollerSobreviveAUnPanico(t *testing.T) {
-	p := newPoller(map[string]containerLister{"vm": panicAgent{}}, nil, slog.New(slog.DiscardHandler))
+	p := newPoller(map[string]agentClient{"vm": panicAgent{}}, nil, slog.New(slog.DiscardHandler))
 	p.safePoll(context.Background()) // no tiene que propagar el pánico
 	snap := p.Snapshot()
 	if snap.HostOK("vm") || len(snap.Hosts) != 1 || !strings.Contains(snap.Hosts[0].Err, "boom") {
@@ -103,6 +108,10 @@ func TestPollerSobreviveAUnPanico(t *testing.T) {
 type panicAgent struct{}
 
 func (panicAgent) Containers(context.Context) ([]agent.Container, error) { panic("boom") }
+
+func (panicAgent) Logs(context.Context, string, agent.LogOptions) (iter.Seq2[agent.LogLine, error], error) {
+	panic("boom")
+}
 
 func TestServiceState(t *testing.T) {
 	snap := Snapshot{Hosts: []HostStatus{{Name: "vm", OK: true}, {Name: "lxc", OK: false}}}

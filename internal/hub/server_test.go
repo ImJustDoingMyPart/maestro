@@ -24,6 +24,11 @@ func (f fixedSnapshot) Snapshot() Snapshot { return Snapshot(f) }
 
 func testServer(t *testing.T, snap Snapshot) *httptest.Server {
 	t.Helper()
+	return testServerLogs(t, snap, nil)
+}
+
+func testServerLogs(t *testing.T, snap Snapshot, logs logOpener) *httptest.Server {
+	t.Helper()
 	st, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "t.db"))
 	if err != nil {
 		t.Fatal(err)
@@ -36,7 +41,7 @@ func testServer(t *testing.T, snap Snapshot) *httptest.Server {
 	logger := slog.New(slog.DiscardHandler)
 	// secure=false: el servidor de prueba es HTTP y el cliente no mandaría
 	// una cookie Secure.
-	h, err := newHandler(fixedSnapshot(snap), auth.NewSessions(st, false, logger), logger)
+	h, err := newHandler(fixedSnapshot(snap), logs, auth.NewSessions(st, false, logger), logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,6 +67,18 @@ func body(t *testing.T, res *http.Response) string {
 		t.Fatal(err)
 	}
 	return string(b)
+}
+
+// loggedIn devuelve un cliente con sesión iniciada.
+func loggedIn(t *testing.T, srv *httptest.Server) *http.Client {
+	t.Helper()
+	c := client(t)
+	res := postForm(t, c, srv.URL+"/login", url.Values{"username": {"admin"}, "password": {"una-contraseña-larga"}}, srv.URL)
+	res.Body.Close()
+	if res.StatusCode != http.StatusSeeOther {
+		t.Fatalf("login = %d", res.StatusCode)
+	}
+	return c
 }
 
 func postForm(t *testing.T, c *http.Client, u string, form url.Values, origin string) *http.Response {

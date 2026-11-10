@@ -33,6 +33,7 @@ func (s State) Label() string {
 // serviceCard es lo que la portada necesita de un servicio. Cuando exista
 // internal/catalog, se arma a partir de catalog.Service.
 type serviceCard struct {
+	Href        string // página del servicio; vacío en el demo
 	Name        string
 	Description string
 	Icon        string // nombre de un ícono de Material Symbols
@@ -74,6 +75,8 @@ type pageData struct {
 	ShowNav bool   // false en el login
 	Demo    bool
 	Live    bool // la grilla se refresca sola (no en el demo)
+
+	Svc *serviceDetail // página de un servicio; nil si no existe
 
 	Groups       []group
 	Summary      summary

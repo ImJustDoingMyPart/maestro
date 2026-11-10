@@ -47,7 +47,7 @@
         <div class="row">
           <span class="icon-badge secondary-container"><i class="extra">{{.Icon}}</i></span>
           <div class="max">
-            <div class="bold">{{.Name}}</div>
+            <div class="bold">{{if .Href}}<a class="stretched" href="{{.Href}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</div>
             <div class="small-text secondary-text">{{.Description}}</div>
           </div>
           <span class="status {{.State}}" title="{{.State.Label}}">
@@ -57,7 +57,7 @@
         </div>
         {{if .URL}}
         <nav class="right-align no-space">
-          <a class="button transparent small" href="{{.URL}}" target="_blank" rel="noopener">
+          <a class="button transparent small above" href="{{.URL}}" target="_blank" rel="noopener">
             <span>Abrir</span>
             <i>open_in_new</i>
           </a>

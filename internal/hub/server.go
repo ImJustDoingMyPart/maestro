@@ -48,7 +48,7 @@ func Serve(ctx context.Context, opts Options, logger *slog.Logger) error {
 	poller := NewPoller(cfg, logger)
 	go poller.Run(ctx)
 
-	h, err := newHandler(poller, auth.NewSessions(st, !opts.Dev, logger), logger)
+	h, err := newHandler(poller, poller, auth.NewSessions(st, !opts.Dev, logger), logger)
 	if err != nil {
 		return err
 	}
@@ -62,17 +62,18 @@ type snapshotter interface {
 
 type server struct {
 	poller   snapshotter
+	logs     logOpener
 	sessions *auth.Sessions
 	pages    pages
 	logger   *slog.Logger
 }
 
-func newHandler(poller snapshotter, sessions *auth.Sessions, logger *slog.Logger) (http.Handler, error) {
-	p, err := parsePages(web.Templates, "services", "hardware", "login")
+func newHandler(poller snapshotter, logs logOpener, sessions *auth.Sessions, logger *slog.Logger) (http.Handler, error) {
+	p, err := parsePages(web.Templates, "services", "service", "hardware", "login")
 	if err != nil {
 		return nil, err
 	}
-	s := &server{poller: poller, sessions: sessions, pages: p, logger: logger}
+	s := &server{poller: poller, logs: logs, sessions: sessions, pages: p, logger: logger}
 
 	mux := http.NewServeMux()
 	mux.Handle("GET /static/", http.StripPrefix("/static/", staticHandler()))
@@ -84,6 +85,12 @@ func newHandler(poller snapshotter, sessions *auth.Sessions, logger *slog.Logger
 	private.HandleFunc("GET /{$}", s.servicesPage)
 	private.HandleFunc("GET /fragments/services", s.servicesFragment)
 	private.HandleFunc("GET /hardware", s.hardwarePage)
+	// El ID de un servicio de compose lleva "/" ("media-stack/jellyfin"),
+	// así que va al final de la ruta con {id...}, que toma el resto. Por
+	// eso la acción va antes del ID (/logs/<id>) y no después: con
+	// /services/<id>/logs, "a/logs" sería ambiguo.
+	private.HandleFunc("GET /services/{id...}", s.servicePage)
+	private.HandleFunc("GET /logs/{id...}", s.streamLogs)
 	mux.Handle("/", sessions.RequireLogin(private))
 
 	// Rechaza POST (y demás métodos no seguros) que vengan de otro origen:
@@ -126,6 +133,7 @@ func (s *server) servicesData() pageData {
 	var others *group // los servicios sin grupo van al final
 	for _, svc := range snap.Services {
 		card := serviceCard{
+			Href:        servicePath(svc.ID),
 			Name:        svc.Name,
 			Description: describe(svc),
 			Icon:        sourceIcon(svc.Source),

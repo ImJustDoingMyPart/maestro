@@ -3,6 +3,7 @@ package hub
 import (
 	"context"
 	"fmt"
+	"iter"
 	"log/slog"
 	"maps"
 	"runtime/debug"
@@ -16,10 +17,11 @@ import (
 	"github.com/ImJustDoingMyPart/maestro/internal/config"
 )
 
-// containerLister es lo que el poller necesita de un agent. Lo cumple
+// agentClient es lo que el hub necesita de un agent. Lo cumple
 // *agent.Client; los tests pasan uno falso.
-type containerLister interface {
+type agentClient interface {
 	Containers(ctx context.Context) ([]agent.Container, error)
+	Logs(ctx context.Context, id string, opts agent.LogOptions) (iter.Seq2[agent.LogLine, error], error)
 }
 
 // HostStatus es cómo le fue al último pedido a un agent.
@@ -54,7 +56,7 @@ type hostState struct {
 
 // Poller consulta a los agents cada intervalo y arma la lista de servicios.
 type Poller struct {
-	agents   map[string]containerLister
+	agents   map[string]agentClient
 	file     map[string]catalog.FileService
 	catalog  *catalog.Catalog
 	interval time.Duration
@@ -69,14 +71,14 @@ type Poller struct {
 
 // NewPoller arma un poller con un cliente por host de la config.
 func NewPoller(cfg *config.Config, logger *slog.Logger) *Poller {
-	agents := make(map[string]containerLister, len(cfg.Hosts))
+	agents := make(map[string]agentClient, len(cfg.Hosts))
 	for name, h := range cfg.Hosts {
 		agents[name] = agent.NewClient(h.Agent, h.Token)
 	}
 	return newPoller(agents, cfg.FileServices(), logger)
 }
 
-func newPoller(agents map[string]containerLister, file map[string]catalog.FileService, logger *slog.Logger) *Poller {
+func newPoller(agents map[string]agentClient, file map[string]catalog.FileService, logger *slog.Logger) *Poller {
 	p := &Poller{
 		agents:   agents,
 		file:     file,
@@ -91,6 +93,15 @@ func newPoller(agents map[string]containerLister, file map[string]catalog.FileSe
 		p.hosts[name] = &hostState{status: HostStatus{Name: name}}
 	}
 	return p
+}
+
+// Logs abre los logs de un contenedor pidiéndoselos al agent de su host.
+func (p *Poller) Logs(ctx context.Context, host, containerID string, opts agent.LogOptions) (iter.Seq2[agent.LogLine, error], error) {
+	a, ok := p.agents[host] // el mapa no cambia después de newPoller: se lee sin lock
+	if !ok {
+		return nil, fmt.Errorf("el host %q no tiene agent", host)
+	}
+	return a.Logs(ctx, containerID, opts)
 }
 
 // Snapshot devuelve la última foto. Se puede llamar desde cualquier goroutine.
