@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"iter"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -14,11 +15,19 @@ import (
 const testToken = "0123456789abcdef0123456789abcdef"
 
 type fakeSource struct {
-	cs  []Container
-	err error
+	cs   []Container
+	err  error
+	logs *fakeLogs
 }
 
 func (f fakeSource) Containers(context.Context) ([]Container, error) { return f.cs, f.err }
+
+func (f fakeSource) Logs(ctx context.Context, id string, opts LogOptions) (iter.Seq2[LogLine, error], error) {
+	if f.logs == nil {
+		return nil, ErrContainerNotFound
+	}
+	return f.logs.open(ctx, id, opts)
+}
 
 func newTestServer(t *testing.T, src ContainerSource) *httptest.Server {
 	t.Helper()

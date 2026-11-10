@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"iter"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -33,6 +34,13 @@ type ContainersResponse struct {
 // internal/docker; los tests pasan uno falso.
 type ContainerSource interface {
 	Containers(ctx context.Context) ([]Container, error)
+
+	// Logs abre los logs de un contenedor. El error de apertura sale
+	// enseguida (ErrContainerNotFound si no existe); las líneas, y un error
+	// de lectura si lo hay, salen del iterador. Quien lo recibe tiene que
+	// recorrerlo: al terminar el range, o al cortarlo, se cierra la lectura.
+	// Cancelar ctx también la corta.
+	Logs(ctx context.Context, id string, opts LogOptions) (iter.Seq2[LogLine, error], error)
 }
 
 // MinTokenLen es el largo mínimo del token. Con `openssl rand -hex 32` sale
@@ -67,6 +75,7 @@ func NewHandler(src ContainerSource, token string, logger *slog.Logger) (http.Ha
 		}
 		writeJSON(w, http.StatusOK, ContainersResponse{Containers: cs})
 	})
+	mux.HandleFunc("GET /v1/containers/{id}/logs", handleLogs(src, logger.Error))
 
 	return requireToken(token, mux), nil
 }
