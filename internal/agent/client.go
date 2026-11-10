@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -78,7 +79,21 @@ func (c *Client) Logs(ctx context.Context, id string, opts LogOptions) (iter.Seq
 }
 
 func (c *Client) get(ctx context.Context, path string, out any) error {
-	res, err := c.do(ctx, c.http, path)
+	return c.call(ctx, http.MethodGet, path, nil, out)
+}
+
+// call hace un pedido corto con un cuerpo JSON opcional y decodifica la
+// respuesta en out.
+func (c *Client) call(ctx context.Context, method, path string, in, out any) error {
+	var body io.Reader
+	if in != nil {
+		b, err := json.Marshal(in)
+		if err != nil {
+			return err
+		}
+		body = bytes.NewReader(b)
+	}
+	res, err := c.doMethod(ctx, c.http, method, path, body)
 	if err != nil {
 		return err
 	}
@@ -92,11 +107,18 @@ func (c *Client) get(ctx context.Context, path string, out any) error {
 // do hace un GET con el token. Si la respuesta no es 200 la cierra y
 // devuelve el error; si es 200, cerrar el cuerpo queda para quien llama.
 func (c *Client) do(ctx context.Context, hc *http.Client, path string) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+path, nil)
+	return c.doMethod(ctx, hc, http.MethodGet, path, nil)
+}
+
+func (c *Client) doMethod(ctx context.Context, hc *http.Client, method, path string, body io.Reader) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, body)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 
 	res, err := hc.Do(req)
 	if err != nil {
@@ -106,19 +128,72 @@ func (c *Client) do(ctx context.Context, hc *http.Client, path string) (*http.Re
 		return res, nil
 	}
 	defer res.Body.Close()
-	// El cuerpo de un error del agent es {"error": "..."}; se muestra
-	// recortado por si del otro lado contesta otra cosa.
-	body, _ := io.ReadAll(io.LimitReader(res.Body, 512))
-	return nil, &statusError{
-		code: res.StatusCode,
-		msg:  fmt.Sprintf("agent %s%s: %s: %s", c.baseURL, req.URL.Path, res.Status, strings.TrimSpace(string(body))),
+	// El cuerpo de un error del agent es un ErrorBody; si del otro lado
+	// contesta otra cosa, se muestra recortado.
+	raw, _ := io.ReadAll(io.LimitReader(res.Body, maxFileSize))
+	se := &statusError{code: res.StatusCode}
+	if json.Unmarshal(raw, &se.body) != nil || se.body.Error == "" {
+		se.body = ErrorBody{Error: strings.TrimSpace(string(raw[:min(len(raw), 512)]))}
 	}
+	se.msg = fmt.Sprintf("agent %s%s: %s: %s", c.baseURL, req.URL.Path, res.Status, se.body.Error)
+	return nil, se
 }
 
 // statusError es una respuesta del agent distinta de 200.
 type statusError struct {
 	code int
+	body ErrorBody
 	msg  string
 }
 
 func (e *statusError) Error() string { return e.msg }
+
+// StackFiles lee el compose y el .env de un proyecto.
+func (c *Client) StackFiles(ctx context.Context, project string) (StackFiles, error) {
+	var out StackFiles
+	err := c.call(ctx, http.MethodGet, "/v1/stacks/"+url.PathEscape(project)+"/files", nil, &out)
+	return out, stackErr(err)
+}
+
+// CheckStackFile valida un archivo sin escribirlo y devuelve el diff.
+func (c *Client) CheckStackFile(ctx context.Context, project, name, content string) (CheckResult, error) {
+	var out CheckResult
+	path := "/v1/stacks/" + url.PathEscape(project) + "/files/" + url.PathEscape(name) + "/check"
+	err := c.call(ctx, http.MethodPost, path, WriteRequest{Content: content}, &out)
+	return out, stackErr(err)
+}
+
+// WriteStackFile valida y escribe un archivo. hash es el que se leyó.
+func (c *Client) WriteStackFile(ctx context.Context, project, name, content, hash string) (WriteResult, error) {
+	var out WriteResult
+	path := "/v1/stacks/" + url.PathEscape(project) + "/files/" + url.PathEscape(name)
+	err := c.call(ctx, http.MethodPut, path, WriteRequest{Content: content, Hash: hash}, &out)
+	return out, stackErr(err)
+}
+
+// stackErr vuelve a convertir las respuestas de error del agent en los
+// errores de StackSource, para que el hub los distinga con errors.Is y
+// errors.As igual que si hablara con el Manager directo.
+func stackErr(err error) error {
+	se := (*statusError)(nil)
+	if !errors.As(err, &se) {
+		return err
+	}
+	switch se.code {
+	case http.StatusUnprocessableEntity:
+		return &InvalidError{Output: se.body.Output}
+	case http.StatusNotFound:
+		if se.body.Error == ErrBadFile.Error() {
+			return ErrBadFile
+		}
+		return fmt.Errorf("%w: %s", ErrStackNotFound, se.body.Error)
+	case http.StatusConflict:
+		if se.body.Error == ErrBusy.Error() {
+			return ErrBusy
+		}
+		return ErrConflict
+	case http.StatusForbidden:
+		return fmt.Errorf("%w: %s", ErrOutsideRoot, se.body.Error)
+	}
+	return err
+}

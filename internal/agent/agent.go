@@ -53,8 +53,10 @@ var ErrWeakToken = errors.New("el token del agent tiene que tener al menos 32 ca
 // requestTimeout acota cuánto puede tardar Docker en contestar una petición.
 const requestTimeout = 15 * time.Second
 
-// NewHandler arma las rutas del agent. Todas exigen el token.
-func NewHandler(src ContainerSource, token string, logger *slog.Logger) (http.Handler, error) {
+// NewHandler arma las rutas del agent. Todas exigen el token. stacks puede
+// ser nil (el agent corre sin --stacks-dir): las rutas de stacks contestan
+// 501.
+func NewHandler(src ContainerSource, stacks StackSource, token string, logger *slog.Logger) (http.Handler, error) {
 	if len(token) < MinTokenLen {
 		return nil, ErrWeakToken
 	}
@@ -76,6 +78,13 @@ func NewHandler(src ContainerSource, token string, logger *slog.Logger) (http.Ha
 		writeJSON(w, http.StatusOK, ContainersResponse{Containers: cs})
 	})
 	mux.HandleFunc("GET /v1/containers/{id}/logs", handleLogs(src, logger.Error))
+	if stacks != nil {
+		stackRoutes(mux, stacks, logger.Error)
+	} else {
+		mux.HandleFunc("/v1/stacks/", func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, http.StatusNotImplemented, ErrorBody{Error: "el agent corre sin --stacks-dir: no edita stacks"})
+		})
+	}
 
 	return requireToken(token, mux), nil
 }

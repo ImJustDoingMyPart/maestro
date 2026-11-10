@@ -24,6 +24,7 @@ import (
 	"github.com/ImJustDoingMyPart/maestro/internal/docker"
 	"github.com/ImJustDoingMyPart/maestro/internal/httpserver"
 	"github.com/ImJustDoingMyPart/maestro/internal/hub"
+	"github.com/ImJustDoingMyPart/maestro/internal/stacks"
 	"github.com/ImJustDoingMyPart/maestro/internal/store"
 )
 
@@ -171,6 +172,7 @@ func runAgent(ctx context.Context, args []string, stderr io.Writer) error {
 	fs := flag.NewFlagSet("agent", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	listen := fs.String("listen", "127.0.0.1:9101", "dirección donde escucha el agent")
+	stacksDir := fs.String("stacks-dir", "", "carpeta de los stacks de compose; sin ella, el agent no edita ni levanta stacks")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -188,7 +190,19 @@ func runAgent(ctx context.Context, args []string, stderr io.Writer) error {
 	}
 	defer dc.Close()
 
-	h, err := agent.NewHandler(dc, token, logger)
+	// stacksSrc es una interfaz: queda nil si no hay --stacks-dir. Ojo con
+	// asignarle un *stacks.Manager nil: una interfaz que guarda un puntero
+	// nil no es nil, y el handler creería que hay stacks.
+	var stacksSrc agent.StackSource
+	if *stacksDir != "" {
+		m, err := stacks.New(stacks.Options{Root: *stacksDir}, dc, logger)
+		if err != nil {
+			return fmt.Errorf("agent: %w", err)
+		}
+		stacksSrc = m
+	}
+
+	h, err := agent.NewHandler(dc, stacksSrc, token, logger)
 	if err != nil {
 		return fmt.Errorf("agent: %w", err)
 	}
