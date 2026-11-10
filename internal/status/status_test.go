@@ -110,7 +110,7 @@ func TestEvaluate(t *testing.T) {
 		},
 		{
 			name: "push con una falla tira",
-			in: Input{Checks: []Check{{Kind: "push", Results: 1, Failures: 1, Detail: "no llegó en 96h"}}},
+			in:   Input{Checks: []Check{{Kind: "push", Results: 1, Failures: 1, Detail: "no llegó en 96h"}}},
 			want: Status{Down, []string{"push: no llegó en 96h"}},
 		},
 		{
