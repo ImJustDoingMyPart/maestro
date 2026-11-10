@@ -7,7 +7,7 @@ Es un solo binario de Go con dos modos:
 - `maestro serve`: el **hub**. Web, login y base SQLite. No toca el socket de Docker: le pide los datos a los agents.
 - `maestro agent`: uno por **host**. Lee Docker, edita y levanta los stacks de compose, y responde solo al hub, con un token.
 
-Estado: etapa 3 (compose). Hay portada con login y lista de servicios desde Docker; el semáforo refleja el estado de los contenedores. Cada servicio tiene su página con los logs en vivo y, si es de compose, la pestaña Compose para editar el `compose.yml` y el `.env` y correr `up`, `down`, `restart` y `pull`. Los checks HTTP se leen de la configuración pero todavía no se ejecutan.
+Estado: etapa 4 (checks y estado). Hay portada con login y lista de servicios desde Docker; el semáforo combina el estado de los contenedores con checks HTTP, TCP y push que corren en el hub, y cada cambio de estado queda guardado. Cada servicio tiene su página con el historial de sus checks, la línea de tiempo (logs en vivo con los cambios de estado intercalados) y, si es de compose, la pestaña Compose para editar el `compose.yml` y el `.env` y correr `up`, `down`, `restart` y `pull`.
 
 ## Desarrollo
 
@@ -81,6 +81,31 @@ Tocar una tarjeta de la portada lleva a `/services/<id>` (por ejemplo `/services
 - El visor guarda las últimas 10 000 líneas y dibuja solo las que se ven. Detecta el nivel de cada línea (`ERROR`, `level=warn`, `"level":"error"`, `[error]`, los niveles numéricos de pino) para filtrar por avisos o errores, busca sin distinguir mayúsculas y saca los códigos de color ANSI.
 - Al subir para leer se pausa el avance automático (mientras tanto guarda hasta 50 000 líneas para que lo que se lee no se borre); el botón del costado vuelve al final. Tocar una línea la muestra entera, con la fecha completa y el JSON indentado.
 
+## Checks y estado
+
+Los checks corren en el hub, cada uno en su goroutine. Un servicio tiene como mucho uno de cada tipo:
+
+- **HTTP**: un `GET` a la URL. Vale cualquier 2xx, o el código de `expect`. Sigue hasta 10 redirecciones salvo `redirects: false` (entonces el 3xx es la respuesta). Cada vez abre una conexión nueva y no usa el proxy del entorno. En HTTPS guarda el vencimiento del certificado.
+- **TCP**: conecta a `host:puerto` y cierra.
+- **Push**: lo hace un script al terminar bien, con `curl https://<maestro>/push/<token>` (GET o POST, sin login). Si no llega en `interval` más un 10 %, falla, y sigue fallando una vez por intervalo mientras no llegue. Al reiniciar el hub, el plazo se cuenta desde el último push guardado. La ruta responde `ok` exista o no el token, para no servir de oráculo; los tokens desconocidos quedan en el log.
+
+Por defecto, cada 60 s con 10 s de timeout. El timeout nunca pasa del intervalo. Los checks salen del contenedor del hub: en el despliegue de ejemplo está en `caddy_net`, así que `http://jellyfin:8096` resuelve por el DNS de Docker si el servicio está en esa red (igual que en Uptime Kuma).
+
+El estado de un servicio:
+
+| Estado | Cuándo |
+|---|---|
+| Caído | un contenedor no corre; un check HTTP o TCP falló 3 veces seguidas (como Uptime Kuma con 3 reintentos); un push no llegó |
+| Degradado | un contenedor está `unhealthy` o reinició hace menos de 10 minutos; un check falló menos de 3 veces; un certificado vence en menos de 14 días |
+| Sin datos | el agent de su host no responde y no hay checks con resultados; un contenedor está arrancando (`starting`); un servicio propio cuyos checks todavía no corrieron |
+| Arriba | ninguna de las anteriores |
+
+Cada cambio de estado se guarda con su motivo (`check http falla: timeout (10s)`, `jellyfin detenido (exit 137)`, `volvió a responder`). No tener datos no es un cambio: si el agent deja de responder y vuelve con todo igual, no queda nada. Un reinicio es una hora de arranque nueva en un contenedor que estaba corriendo; si estaba detenido, volver a levantarlo es un arranque y no cuenta. Docker borra el exit code al arrancar, así que el motivo de un reinicio lleva el exit code solo si el hub llegó a ver el contenedor en `restarting`.
+
+Los resultados se guardan 7 días; después quedan resúmenes por hora (cantidad, buenos y latencia media) durante un año. La compactación corre cada hora. La base se crea con permisos `600`, y una base con permisos más abiertos se cierra al abrirla.
+
+En la página del servicio, cada check muestra su último resultado, la latencia, el certificado, la disponibilidad de las últimas 24 horas y una barra por media hora. Se refresca cada minuto. La pestaña Actividad intercala los cambios de estado con las líneas de log; un servicio sin logs (externo) muestra la lista. Las horas se ven en la zona del navegador.
+
 ## Pestaña Compose
 
 `/stacks/<host>/<proyecto>`, enlazada desde la página de cada servicio de compose. Se nombra por stack y no por servicio porque después de un `down` el stack no tiene contenedores ni servicios, y hay que poder levantarlo de nuevo: el agent lo encuentra igual por `<stacks-dir>/<proyecto>/compose.yml`.
@@ -111,11 +136,15 @@ Un servicio de compose se identifica como `<proyecto>/<servicio>`, por ejemplo `
 | `maestro.url` | link "Abrir" | `homepage.href` | sin link |
 | `maestro.description` | texto bajo el nombre | `homepage.description` | imagen del contenedor |
 | `maestro.check.http` | URL de un check HTTP | | sin check |
-| `maestro.check.http.expect` | código HTTP esperado | | cualquier 2xx (etapa 4) |
+| `maestro.check.http.expect` | código HTTP esperado | | cualquier 2xx |
+| `maestro.check.http.redirects` | `false`: no seguir redirecciones | | las sigue |
+| `maestro.check.tcp` | `host:puerto` de un check TCP | | sin check |
+| `maestro.check.interval` | cada cuánto, duración de Go (`30s`, `5m`) | | `60s` |
+| `maestro.check.timeout` | cuánto esperar la respuesta | | `10s` |
 | `maestro.alert` | `true`/`false`: avisar por Telegram | | `true` si tiene checks |
 | `maestro.ignore` | `true`: no mostrarlo | | se muestra |
 
-Una clave `maestro.*` desconocida o un valor inválido se ignora y queda en el log una vez.
+Una clave `maestro.*` desconocida o un valor inválido se ignora y queda en el log una vez. El check push no tiene label: su token es un secreto y va en `maestro.yaml`.
 
 ### `maestro.yaml`
 
@@ -127,10 +156,12 @@ Ver [`maestro.example.yaml`](maestro.example.yaml). Tiene dos secciones:
 | Clave de un servicio | Tipo | Dónde vale |
 |---|---|---|
 | `name`, `group`, `icon`, `url`, `description` | texto | todos |
-| `check` | `{http: <url>, expect: <código>}` | todos |
+| `check` | `{http, expect, redirects, tcp, push, interval, timeout}` (ver abajo) | todos |
 | `alert`, `ignore` | `true`/`false` | todos |
 | `host` | nombre de un host de `hosts` | solo propios |
 | `unit` | unidad systemd | solo propios |
+
+`check` lleva al menos uno de `http` (URL), `tcp` (`host:puerto`) o `push` (token, de al menos 16 caracteres y distinto en cada servicio), y opcionalmente `expect` y `redirects` (de `http`) e `interval` y `timeout` (duraciones de Go, para todos los del servicio). Para un push, `interval` es cada cuánto tiene que llegar la llamada. Un `check` en el archivo reemplaza a los de los labels.
 
 Una clave desconocida es un error al arrancar, igual que una variable `${VAR}` que no existe en el entorno. Los secretos van siempre en variables, nunca escritos en el archivo. Dentro de un mapa entre llaves (`{ ... }`), la variable va entre comillas: `token: "${MAESTRO_TOKEN_VM}"`.
 
@@ -156,3 +187,4 @@ docker compose run --rm hub passwd --db /data/maestro.db --user <usuario>
 - El agent solo lee y escribe el `compose.yml` y el `.env` de un proyecto, y solo dentro de `--stacks-dir`: una ruta que, resueltos los symlinks, cae afuera se rechaza.
 - El `.env` viaja del agent al navegador para editarlo: lleva secretos, y por eso esa página solo existe con sesión iniciada.
 - Las líneas de log se insertan como texto, nunca como HTML: un contenedor no puede meter marcado en la página.
+- `/push/<token>` no pide login: el token es la credencial. Se compara en tiempo constante contra todos los tokens, sin cortar en el primero, y la respuesta es la misma exista o no. El token viaja en la URL, así que queda en el log de acceso del proxy si está activado.
