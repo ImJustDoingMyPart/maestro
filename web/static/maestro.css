@@ -84,3 +84,169 @@ header.fixed.topbar {
   max-inline-size: 24rem;
   margin: 4rem auto 0;
 }
+
+/* M3 tampoco trae un ámbar de "aviso". */
+:root { --status-warn: #b26a00; }
+@media (prefers-color-scheme: dark) {
+  :root { --status-warn: #ffb74d; }
+}
+body.light { --status-warn: #b26a00; }
+body.dark  { --status-warn: #ffb74d; }
+
+/* Tarjeta de la portada: el nombre es el enlace, pero se toca la tarjeta
+   entera (el ::after la cubre). "Abrir" queda por encima. */
+.service {
+  position: relative;
+}
+
+.service a.stretched {
+  color: inherit;
+}
+
+/* Beer pone position: relative a casi todo; entre el enlace y la tarjeta
+   tiene que ser static, o el ::after cubre solo el nombre. */
+.service .row,
+.service .row > .max,
+.service .row .bold,
+.service a.stretched {
+  position: static;
+}
+
+.service a.stretched::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+
+.service .above {
+  position: relative;
+  z-index: 1;
+}
+
+/* Página de un servicio */
+.service-header h5 {
+  margin: 0;
+}
+
+.service-facts {
+  margin-block: 0.25rem 0;
+}
+
+/* Visor de logs */
+.log-viewer {
+  position: relative;
+  margin-block-start: 0.75rem;
+}
+
+.log-toolbar {
+  margin-block-end: 0.5rem;
+  align-items: center;
+}
+
+.log-search {
+  flex: 1 1 12rem;
+  max-inline-size: 28rem;
+}
+
+.log-status.clickable {
+  cursor: pointer;
+}
+
+/* contain: strict le dice al navegador que nada de adentro cambia el
+   tamaño de afuera: el scroll no recalcula la página entera. */
+.log-scroll {
+  position: relative;
+  overflow: auto;
+  contain: strict;
+  border-radius: 0.5rem;
+  border: 0.0625rem solid var(--outline-variant);
+  background: var(--surface-container-lowest);
+  overscroll-behavior: contain;
+}
+
+.log-spacer {
+  inline-size: 1px;
+}
+
+.log-window {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  min-inline-size: 100%;
+  will-change: transform;
+}
+
+.log-line {
+  block-size: 1.25rem;
+  line-height: 1.25rem;
+  padding-inline: 0.5rem 1rem;
+  font-family: ui-monospace, "JetBrains Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  white-space: pre;
+  cursor: pointer;
+  border-inline-start: 0.1875rem solid transparent;
+  border-radius: 0; /* Beer redondea los div con ciertas clases */
+}
+
+.log-line:hover {
+  background: var(--surface-container-high);
+}
+
+.log-line.lvl-warn {
+  border-inline-start-color: var(--status-warn);
+}
+
+.log-line.lvl-error {
+  border-inline-start-color: var(--error);
+  background: color-mix(in srgb, var(--error) 8%, transparent);
+}
+
+.log-line.notice {
+  font-style: italic;
+  color: var(--secondary);
+}
+
+.log-time {
+  color: var(--on-surface-variant);
+  margin-inline-end: 0.75rem;
+}
+
+.log-container {
+  color: var(--primary);
+  margin-inline-end: 0.75rem;
+}
+
+.log-line mark {
+  background: var(--tertiary-container);
+  color: var(--on-tertiary-container);
+  border-radius: 0.125rem;
+}
+
+.log-window[data-empty]::before {
+  content: attr(data-empty);
+  display: block;
+  padding: 1rem;
+  color: var(--on-surface-variant);
+}
+
+.log-line[hidden],
+.log-bottom[hidden] {
+  display: none !important;
+}
+
+.log-bottom {
+  position: absolute;
+  inset-inline-end: 1rem;
+  inset-block-end: 1rem;
+  z-index: 2;
+}
+
+.log-detail-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, "JetBrains Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  font-size: 0.8125rem;
+  max-block-size: 60vh;
+  overflow: auto;
+}
