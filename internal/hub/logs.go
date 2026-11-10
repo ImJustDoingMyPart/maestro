@@ -332,12 +332,14 @@ func (s *server) followLogs(ctx context.Context, tl *timeline, cs []catalog.Cont
 	}
 
 	for _, c := range cs {
+		// Se lee acá y no en la goroutine: el bucle de abajo escribe en
+		// since mientras las goroutines corren.
+		from := since[c.ID]
 		wg.Go(func() {
 			defer s.recoverAs(func(err error) {
 				failed.Store(true)
 				send(msg{notice: fmt.Sprintf("%s: %v", c.Name, err)})
 			})
-			from := since[c.ID]
 			opts := agent.LogOptions{Follow: true, Tail: 0}
 			if !from.IsZero() {
 				// Since de Docker incluye la línea de esa hora exacta, que
