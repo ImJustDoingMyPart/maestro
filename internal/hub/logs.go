@@ -217,13 +217,26 @@ func (s *server) followLogs(ctx context.Context, sse *sseWriter, cs []catalog.Co
 	done := make(chan struct{})
 	go func() { wg.Wait(); close(done) }()
 
-	ticker := time.NewTicker(keepalive)
+	// El ticker hace dos cosas: avisar las líneas omitidas cuando el
+	// contenedor deja de inundar, y el keepalive si no se mandó nada.
+	ticker := time.NewTicker(min(250*time.Millisecond, keepalive))
 	defer ticker.Stop()
+	lastWrite := time.Now()
+	lim := limiter{max: maxRate}
+	skippedNotice := func(n int) {
+		sse.event("notice", fmt.Sprintf("Se omitieron %d líneas: llegan más de %d por segundo.", n, maxRate))
+	}
 	write := func(m msg) {
-		if m.ev != nil {
-			sse.line(taggedEvent{logEvent: *m.ev})
-		} else {
+		if m.ev == nil {
 			sse.event("notice", m.notice)
+			return
+		}
+		ok, skipped := lim.allow(time.Now())
+		if skipped > 0 {
+			skippedNotice(skipped)
+		}
+		if ok {
+			sse.line(taggedEvent{logEvent: *m.ev})
 		}
 	}
 	for {
@@ -238,8 +251,14 @@ func (s *server) followLogs(ctx context.Context, sse *sseWriter, cs []catalog.Co
 			}
 			_ = sse.flush()
 			return
-		case <-ticker.C:
-			sse.comment("keepalive")
+		case now := <-ticker.C:
+			if n := lim.expired(now); n > 0 {
+				skippedNotice(n)
+			} else if now.Sub(lastWrite) >= keepalive {
+				sse.comment("keepalive")
+			} else {
+				continue // no se escribió nada: no hace falta Flush
+			}
 		case m := <-ch:
 			// Se junta lo que ya esté esperando antes de mandar: con un
 			// contenedor que escribe miles de líneas por segundo, un Flush
@@ -258,7 +277,50 @@ func (s *server) followLogs(ctx context.Context, sse *sseWriter, cs []catalog.Co
 		if sse.flush() != nil {
 			return // el navegador se fue; el defer cancel() corta a los agents
 		}
+		lastWrite = time.Now()
 	}
+}
+
+// maxRate es cuántas líneas por segundo se mandan como mucho por stream.
+// Un contenedor que escribe decenas de miles por segundo ahogaría al
+// navegador del celular solo con parsear los eventos, y nadie las lee a
+// ese ritmo: las de más se omiten y se avisa cuántas. Es variable para los
+// tests.
+var maxRate = 2000
+
+// limiter cuenta líneas por ventanas de un segundo.
+type limiter struct {
+	max     int
+	window  time.Time // comienzo de la ventana actual
+	n       int       // líneas que pasaron en la ventana
+	skipped int       // omitidas desde el último aviso
+}
+
+// allow dice si una línea que llega en now pasa. Si empezó una ventana
+// nueva y en la anterior se omitieron líneas, devuelve cuántas, para
+// avisarlo antes de la línea.
+func (l *limiter) allow(now time.Time) (ok bool, skipped int) {
+	if now.Sub(l.window) >= time.Second {
+		l.window, l.n = now, 0
+		skipped, l.skipped = l.skipped, 0
+	}
+	if l.n >= l.max {
+		l.skipped++
+		return false, skipped
+	}
+	l.n++
+	return true, skipped
+}
+
+// expired devuelve las omitidas si la ventana ya terminó y no llegó nada
+// después (el contenedor dejó de inundar).
+func (l *limiter) expired(now time.Time) int {
+	if l.skipped == 0 || now.Sub(l.window) < time.Second {
+		return 0
+	}
+	n := l.skipped
+	l.skipped = 0
+	return n
 }
 
 // readLogs abre los logs de un contenedor y llama a fn por línea.

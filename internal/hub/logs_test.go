@@ -487,3 +487,58 @@ func waitFor(t *testing.T, cond func() bool, what string) {
 		time.Sleep(5 * time.Millisecond)
 	}
 }
+
+func TestLimiter(t *testing.T) {
+	l := limiter{max: 3}
+	at := func(ms int) time.Time { return t0.Add(time.Duration(ms) * time.Millisecond) }
+	var passed, reported int
+	for i := range 10 { // 10 líneas en el primer segundo: pasan 3
+		ok, sk := l.allow(at(i * 10))
+		if ok {
+			passed++
+		}
+		reported += sk
+	}
+	if passed != 3 || reported != 0 {
+		t.Errorf("primer segundo: pasaron %d, avisadas %d", passed, reported)
+	}
+	if n := l.expired(at(500)); n != 0 {
+		t.Errorf("antes de que termine la ventana no se avisa: %d", n)
+	}
+	// Llega una línea en la ventana siguiente: pasa, y trae el aviso de 7.
+	if ok, sk := l.allow(at(1200)); !ok || sk != 7 {
+		t.Errorf("ventana nueva: ok=%v avisadas=%d, quería true y 7", ok, sk)
+	}
+	for i := range 5 {
+		l.allow(at(1300 + i))
+	}
+	// El contenedor se calla: el ticker avisa las 3 omitidas.
+	if n := l.expired(at(2300)); n != 3 {
+		t.Errorf("expired = %d, quería 3", n)
+	}
+	if n := l.expired(at(2400)); n != 0 {
+		t.Errorf("se avisa una sola vez: %d", n)
+	}
+}
+
+func TestStreamInundacion(t *testing.T) {
+	old := maxRate
+	maxRate = 5
+	t.Cleanup(func() { maxRate = old })
+
+	live := make(chan agent.LogLine, 100)
+	fl := &fakeLogs{live: map[string]chan agent.LogLine{"id-jellyfin": live}}
+	srv := testServerLogs(t, Snapshot{Services: []catalog.Service{svcWith("jellyfin")}}, fl)
+	r := openStream(t, context.Background(), loggedIn(t, srv), srv.URL+"/logs/media/jellyfin", "")
+	waitFor(t, func() bool { return fl.abiertas.Load() == 1 }, "el follow abierto")
+
+	for i := range 20 {
+		live <- line(100+i, fmt.Sprintf("l%d", i))
+	}
+	for range 5 {
+		r.nextLine(t)
+	}
+	if ev := r.next(t); ev.Event != "notice" || !strings.Contains(ev.Data, "omitieron 15") {
+		t.Errorf("quería el aviso de 15 omitidas, llegó %+v", ev)
+	}
+}
