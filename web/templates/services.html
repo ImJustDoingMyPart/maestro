@@ -9,6 +9,24 @@
   </nav>
 </header>
 {{template "grid" .}}
+{{if .Live}}
+{{/* Fuera de la grilla: htmx la reemplaza cada 15 s y se lo llevaría. */}}
+<dialog class="rename-dialog small-round">
+  <h6>Cambiar nombre</h6>
+  <form method="post" action="/names" hx-post="/names" hx-target="#services" hx-swap="outerHTML">
+    <input type="hidden" name="key">
+    <div class="field label border">
+      <input type="text" name="name" id="rename-name" maxlength="80" autocomplete="off" placeholder=" " autofocus>
+      <label for="rename-name">Nombre</label>
+    </div>
+    <p class="small-text secondary-text">Vacío vuelve al nombre original.</p>
+    <nav class="right-align">
+      <button type="button" class="border" data-close>Cancelar</button>
+      <button type="submit">Guardar</button>
+    </nav>
+  </form>
+</dialog>
+{{end}}
 {{end}}
 
 {{/* "grid" es lo que htmx vuelve a pedir cada 15 s y reemplaza entero
@@ -70,21 +88,32 @@
 </span>
 {{end}}
 
-{{/* Botón de ocultar. Es un formulario: sin JavaScript también anda
-     (vuelve a la portada); con htmx reemplaza la grilla. Recibe la clave. */}}
-{{define "hidebtn"}}
-<form class="hide-form above" method="post" action="/hidden" hx-post="/hidden" hx-target="#services" hx-swap="outerHTML">
-  <input type="hidden" name="key" value="{{.}}">
-  <button class="circle transparent small" title="Ocultar" aria-label="Ocultar"><i>visibility_off</i></button>
-</form>
+{{/* Menú de los tres puntos de una tarjeta o de un servicio dentro de un
+     stack: cambiar nombre y ocultar. Es un <details>: se abre sin
+     JavaScript. web/static/services.js lo cierra al tocar afuera, abre el
+     diálogo de "Cambiar nombre" y frena el refresco de la grilla mientras
+     está abierto. Recibe un serviceCard o un memberRow. */}}
+{{define "cardmenu"}}
+<details class="card-menu">
+  <summary class="circle transparent" title="Opciones" aria-label="Opciones de {{.Name}}"><i>more_vert</i></summary>
+  <div class="card-menu-list surface-container-high small-elevate">
+    <button type="button" class="transparent" data-rename-key="{{.Key}}" data-rename-name="{{.Name}}"{{if .NameLocked}} disabled title="El nombre viene de maestro.yaml"{{end}}>
+      <i>edit</i><span>Cambiar nombre</span>
+    </button>
+    <form method="post" action="/hidden" hx-post="/hidden" hx-target="#services" hx-swap="outerHTML">
+      <input type="hidden" name="key" value="{{.Key}}">
+      <button class="transparent"><i>visibility_off</i><span>Ocultar</span></button>
+    </form>
+  </div>
+</details>
 {{end}}
 
 {{define "servicecard"}}
 <article class="small-round no-elevate surface-container-low service">
+  {{if .Key}}{{template "cardmenu" .}}{{end}}
   <div class="row">{{template "cardhead" .}}</div>
-  {{if or .Key .URL}}
+  {{if .URL}}
   <nav class="no-space card-actions">
-    {{with .Key}}{{template "hidebtn" .}}{{end}}
     <div class="max"></div>
     {{if .URL}}
     <a class="button transparent small above" href="{{.URL}}" target="_blank" rel="noopener">
@@ -98,11 +127,14 @@
 {{end}}
 
 {{/* Tarjeta de un stack: el resumen se toca para desplegar sus servicios.
+     No tiene un enlace que la cubra entera, así que sus links no llevan
+     "above" (que los subiría por encima del menú de tres puntos).
      web/static/services.js recuerda cuáles estaban abiertas, porque htmx
      reemplaza la grilla cada 15 s. */}}
 {{define "stackcard"}}
 <article class="small-round no-elevate surface-container-low service stack">
-  <details data-key="{{.Key}}">
+  {{if .Key}}{{template "cardmenu" .}}{{end}}
+  <details class="stack-details" data-key="{{.Key}}">
     <summary class="row">
       {{template "cardhead" .}}
       <i class="expand">expand_more</i>
@@ -116,21 +148,22 @@
           {{if and .Reason (ne .State "up")}}<div class="small-text state-reason {{.State}}" title="{{.Reason}}">{{.Reason}}</div>{{end}}
         </div>
         <span class="small-text secondary-text">{{.State.Label}}</span>
-        {{with .Key}}{{template "hidebtn" .}}{{end}}
+        {{if .Key}}{{template "cardmenu" .}}{{end}}
       </li>
       {{end}}
     </ul>
   </details>
+  {{if or .StackHref .URL}}
   <nav class="no-space card-actions">
-    {{with .Key}}{{template "hidebtn" .}}{{end}}
     <div class="max"></div>
-    {{if .StackHref}}<a class="button transparent small above" href="{{.StackHref}}"><i>stacks</i><span>Compose</span></a>{{end}}
+    {{if .StackHref}}<a class="button transparent small" href="{{.StackHref}}"><i>stacks</i><span>Compose</span></a>{{end}}
     {{if .URL}}
-    <a class="button transparent small above" href="{{.URL}}" target="_blank" rel="noopener">
+    <a class="button transparent small" href="{{.URL}}" target="_blank" rel="noopener">
       <span>Abrir</span>
       <i>open_in_new</i>
     </a>
     {{end}}
   </nav>
+  {{end}}
 </article>
 {{end}}

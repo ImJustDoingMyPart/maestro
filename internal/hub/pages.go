@@ -54,6 +54,9 @@ type serviceCard struct {
 	// servicio.
 	Members   []memberRow
 	StackHref string // pestaña Compose del stack
+	// NameLocked: el nombre viene de maestro.yaml y la interfaz no lo
+	// cambia.
+	NameLocked bool
 }
 
 type group struct {

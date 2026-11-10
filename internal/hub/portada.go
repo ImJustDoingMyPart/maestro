@@ -18,9 +18,10 @@ func stackHideLabel(host, project string) string { return project + " (" + host 
 
 // memberRow es un servicio dentro de la tarjeta de un stack.
 type memberRow struct {
-	Href   string
-	Name   string
-	Key    string // para ocultarlo
+	Href       string
+	Name       string
+	Key        string // para ocultarlo o cambiarle el nombre
+	NameLocked bool   // el nombre viene del archivo: no se cambia desde acá
 	State  State
 	Reason string
 }
@@ -50,7 +51,10 @@ func stateRank(s status.State) int {
 // semáforo es el peor de sus servicios, con el motivo de ese servicio. Los
 // grupos van en orden alfabético con "Otros" (sin grupo) al final, y las
 // tarjetas, por nombre, en los dos casos sin distinguir mayúsculas.
-func buildGroups(services []catalog.Service, statusOf func(id string) status.Status, hidden map[string]time.Time) (groups []group, hiddenCount int) {
+//
+// names son los nombres puestos desde la interfaz: los de servicios ya
+// vienen aplicados (applyNames); acá se usan los de los stacks.
+func buildGroups(services []catalog.Service, statusOf func(id string) status.Status, hidden map[string]time.Time, names map[string]string) (groups []group, hiddenCount int) {
 	isHidden := func(key string) bool {
 		_, ok := hidden[key]
 		if ok {
@@ -93,7 +97,11 @@ func buildGroups(services []catalog.Service, statusOf func(id string) status.Sta
 			cards = append(cards, singleCard(b.members[0], statusOf(b.members[0].ID)))
 			continue
 		}
-		cards = append(cards, stackCard(b.host, b.project, b.members, statusOf))
+		c := stackCard(b.host, b.project, b.members, statusOf)
+		if n := names[c.Key]; n != "" {
+			c.Name = n
+		}
+		cards = append(cards, c)
 	}
 
 	slices.SortFunc(cards, func(a, b serviceCard) int {
@@ -132,7 +140,24 @@ func singleCard(svc catalog.Service, st status.Status) serviceCard {
 		Reason:      st.Reason(),
 		Group:       svc.Group,
 		Key:         serviceKey(svc.ID),
+		NameLocked:  svc.NameFromFile,
 	}
+}
+
+// applyNames devuelve una copia de services con los nombres puestos desde
+// la interfaz, salvo donde el nombre viene del archivo (archivo > interfaz
+// > labels).
+func applyNames(services []catalog.Service, names map[string]string) []catalog.Service {
+	if len(names) == 0 {
+		return services
+	}
+	out := slices.Clone(services)
+	for i := range out {
+		if n := names[serviceKey(out[i].ID)]; n != "" && !out[i].NameFromFile {
+			out[i].Name = n
+		}
+	}
+	return out
 }
 
 // stackGroup es el grupo de un stack sin servicio principal: el primero que
@@ -180,7 +205,7 @@ func stackCard(host, project string, members []catalog.Service, statusOf func(st
 	for _, m := range members {
 		st := statusOf(m.ID)
 		c.Members = append(c.Members, memberRow{
-			Href: servicePath(m.ID), Name: m.Name, Key: serviceKey(m.ID),
+			Href: servicePath(m.ID), Name: m.Name, Key: serviceKey(m.ID), NameLocked: m.NameFromFile,
 			State: State(st.State), Reason: st.Reason(),
 		})
 		if r := stateRank(st.State); r > worst {

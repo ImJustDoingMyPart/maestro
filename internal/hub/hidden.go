@@ -2,10 +2,14 @@ package hub
 
 import (
 	"cmp"
+	"context"
 	"net/http"
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
+
+	"github.com/ImJustDoingMyPart/maestro/internal/catalog"
 )
 
 // hiddenRow es una tarjeta oculta en la lista de ocultos.
@@ -67,6 +71,50 @@ func (s *server) prefKey(w http.ResponseWriter, r *http.Request) (string, bool) 
 	return key, true
 }
 
+// rename atiende POST /names: cambia el nombre de una tarjeta. Vacío
+// vuelve al original. Con htmx devuelve la grilla nueva.
+func (s *server) rename(w http.ResponseWriter, r *http.Request) {
+	key, ok := s.prefKey(w, r)
+	if !ok {
+		return
+	}
+	name := strings.TrimSpace(r.PostFormValue("name"))
+	if utf8.RuneCountInString(name) > 80 {
+		http.Error(w, "el nombre puede tener hasta 80 caracteres", http.StatusBadRequest)
+		return
+	}
+	if err := s.prefs.SetName(r.Context(), key, name, time.Now()); err != nil {
+		s.logger.Error("cambiar nombre", "key", key, "err", err)
+		http.Error(w, "no se pudo cambiar el nombre", http.StatusInternalServerError)
+		return
+	}
+	if r.Header.Get("HX-Request") == "true" {
+		s.servicesFragment(w, r)
+		return
+	}
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// names lee los nombres puestos desde la interfaz. Si la base falla, se
+// muestran los originales.
+func (s *server) names(ctx context.Context) map[string]string {
+	names, err := s.prefs.Names(ctx)
+	if err != nil {
+		s.logger.Error("leer nombres", "err", err)
+	}
+	return names
+}
+
+// lookup busca un servicio en la foto del poller, con su nombre de la
+// interfaz si tiene.
+func (s *server) lookup(ctx context.Context, id string) (catalog.Service, bool) {
+	svc, ok := findService(s.poller.Snapshot(), id)
+	if !ok {
+		return svc, false
+	}
+	return applyNames([]catalog.Service{svc}, s.names(ctx))[0], true
+}
+
 func (s *server) hiddenPage(w http.ResponseWriter, r *http.Request) {
 	hidden, err := s.prefs.Hidden(r.Context())
 	if err != nil {
@@ -75,6 +123,8 @@ func (s *server) hiddenPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	snap := s.poller.Snapshot()
+	names := s.names(r.Context())
+	snap.Services = applyNames(snap.Services, names)
 	var rows []hiddenRow
 	for key, at := range hidden {
 		row := hiddenRow{Key: key, Name: key, Detail: "ya no existe", At: at}
@@ -96,6 +146,9 @@ func (s *server) hiddenPage(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			row.Name = stackHideLabel(host, project)
+			if n := names[key]; n != "" {
+				row.Name = n + " (" + project + ")"
+			}
 			if n > 0 {
 				row.Detail = "stack"
 				if n > 1 {

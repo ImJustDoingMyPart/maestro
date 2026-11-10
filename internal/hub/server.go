@@ -77,6 +77,8 @@ type prefStore interface {
 	Hidden(ctx context.Context) (map[string]time.Time, error)
 	Hide(ctx context.Context, key string, at time.Time) error
 	Unhide(ctx context.Context, key string) error
+	Names(ctx context.Context) (map[string]string, error)
+	SetName(ctx context.Context, key, name string, at time.Time) error
 }
 
 // monitorView es lo que los handlers necesitan del monitor. Lo cumple
@@ -125,6 +127,7 @@ func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon moni
 	private.HandleFunc("GET /hidden", s.hiddenPage)
 	private.HandleFunc("POST /hidden", s.hide)
 	private.HandleFunc("POST /hidden/show", s.unhide)
+	private.HandleFunc("POST /names", s.rename)
 	// El ID de un servicio de compose lleva "/" ("media-stack/jellyfin"),
 	// así que va al final de la ruta con {id...}, que toma el resto. Por
 	// eso la acción va antes del ID (/logs/<id>) y no después: con
@@ -184,7 +187,8 @@ func (s *server) servicesData(ctx context.Context) pageData {
 	if err != nil {
 		s.logger.Error("leer ocultos", "err", err) // se muestra todo
 	}
-	data.Groups, data.HiddenCount = buildGroups(snap.Services, s.mon.Status, hidden)
+	names := s.names(ctx)
+	data.Groups, data.HiddenCount = buildGroups(applyNames(snap.Services, names), s.mon.Status, hidden, names)
 	data.Summary = summarize(data.Groups)
 
 	for _, h := range snap.Hosts {

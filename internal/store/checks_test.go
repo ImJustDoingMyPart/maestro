@@ -216,3 +216,25 @@ func TestHidden(t *testing.T) {
 		t.Errorf("después de mostrar: %v", h)
 	}
 }
+
+func TestNames(t *testing.T) {
+	s, _ := openTest(t)
+	ctx := context.Background()
+	if err := s.SetName(ctx, "stack:vm/immich", "Fotos", t0); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetName(ctx, "stack:vm/immich", "Immich", t0); err != nil {
+		t.Fatal(err)
+	}
+	_ = s.SetName(ctx, "service:a/b", "B", t0)
+	n, err := s.Names(ctx)
+	if err != nil || len(n) != 2 || n["stack:vm/immich"] != "Immich" {
+		t.Errorf("Names = %v, %v", n, err)
+	}
+	if err := s.SetName(ctx, "service:a/b", "", t0); err != nil {
+		t.Fatal(err)
+	}
+	if n, _ := s.Names(ctx); len(n) != 1 {
+		t.Errorf("nombre vacío no borró: %v", n)
+	}
+}

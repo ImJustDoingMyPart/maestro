@@ -124,6 +124,9 @@ type Service struct {
 	// Separate saca al servicio de la tarjeta de su stack en la portada:
 	// va en una tarjeta propia.
 	Separate bool
+	// NameFromFile dice que Name viene de maestro.yaml: un nombre puesto
+	// desde la interfaz no lo pisa (archivo > interfaz > labels).
+	NameFromFile bool
 }
 
 // Catalog combina las fuentes. Guarda qué claves de labels desconocidas ya
@@ -195,7 +198,7 @@ func (c *Catalog) Build(containers []Container, file map[string]FileService) []S
 			continue
 		}
 		s := Service{
-			ID: key, Source: SourceExternal, Name: cmp.Or(fs.Name, key),
+			ID: key, Source: SourceExternal, Name: cmp.Or(fs.Name, key), NameFromFile: fs.Name != "",
 			Group: fs.Group, Icon: fs.Icon, URL: fs.URL, Description: fs.Description,
 			Host: fs.Host, Unit: fs.Unit,
 		}
@@ -264,6 +267,7 @@ func (c *Catalog) fromContainers(id string, reps []Container, fs FileService) (S
 		return cmp.Or(file, labels[maestro], labels[homepage])
 	}
 	s.Name = cmp.Or(fs.Name, labels["maestro.name"], labels["homepage.name"], s.Name)
+	s.NameFromFile = fs.Name != ""
 	s.Group = cmp.Or(fs.Group, labels["maestro.group"], labels["homepage.group"], s.Group)
 	s.Icon = pick(fs.Icon, "maestro.icon", "homepage.icon")
 	s.URL = pick(fs.URL, "maestro.url", "homepage.href")

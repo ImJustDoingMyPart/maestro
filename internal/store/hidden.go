@@ -39,3 +39,35 @@ func (s *Store) Hidden(ctx context.Context) (map[string]time.Time, error) {
 	}
 	return out, rows.Err()
 }
+
+// SetName pone el nombre de una tarjeta. Un nombre vacío lo borra: vuelve
+// el de los labels.
+func (s *Store) SetName(ctx context.Context, key, name string, at time.Time) error {
+	if name == "" {
+		_, err := s.db.ExecContext(ctx, `DELETE FROM card_names WHERE key = ?`, key)
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO card_names (key, name, at) VALUES (?, ?, ?)
+		ON CONFLICT (key) DO UPDATE SET name = excluded.name, at = excluded.at`,
+		key, name, ms(at))
+	return err
+}
+
+// Names da los nombres puestos desde la interfaz, por clave.
+func (s *Store) Names(ctx context.Context) (map[string]string, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT key, name FROM card_names`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]string{}
+	for rows.Next() {
+		var key, name string
+		if err := rows.Scan(&key, &name); err != nil {
+			return nil, err
+		}
+		out[key] = name
+	}
+	return out, rows.Err()
+}

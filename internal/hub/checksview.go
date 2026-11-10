@@ -50,7 +50,7 @@ type eventRow struct {
 // checksFragment atiende /fragments/checks/{id...}: el panel de checks que
 // la página del servicio vuelve a pedir cada minuto.
 func (s *server) checksFragment(w http.ResponseWriter, r *http.Request) {
-	svc, ok := findService(s.poller.Snapshot(), r.PathValue("id"))
+	svc, ok := s.lookup(r.Context(), r.PathValue("id"))
 	if !ok {
 		http.Error(w, "servicio inexistente", http.StatusNotFound)
 		return

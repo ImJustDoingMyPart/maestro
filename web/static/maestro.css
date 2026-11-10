@@ -447,18 +447,97 @@ body.dark  { --status-warn: #ffb74d; }
 .log-line.state .dot { margin-inline-end: 0.5rem; vertical-align: middle; }
 .log-line.state-up { border-inline-start-color: var(--status-up); }
 
-/* Acciones de abajo de la tarjeta: ocultar a la izquierda, links a la
-   derecha. */
+/* Acciones de abajo de la tarjeta: los links, a la derecha. */
 .card-actions {
   margin-block-start: 0.25rem;
   align-items: center;
 }
-.hide-form {
+
+/* Menú de los tres puntos, arriba a la derecha de la tarjeta. La fila de
+   la tarjeta le deja lugar para que no tape el semáforo. */
+.service > .row,
+.service > .stack-details > summary {
+  padding-inline-end: 2rem;
+}
+.card-menu {
+  position: absolute;
+  inset-block-start: 0.25rem;
+  inset-inline-end: 0.25rem;
+  z-index: 2;
+}
+.card-menu > summary {
+  list-style: none;
   display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 2.25rem;
+  block-size: 2.25rem;
+  border-radius: 50%;
+  cursor: pointer;
+  color: var(--on-surface-variant);
+}
+.card-menu > summary::-webkit-details-marker {
+  display: none;
+}
+.card-menu > summary:hover,
+.card-menu[open] > summary {
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+.card-menu-list {
+  position: absolute;
+  inset-inline-end: 0;
+  inset-block-start: 100%;
+  min-inline-size: 12rem;
+  padding-block: 0.5rem;
+  border-radius: 0.5rem;
+  display: flex;
+  flex-direction: column;
+}
+.card-menu-list form {
   margin: 0;
 }
-.card-actions .hide-form button {
-  color: var(--on-surface-variant);
+.card-menu-list button {
+  inline-size: 100%;
+  justify-content: flex-start;
+  border-radius: 0;
+  margin: 0;
+  padding-inline: 1rem;
+  gap: 0.75rem;
+  color: var(--on-surface);
+}
+.card-menu-list button:disabled {
+  opacity: 0.4;
+}
+
+/* Dentro de un stack, el menú de cada servicio va en la fila. */
+.stack-members .card-menu {
+  position: relative;
+  inset: auto;
+}
+
+/* Un menú abierto va por encima de todo lo de la tarjeta (los links de
+   abajo tienen z-index para quedar sobre el enlace que cubre la tarjeta),
+   y la tarjeta, por encima de sus vecinas. */
+.card-menu[open],
+.stack-members li:has(.card-menu[open]) {
+  z-index: 10;
+}
+.stack-members li {
+  position: relative;
+}
+/* El contenido de un <details> abierto es su propia capa: sin esto, la
+   fila de links de abajo (que viene después) se pinta encima del menú de
+   un servicio del stack. */
+.service.stack > .stack-details {
+  position: relative;
+  z-index: 1;
+}
+.service:has(.card-menu[open]) {
+  z-index: 5;
+}
+
+.rename-dialog {
+  min-inline-size: min(24rem, 90vw);
 }
 
 /* Tarjeta de un stack: el resumen es la misma fila de una tarjeta común y
@@ -503,9 +582,6 @@ body.dark  { --status-warn: #ffb74d; }
 }
 .stack-members a:hover {
   text-decoration: underline;
-}
-.stack-members .hide-form button {
-  color: var(--on-surface-variant);
 }
 
 .hidden-list form {

@@ -42,8 +42,7 @@ type containerRow struct {
 }
 
 func (s *server) servicePage(w http.ResponseWriter, r *http.Request) {
-	snap := s.poller.Snapshot()
-	svc, ok := findService(snap, r.PathValue("id"))
+	svc, ok := s.lookup(r.Context(), r.PathValue("id"))
 	if !ok {
 		s.pages.renderCode(w, s.logger, http.StatusNotFound, "service", pageData{
 			Title: "No existe", Active: "services", ShowNav: true,
@@ -117,7 +116,7 @@ func escapeID(id string) string {
 // el semáforo de la cabecera, que la página vuelve a pedir cada 15 s. Si el
 // servicio ya no existe da 404, y htmx deja lo que había.
 func (s *server) liveFragment(w http.ResponseWriter, r *http.Request) {
-	svc, ok := findService(s.poller.Snapshot(), r.PathValue("id"))
+	svc, ok := s.lookup(r.Context(), r.PathValue("id"))
 	if !ok {
 		http.Error(w, "servicio inexistente", http.StatusNotFound)
 		return

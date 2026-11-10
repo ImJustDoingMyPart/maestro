@@ -38,7 +38,7 @@ func TestBuildGroups(t *testing.T) {
 		return status.Status{State: status.Up}
 	}
 
-	groups, hidden := buildGroups(services, statusOf, nil)
+	groups, hidden := buildGroups(services, statusOf, nil, nil)
 	if hidden != 0 {
 		t.Errorf("hidden = %d", hidden)
 	}
@@ -71,7 +71,7 @@ func TestBuildGroups(t *testing.T) {
 	// un stack entero desaparece; las claves que no existen no cuentan.
 	groups, hidden = buildGroups(services, statusOf, map[string]time.Time{
 		"service:media/qbittorrent": {}, "stack:vm/immich": {}, "service:no/existe": {},
-	})
+	}, nil)
 	if hidden != 2 {
 		t.Errorf("hidden = %d, quería 2", hidden)
 	}
@@ -177,5 +177,62 @@ func TestStackGroup(t *testing.T) {
 		if got := stackGroup("juguete", ms); got != tt.want {
 			t.Errorf("stackGroup(%v) = %q, quería %q", tt.groups, got, tt.want)
 		}
+	}
+}
+
+func TestCambiarNombre(t *testing.T) {
+	fromFile := compSvc("otro", "app", "Otro", "")
+	fromFile.Name, fromFile.NameFromFile = "Del archivo", true
+	snap := Snapshot{
+		At:    time.Now(),
+		Hosts: []HostStatus{{Name: "vm", OK: true}},
+		Services: []catalog.Service{
+			compSvc("immich", "server", "Archivos", "https://fotos"),
+			compSvc("immich", "redis", "immich", ""),
+			compSvc("solo", "web", "Web", ""),
+			fromFile,
+		},
+	}
+	srv := testServer(t, snap)
+	c := loggedIn(t, srv)
+	rename := func(key, name string) {
+		t.Helper()
+		res := postForm(t, c, srv.URL+"/names", url.Values{"key": {key}, "name": {name}}, srv.URL)
+		res.Body.Close()
+		if res.StatusCode != http.StatusSeeOther {
+			t.Fatalf("renombrar %s = %d", key, res.StatusCode)
+		}
+	}
+	rename("stack:vm/immich", "  Fotos  ")
+	rename("service:solo/web", "Mi web")
+	rename("service:otro/app", "No va")
+
+	res, _ := c.Get(srv.URL + "/")
+	b := body(t, res)
+	for _, want := range []string{">Fotos<", ">Mi web<", "Del archivo", `data-rename-name="Fotos"`, "El nombre viene de maestro.yaml"} {
+		if !strings.Contains(b, want) {
+			t.Errorf("la portada no tiene %q", want)
+		}
+	}
+	if strings.Contains(b, "No va") {
+		t.Error("un nombre de la interfaz pisó al del archivo")
+	}
+	// La página del servicio también usa el nombre nuevo.
+	res, _ = c.Get(srv.URL + "/services/solo/web")
+	if b := body(t, res); !strings.Contains(b, "Mi web") {
+		t.Error("la página del servicio no usa el nombre nuevo")
+	}
+
+	// Vacío vuelve al original.
+	rename("service:solo/web", "")
+	res, _ = c.Get(srv.URL + "/")
+	if b := body(t, res); strings.Contains(b, "Mi web") || !strings.Contains(b, ">web<") {
+		t.Error("el nombre vacío no volvió al original")
+	}
+
+	res = postForm(t, c, srv.URL+"/names", url.Values{"key": {"service:solo/web"}, "name": {strings.Repeat("x", 81)}}, srv.URL)
+	res.Body.Close()
+	if res.StatusCode != http.StatusBadRequest {
+		t.Errorf("nombre de 81 caracteres = %d", res.StatusCode)
 	}
 }

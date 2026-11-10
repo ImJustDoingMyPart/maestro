@@ -133,6 +133,7 @@ func TestBuild(t *testing.T) {
 			want: []Service{func() Service {
 				s := composeService("media-stack", "jellyfin", compose("jellyfin", "media-stack", "jellyfin", both))
 				s.Name, s.Group, s.Icon, s.URL, s.Description = "Jellyfin F", "Media M", "jellyfin", "https://f.example.org", "desc M"
+				s.NameFromFile = true
 				return s
 			}()},
 		},
@@ -209,7 +210,7 @@ func TestBuild(t *testing.T) {
 			file:       map[string]FileService{"router": {Name: "Router", Group: "Red"}},
 			want: []Service{
 				{ID: "router", Source: SourceContainer, Name: "router", Host: "vm", Containers: []Container{{Host: "vm", Name: "router"}}},
-				{ID: "router", Source: SourceExternal, Name: "Router", Group: "Red"},
+				{ID: "router", Source: SourceExternal, Name: "Router", Group: "Red", NameFromFile: true},
 			},
 		},
 		{
@@ -234,7 +235,7 @@ func TestBuild(t *testing.T) {
 				},
 			},
 			want: []Service{{
-				ID: "adguard", Source: SourceSystemd, Name: "AdGuard Home", Group: "Red", Host: "adguard",
+				ID: "adguard", Source: SourceSystemd, Name: "AdGuard Home", NameFromFile: true, Group: "Red", Host: "adguard",
 				Unit: "AdGuardHome.service", URL: "https://adguard.example.org",
 				Checks: []Check{{Kind: CheckHTTP, Target: "http://10.0.0.2/"}}, Alert: true,
 			}},
@@ -401,7 +402,7 @@ func TestBuild(t *testing.T) {
 			file: map[string]FileService{"ext": {Group: "a-proj", Name: "zz"}},
 			want: []Service{
 				composeService("a-proj", "m", compose("m", "a-proj", "m", nil)),
-				{ID: "ext", Source: SourceExternal, Name: "zz", Group: "a-proj"},
+				{ID: "ext", Source: SourceExternal, Name: "zz", Group: "a-proj", NameFromFile: true},
 				composeService("b-proj", "a", compose("a", "b-proj", "a", nil)),
 				func() Service {
 					s := composeService("c-proj", "x", compose("x1", "c-proj", "x", map[string]string{"maestro.group": "b-proj", "maestro.name": "a"}))
