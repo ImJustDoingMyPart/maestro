@@ -1,7 +1,12 @@
 package catalog
 
 import (
+	"cmp"
 	"log/slog"
+	"slices"
+	"strconv"
+	"strings"
+	"sync"
 )
 
 // Container es lo que el catálogo necesita de un contenedor, tal como lo
@@ -98,12 +103,14 @@ type Service struct {
 // aunque Build se llame cada 15 segundos.
 type Catalog struct {
 	logger *slog.Logger
-	// El estado para "avisar una vez" va acá.
+
+	mu       sync.Mutex      // protege avisados; Build puede correr en varias goroutines
+	avisados map[string]bool // claves de labels ya avisadas
 }
 
 // New crea un catálogo que registra los avisos en logger.
 func New(logger *slog.Logger) *Catalog {
-	return &Catalog{logger: logger}
+	return &Catalog{logger: logger, avisados: make(map[string]bool)}
 }
 
 // Build combina contenedores y archivo y devuelve los servicios ordenados por
@@ -131,5 +138,168 @@ func New(logger *slog.Logger) *Catalog {
 //
 // Build puede llamarse desde varias goroutines a la vez.
 func (c *Catalog) Build(containers []Container, file map[string]FileService) []Service {
-	return nil
+	// Agrupa por ID de servicio sin tocar el slice de entrada.
+	grupos := make(map[string][]Container)
+	for _, ct := range containers {
+		id, _ := serviceID(ct)
+		grupos[id] = append(grupos[id], ct)
+	}
+
+	out := []Service{}
+	for id, reps := range grupos {
+		slices.SortStableFunc(reps, func(a, b Container) int { return cmp.Compare(a.Name, b.Name) })
+		// Solo las claves con "/" (las de compose) pisan a un contenedor.
+		var fs FileService
+		if strings.Contains(id, "/") {
+			fs = file[id]
+		}
+		if s, ok := c.fromContainers(id, reps, fs); ok {
+			out = append(out, s)
+		}
+	}
+
+	// Servicios propios: claves sin "/".
+	for key, fs := range file {
+		if strings.Contains(key, "/") || (fs.Ignore != nil && *fs.Ignore) {
+			continue
+		}
+		s := Service{
+			ID: key, Source: SourceExternal, Name: cmp.Or(fs.Name, key),
+			Group: fs.Group, Icon: fs.Icon, URL: fs.URL, Description: fs.Description,
+			Host: fs.Host, Unit: fs.Unit,
+		}
+		if fs.Unit != "" {
+			s.Source = SourceSystemd
+		}
+		if len(fs.Checks) > 0 {
+			s.Checks = slices.Clone(fs.Checks)
+		}
+		s.Alert = len(s.Checks) > 0
+		if fs.Alert != nil {
+			s.Alert = *fs.Alert
+		}
+		out = append(out, s)
+	}
+
+	slices.SortFunc(out, func(a, b Service) int {
+		return cmp.Or(cmp.Compare(a.Group, b.Group), cmp.Compare(a.Name, b.Name), cmp.Compare(a.ID, b.ID))
+	})
+	return out
+}
+
+// serviceID da el ID del servicio al que pertenece un contenedor y si es de
+// compose. Es la única regla que decide si un contenedor es de compose.
+func serviceID(ct Container) (id string, compose bool) {
+	proj, svc := ct.Labels["com.docker.compose.project"], ct.Labels["com.docker.compose.service"]
+	if proj != "" && svc != "" {
+		return proj + "/" + svc, true
+	}
+	return ct.Name, false
+}
+
+// etiquetasMaestro son las claves maestro.* conocidas.
+var etiquetasMaestro = map[string]bool{
+	"maestro.name": true, "maestro.group": true, "maestro.icon": true,
+	"maestro.url": true, "maestro.description": true,
+	"maestro.check.http": true, "maestro.check.http.expect": true,
+	"maestro.alert": true, "maestro.ignore": true,
+}
+
+// fromContainers arma el servicio de un grupo de réplicas (ya ordenadas por
+// Name). El segundo resultado es false si el servicio está ignorado.
+func (c *Catalog) fromContainers(id string, reps []Container, fs FileService) (Service, bool) {
+	first := reps[0]
+	labels := first.Labels
+	c.warnUnknown(labels)
+
+	s := Service{ID: id, Source: SourceContainer, Name: first.Name, Host: first.Host}
+	s.Containers = slices.Clone(reps)
+
+	if _, isCompose := serviceID(first); isCompose {
+		proj := labels["com.docker.compose.project"]
+		s.Source = SourceCompose
+		s.Project = proj
+		s.Name = labels["com.docker.compose.service"]
+		s.Group = proj
+		if files := labels["com.docker.compose.project.config_files"]; files != "" {
+			s.ComposeFiles = strings.Split(files, ",")
+		}
+	}
+
+	// Archivo > maestro.* > homepage.* > compose, campo por campo.
+	pick := func(file string, maestro, homepage string) string {
+		return cmp.Or(file, labels[maestro], labels[homepage])
+	}
+	s.Name = cmp.Or(fs.Name, labels["maestro.name"], labels["homepage.name"], s.Name)
+	s.Group = cmp.Or(fs.Group, labels["maestro.group"], labels["homepage.group"], s.Group)
+	s.Icon = pick(fs.Icon, "maestro.icon", "homepage.icon")
+	s.URL = pick(fs.URL, "maestro.url", "homepage.href")
+	s.Description = pick(fs.Description, "maestro.description", "homepage.description")
+
+	ignore := c.boolLabel(labels, "maestro.ignore")
+	if fs.Ignore != nil {
+		ignore = fs.Ignore
+	}
+	if ignore != nil && *ignore {
+		return Service{}, false
+	}
+
+	if fs.Checks != nil {
+		if len(fs.Checks) > 0 {
+			s.Checks = slices.Clone(fs.Checks)
+		}
+	} else if target := labels["maestro.check.http"]; target != "" {
+		chk := Check{Kind: CheckHTTP, Target: target}
+		if e, ok := labels["maestro.check.http.expect"]; ok {
+			if n, err := strconv.Atoi(e); err == nil {
+				chk.Expect = n
+			} else {
+				c.warnOnce("maestro.check.http.expect", "valor inválido en label", "value", e)
+			}
+		}
+		s.Checks = []Check{chk}
+	}
+
+	s.Alert = len(s.Checks) > 0
+	if a := c.boolLabel(labels, "maestro.alert"); a != nil {
+		s.Alert = *a
+	}
+	if fs.Alert != nil {
+		s.Alert = *fs.Alert
+	}
+	return s, true
+}
+
+// boolLabel lee un label booleano; nil si falta o es inválido (avisa una vez).
+func (c *Catalog) boolLabel(labels map[string]string, key string) *bool {
+	v, ok := labels[key]
+	if !ok {
+		return nil
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		c.warnOnce(key, "valor inválido en label", "value", v)
+		return nil
+	}
+	return &b
+}
+
+// warnUnknown avisa de las claves maestro.* que no están en la tabla.
+func (c *Catalog) warnUnknown(labels map[string]string) {
+	for k := range labels {
+		if strings.HasPrefix(k, "maestro.") && !etiquetasMaestro[k] {
+			c.warnOnce(k, "label maestro.* desconocido, se ignora")
+		}
+	}
+}
+
+// warnOnce registra un Warn la primera vez que ve esa clave.
+func (c *Catalog) warnOnce(key, msg string, args ...any) {
+	c.mu.Lock()
+	visto := c.avisados[key]
+	c.avisados[key] = true
+	c.mu.Unlock()
+	if !visto {
+		c.logger.Warn(msg, append([]any{"key", key}, args...)...)
+	}
 }

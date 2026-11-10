@@ -203,6 +203,15 @@ func TestBuild(t *testing.T) {
 			}},
 		},
 		{
+			name:       "clave sin / no pisa a un contenedor suelto con el mismo nombre",
+			containers: []Container{{Host: "vm", Name: "router"}},
+			file:       map[string]FileService{"router": {Name: "Router", Group: "Red"}},
+			want: []Service{
+				{ID: "router", Source: SourceContainer, Name: "router", Host: "vm", Containers: []Container{{Host: "vm", Name: "router"}}},
+				{ID: "router", Source: SourceExternal, Name: "Router", Group: "Red"},
+			},
+		},
+		{
 			name: "varios archivos de compose",
 			containers: []Container{compose("a", "p", "a", map[string]string{
 				"com.docker.compose.project.config_files": "/s/p/compose.yml,/s/p/compose.override.yml",
