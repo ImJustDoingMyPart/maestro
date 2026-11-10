@@ -1,5 +1,4 @@
-// Package web embebe los archivos estáticos (y, desde el paso 2, las
-// plantillas) en el binario.
+// Package web embebe las plantillas y los archivos estáticos en el binario.
 package web
 
 import (
@@ -7,8 +6,11 @@ import (
 	"io/fs"
 )
 
-//go:embed static
+//go:embed templates static
 var files embed.FS
+
+// Templates son las plantillas html/template, con rutas relativas a templates/.
+var Templates = mustSub("templates")
 
 // Static son los archivos servidos tal cual (CSS, JS, fuentes), con rutas
 // relativas a static/.

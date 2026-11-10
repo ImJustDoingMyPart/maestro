@@ -1,0 +1,45 @@
+{{define "content"}}
+<header class="transparent">
+  <nav>
+    <h5 class="max">Servicios</h5>
+    {{if .Demo}}<span class="chip small tertiary-container no-border">demo</span>{{end}}
+  </nav>
+</header>
+
+<nav class="wrap small-space">
+  <span class="chip no-border surface-container"><span class="dot up"></span>{{.Summary.Up}} arriba</span>
+  <span class="chip no-border surface-container"><span class="dot down"></span>{{.Summary.Down}} caídos</span>
+  <span class="chip no-border surface-container"><span class="dot unknown"></span>{{.Summary.Unknown}} sin datos</span>
+</nav>
+
+{{range .Groups}}
+<h6 class="group-title">{{.Name}}</h6>
+<div class="grid small-space">
+  {{range .Services}}
+  <div class="s12 m6 l4">
+    <article class="round no-elevate surface-container-low service">
+      <div class="row">
+        <i class="extra-small circle secondary-container icon">{{.Icon}}</i>
+        <div class="max">
+          <div class="bold">{{.Name}}</div>
+          <div class="small-text secondary-text">{{.Description}}</div>
+        </div>
+        <span class="status {{.State}}" title="{{.State.Label}}">
+          <span class="dot {{.State}}"></span>
+          <span class="small-text">{{.State.Label}}</span>
+        </span>
+      </div>
+      {{if .URL}}
+      <nav class="right-align no-space">
+        <a class="button transparent small" href="{{.URL}}" target="_blank" rel="noopener">
+          <span>Abrir</span>
+          <i>open_in_new</i>
+        </a>
+      </nav>
+      {{end}}
+    </article>
+  </div>
+  {{end}}
+</div>
+{{end}}
+{{end}}

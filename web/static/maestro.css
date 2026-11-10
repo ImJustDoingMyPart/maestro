@@ -1,0 +1,55 @@
+/* Ajustes propios sobre Beer CSS. Los colores salen de las variables de M3
+   (--primary, --error, --outline…) para que respeten el tema claro y oscuro. */
+
+/* M3 no trae un verde de "éxito": se define uno por tema. El modo sigue al
+   sistema salvo que body tenga .light o .dark (ui("mode", …) de Beer). */
+:root { --status-up: #2e7d32; }
+@media (prefers-color-scheme: dark) {
+  :root { --status-up: #81c995; }
+}
+body.light { --status-up: #2e7d32; }
+body.dark  { --status-up: #81c995; }
+
+.group-title {
+  margin-block: 1.5rem 0.5rem;
+  color: var(--on-surface-variant);
+}
+
+.service {
+  margin: 0;
+  height: 100%;
+}
+
+.service .icon {
+  flex: none;
+}
+
+/* Semáforo: punto de color más texto, para no depender solo del color. */
+.dot {
+  display: inline-block;
+  inline-size: 0.625rem;
+  block-size: 0.625rem;
+  border-radius: 50%;
+  flex: none;
+}
+
+.dot.up      { background: var(--status-up); }
+.dot.down    { background: var(--error); }
+.dot.unknown { background: var(--outline); }
+
+.chip .dot {
+  margin-inline-end: 0.5rem;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex: none;
+  white-space: nowrap;
+}
+
+.status.down {
+  color: var(--error);
+  font-weight: 500;
+}

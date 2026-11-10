@@ -1,0 +1,113 @@
+package hub
+
+import (
+	"bytes"
+	"fmt"
+	"html/template"
+	"io/fs"
+	"log/slog"
+	"net/http"
+)
+
+// State es el semáforo de un servicio en la portada.
+type State string
+
+const (
+	StateUp      State = "up"
+	StateDown    State = "down"
+	StateUnknown State = "unknown"
+)
+
+// Label es el texto que acompaña al color, para no depender solo de él.
+func (s State) Label() string {
+	switch s {
+	case StateUp:
+		return "Arriba"
+	case StateDown:
+		return "Caído"
+	default:
+		return "Sin datos"
+	}
+}
+
+// serviceCard es lo que la portada necesita de un servicio. Cuando exista
+// internal/catalog, se arma a partir de catalog.Service.
+type serviceCard struct {
+	Name        string
+	Description string
+	Icon        string // nombre de un ícono de Material Symbols
+	URL         string
+	State       State
+}
+
+type group struct {
+	Name     string
+	Services []serviceCard
+}
+
+type summary struct {
+	Up, Down, Unknown int
+}
+
+func summarize(groups []group) summary {
+	var s summary
+	for _, g := range groups {
+		for _, svc := range g.Services {
+			switch svc.State {
+			case StateUp:
+				s.Up++
+			case StateDown:
+				s.Down++
+			default:
+				s.Unknown++
+			}
+		}
+	}
+	return s
+}
+
+// pageData es lo que recibe la plantilla layout y, a través de ella, el
+// bloque "content" de cada página.
+type pageData struct {
+	Title   string
+	Active  string // destino resaltado en la navegación
+	Demo    bool
+	Groups  []group
+	Summary summary
+}
+
+// pages tiene una plantilla compilada por página: cada una es layout.html más
+// el archivo de la página, que define el bloque "content". Se compilan por
+// separado porque todas definen "content" y en un mismo conjunto chocarían.
+type pages map[string]*template.Template
+
+func parsePages(tfs fs.FS, names ...string) (pages, error) {
+	p := make(pages, len(names))
+	for _, name := range names {
+		t, err := template.ParseFS(tfs, "layout.html", name+".html")
+		if err != nil {
+			return nil, fmt.Errorf("plantilla %s: %w", name, err)
+		}
+		p[name] = t
+	}
+	return p, nil
+}
+
+// render ejecuta primero en un buffer: si la plantilla falla a la mitad, el
+// cliente recibe un 500 limpio en vez de media página.
+func (p pages) render(w http.ResponseWriter, logger *slog.Logger, name string, data pageData) {
+	t, ok := p[name]
+	if !ok {
+		logger.Error("página inexistente", "page", name)
+		http.Error(w, "error interno", http.StatusInternalServerError)
+		return
+	}
+	var buf bytes.Buffer
+	if err := t.ExecuteTemplate(&buf, "layout", data); err != nil {
+		logger.Error("render", "page", name, "err", err)
+		http.Error(w, "error interno", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	_, _ = buf.WriteTo(w)
+}

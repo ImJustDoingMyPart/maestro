@@ -1,0 +1,42 @@
+{{define "layout"}}<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}} · Maestro</title>
+  <link rel="stylesheet" href="/static/beercss-5.0.3/beer.min.css">
+  <link rel="stylesheet" href="/static/maestro.css">
+  <script type="module" src="/static/beercss-5.0.3/beer.min.js"></script>
+  <script src="/static/htmx-2.0.11.min.js" defer></script>
+</head>
+<body>
+  {{/* Navigation rail en pantallas medianas y grandes */}}
+  <nav class="left m l">
+    <header>
+      <i class="primary-text">hub</i>
+    </header>
+    {{template "navlinks" .}}
+  </nav>
+
+  {{/* Barra de navegación abajo en el celular */}}
+  <nav class="bottom s">
+    {{template "navlinks" .}}
+  </nav>
+
+  <main class="responsive">
+    {{template "content" .}}
+  </main>
+</body>
+</html>
+{{end}}
+
+{{define "navlinks"}}
+    <a href="/"{{if eq .Active "services"}} class="active"{{end}}>
+      <i>dashboard</i>
+      <span>Servicios</span>
+    </a>
+    <a href="/hardware"{{if eq .Active "hardware"}} class="active"{{end}}>
+      <i>memory</i>
+      <span>Hardware</span>
+    </a>
+{{end}}

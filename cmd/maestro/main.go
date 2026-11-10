@@ -8,10 +8,13 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"os/signal"
 	"runtime/debug"
 	"syscall"
+
+	"github.com/ImJustDoingMyPart/maestro/internal/hub"
 )
 
 // version se inyecta al compilar:
@@ -71,13 +74,17 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 func runServe(ctx context.Context, args []string, stderr io.Writer) error {
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	listen := fs.String("listen", "127.0.0.1:8080", "dirección donde escucha la web")
+	listen := fs.String("listen", "127.0.0.1:8090", "dirección donde escucha la web")
 	demo := fs.Bool("demo", false, "portada con servicios falsos, sin login ni agents")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	_, _, _ = ctx, listen, demo
-	return errors.New("serve: todavía no implementado (etapa 1, paso 2)")
+	if !*demo {
+		return errors.New("serve: por ahora solo existe el modo --demo")
+	}
+
+	logger := slog.New(slog.NewTextHandler(stderr, nil))
+	return hub.ServeDemo(ctx, *listen, logger)
 }
 
 func runAgent(_ context.Context, args []string, stderr io.Writer) error {
