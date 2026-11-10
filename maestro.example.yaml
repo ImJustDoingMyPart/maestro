@@ -1,0 +1,43 @@
+# maestro.example.yaml: copiar a maestro.yaml y ajustar.
+#
+# Los servicios de Docker se descubren solos; acá van solo los hosts con
+# agent, lo que no es Docker y lo que se quiera pisar de un servicio
+# descubierto. Los secretos van en variables de entorno (${NOMBRE}), nunca
+# escritos en este archivo: una variable que falta es un error al arrancar.
+# Una clave desconocida también es un error. Dentro de un mapa entre llaves
+# ({ ... }) la variable va entre comillas: token: "${MAESTRO_TOKEN_VM}".
+
+hosts:
+  vm:
+    agent: http://192.168.0.11:9101
+    token: ${MAESTRO_TOKEN_VM}
+  adguard:
+    agent: http://192.168.0.12:9101
+    token: ${MAESTRO_TOKEN_ADGUARD}
+
+services:
+  # Clave sin "/": un servicio propio. Con unit es una unidad systemd leída
+  # por el agent de host; sin unit, un servicio externo (solo checks).
+  adguard:
+    name: AdGuard Home
+    group: Red
+    icon: shield
+    url: https://adguard.example.org
+    host: adguard
+    unit: AdGuardHome.service
+    check:
+      http: http://192.168.0.12/
+      expect: 200
+
+  router:
+    name: Router
+    group: Red
+    check: { http: http://192.168.0.1/ }
+
+  # Clave "<proyecto>/<servicio>" de compose: pisa valores del servicio
+  # descubierto, por encima de sus labels maestro.* y homepage.*.
+  frigate/frigate:
+    alert: false # se apaga solo cuando no está la cámara
+
+  beszel/beszel-agent:
+    ignore: true

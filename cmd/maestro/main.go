@@ -90,7 +90,7 @@ func runServe(ctx context.Context, args []string, stderr io.Writer) error {
 func runAgent(_ context.Context, args []string, stderr io.Writer) error {
 	fs := flag.NewFlagSet("agent", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	_ = fs.String("listen", "127.0.0.1:9100", "dirección donde escucha el agent")
+	_ = fs.String("listen", "127.0.0.1:9101", "dirección donde escucha el agent")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
