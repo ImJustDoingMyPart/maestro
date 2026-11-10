@@ -10,27 +10,24 @@
   <script src="/static/htmx-2.0.11.min.js" defer></script>
 </head>
 <body>
-  {{/* Navigation rail en pantallas medianas y grandes */}}
-  <nav class="left m l">
-    <header>
+  {{/* Barra superior en pantallas medianas y grandes */}}
+  <header class="fixed m l topbar">
+    <nav>
       <i class="primary-text">hub</i>
-    </header>
-    {{template "navlinks" .}}
-  </nav>
+      <h6 class="small brand">Maestro</h6>
+      <a class="button {{if eq .Active "services"}}secondary-container{{else}}transparent{{end}}" href="/">
+        <i>dashboard</i>
+        <span>Servicios</span>
+      </a>
+      <a class="button {{if eq .Active "hardware"}}secondary-container{{else}}transparent{{end}}" href="/hardware">
+        <i>memory</i>
+        <span>Hardware</span>
+      </a>
+    </nav>
+  </header>
 
   {{/* Barra de navegación abajo en el celular */}}
   <nav class="bottom s">
-    {{template "navlinks" .}}
-  </nav>
-
-  <main class="responsive">
-    {{template "content" .}}
-  </main>
-</body>
-</html>
-{{end}}
-
-{{define "navlinks"}}
     <a href="/"{{if eq .Active "services"}} class="active"{{end}}>
       <i>dashboard</i>
       <span>Servicios</span>
@@ -39,4 +36,11 @@
       <i>memory</i>
       <span>Hardware</span>
     </a>
+  </nav>
+
+  <main class="responsive">
+    {{template "content" .}}
+  </main>
+</body>
+</html>
 {{end}}

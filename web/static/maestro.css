@@ -20,7 +20,24 @@ body.dark  { --status-up: #81c995; }
   height: 100%;
 }
 
-.service .icon {
+/* Barra superior. Beer le pone al header.fixed el fondo del body; acá va
+   el de contenedor de M3 para que se distinga del contenido. */
+header.fixed.topbar {
+  background-color: var(--surface-container);
+}
+
+.topbar .brand {
+  margin-inline-end: 1.5rem;
+}
+
+/* Ícono del servicio dentro de un círculo tonal. */
+.icon-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 3.5rem;
+  block-size: 3.5rem;
+  border-radius: 50%;
   flex: none;
 }
 
