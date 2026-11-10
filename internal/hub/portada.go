@@ -22,8 +22,8 @@ type memberRow struct {
 	Name       string
 	Key        string // para ocultarlo o cambiarle el nombre
 	NameLocked bool   // el nombre viene del archivo: no se cambia desde acá
-	State  State
-	Reason string
+	State      State
+	Reason     string
 }
 
 // stateRank ordena los estados de peor a mejor, para el semáforo de un
