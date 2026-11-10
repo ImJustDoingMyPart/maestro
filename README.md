@@ -5,9 +5,9 @@ Panel único para un servidor chico administrado por una persona: una portada co
 Es un solo binario de Go con dos modos:
 
 - `maestro serve`: el **hub**. Web, login y base SQLite. No toca el socket de Docker: le pide los datos a los agents.
-- `maestro agent`: uno por **host**. Lee Docker y responde solo al hub, con un token.
+- `maestro agent`: uno por **host**. Lee Docker, edita y levanta los stacks de compose, y responde solo al hub, con un token.
 
-Estado: etapa 2 (logs en vivo). Hay portada con login y lista de servicios desde Docker; el semáforo refleja el estado de los contenedores. Cada servicio tiene su página con los logs en vivo. Los checks HTTP se leen de la configuración pero todavía no se ejecutan.
+Estado: etapa 3 (compose). Hay portada con login y lista de servicios desde Docker; el semáforo refleja el estado de los contenedores. Cada servicio tiene su página con los logs en vivo y, si es de compose, la pestaña Compose para editar el `compose.yml` y el `.env` y correr `up`, `down`, `restart` y `pull`. Los checks HTTP se leen de la configuración pero todavía no se ejecutan.
 
 ## Desarrollo
 
@@ -26,7 +26,13 @@ El JavaScript propio está en `web/src/` y [esbuild](https://esbuild.github.io/)
 go generate ./web
 ```
 
-Un test de `web` falla si el bundle commiteado no sale de `web/src/` tal como está. La lógica pura del visor (niveles, buffer) tiene tests aparte que sí necesitan Node: `node --test web/src/`.
+Hay un bundle por página: `logs.js` (el visor) y `compose.js` (el editor, que solo se carga en la pestaña Compose). El editor usa [CodeMirror 6](https://codemirror.net/), que se publica en npm. Para no depender de Node, `go generate` corre antes `internal/npmfetch`, que baja a `web/node_modules/` (ignorado por git) las versiones fijas de `web/npm.lock` y verifica el sha512 de cada tarball. El lockfile lista todos los paquetes, también los transitivos; para agregar o actualizar uno:
+
+```sh
+go run ./internal/npmfetch -lock web/npm.lock -add @codemirror/view@6.43.15
+```
+
+Un test de `web` falla si el bundle commiteado no sale de `web/src/` tal como está (si no están los paquetes de npm, se saltea). La lógica pura del visor (niveles, buffer) tiene tests aparte que sí necesitan Node: `node --test web/src/`.
 
 ### Portada de prueba
 
@@ -46,8 +52,10 @@ ssh -nNT -o StreamLocalBindUnlink=yes \
 
 export DOCKER_HOST="unix://$XDG_RUNTIME_DIR/maestro-docker.sock"
 export MAESTRO_AGENT_TOKEN="$(openssl rand -hex 32)"   # mínimo 32 caracteres
-./maestro agent --listen 127.0.0.1:9101
+./maestro agent --listen 127.0.0.1:9101 --stacks-dir ~/docker
 ```
+
+Con `--stacks-dir`, la pestaña Compose escribe en esa carpeta y `up`/`down` actúan sobre el Docker de `DOCKER_HOST`: contra el server real, eso es escribir en él. Para probar, mejor un stack de juguete en el Docker local con su propia carpeta.
 
 El usuario remoto tiene que estar en el grupo `docker`. Hablar con el socket de Docker equivale a ser root en ese host.
 
@@ -72,6 +80,18 @@ Tocar una tarjeta de la portada lleva a `/services/<id>` (por ejemplo `/services
 - Un contenedor que escribe más de 2000 líneas por segundo no ahoga al navegador: las de más se omiten y se avisa cuántas.
 - El visor guarda las últimas 10 000 líneas y dibuja solo las que se ven. Detecta el nivel de cada línea (`ERROR`, `level=warn`, `"level":"error"`, `[error]`, los niveles numéricos de pino) para filtrar por avisos o errores, busca sin distinguir mayúsculas y saca los códigos de color ANSI.
 - Al subir para leer se pausa el avance automático (mientras tanto guarda hasta 50 000 líneas para que lo que se lee no se borre); el botón del costado vuelve al final. Tocar una línea la muestra entera, con la fecha completa y el JSON indentado.
+
+## Pestaña Compose
+
+`/stacks/<host>/<proyecto>`, enlazada desde la página de cada servicio de compose. Se nombra por stack y no por servicio porque después de un `down` el stack no tiene contenedores ni servicios, y hay que poder levantarlo de nuevo: el agent lo encuentra igual por `<stacks-dir>/<proyecto>/compose.yml`.
+
+- **Editor** con resaltado de YAML y de `.env`, indentación, plegado y buscar y reemplazar (`Ctrl+F`). `Ctrl+S` guarda. Si hay cambios sin guardar, el navegador avisa antes de salir.
+- **Guardar** valida primero con `docker compose config` sobre una copia temporal al lado del archivo (las rutas relativas del compose se resuelven igual). Si falla, no se escribe nada y el error de compose se muestra debajo del editor. Si pasa, se muestra el diff y se pide confirmar.
+- La escritura es atómica (temporal en la misma carpeta y `rename`) y conserva permisos y dueño; un `.env` nuevo se crea con `0600`. Si el archivo cambió en el disco desde que se abrió la página, no se pisa: se avisa.
+- Después de escribir, si la carpeta es parte de un repo de git y el archivo no está ignorado, se hace un commit **solo de ese archivo** (`<proyecto>: compose.yml editado desde Maestro`), con el autor de `--git-author`. Sin push. Si no hay repo o el archivo está en el `.gitignore` (lo normal para el `.env`), se guarda igual y se avisa.
+- **Acciones**: `up` (`up -d`), `down` (pide confirmación), `restart` y `pull`, sobre el stack entero. La salida llega en vivo al mismo visor de los logs. Hay una operación por stack a la vez: otra acción o un guardado en el medio se rechazan.
+- Una acción no se corta si se cierra la página: un `up` a medias deja el stack roto. El hub sigue leyendo la salida y la guarda una hora; al volver a la página en los 10 minutos siguientes, se ve.
+- `docker compose` corre con el entorno del agent menos las variables `MAESTRO_*` (el token no queda al alcance de la interpolación).
 
 ## Configuración
 
@@ -119,9 +139,9 @@ Una clave desconocida es un error al arrancar, igual que una variable `${VAR}` q
 `deploy/compose.yml` es un ejemplo con los dos contenedores en el mismo host:
 
 - `hub` en la red del proxy (por ejemplo, `caddy_net`), sin socket de Docker.
-- `agent` con `network_mode: host`, el socket montado y el grupo `docker` del host por `group_add`.
+- `agent` con `network_mode: host`, el socket montado y el grupo `docker` del host por `group_add`, y la carpeta de los stacks montada **en la misma ruta que en el host**: los labels de compose dan la ruta del host, y `docker compose` le pasa al daemon las rutas de los bind mounts tal cual. Corre con el uid y el gid del dueño de esa carpeta (`user:`), para que lo que escribe y los commits queden como suyos.
 
-Los dos corren como usuario sin privilegios, con el sistema de archivos de solo lectura y sin capacidades. El primer usuario se crea con:
+Son dos imágenes del mismo `Dockerfile`: el hub (por defecto, `distroless/static`) y el agent (`--target agent`, Alpine con el CLI de Docker, el plugin de compose y git). Los dos corren como usuario sin privilegios, con el sistema de archivos de solo lectura y sin capacidades. El primer usuario se crea con:
 
 ```sh
 docker compose run --rm hub passwd --db /data/maestro.db --user <usuario>
@@ -132,5 +152,7 @@ docker compose run --rm hub passwd --db /data/maestro.db --user <usuario>
 - Login desde la primera versión. Las contraseñas se guardan como hashes argon2id. La sesión es un token aleatorio en una cookie `HttpOnly`, `Secure` y `SameSite=Lax`, y en la base solo queda su hash.
 - Los POST de otro origen se rechazan con `http.CrossOriginProtection`.
 - El agent no se publica y exige un token Bearer. El token se compara en tiempo constante y no se muestra en los logs.
-- Montar el socket con `:ro` no hace que la API de Docker sea de solo lectura. Lo que acota al agent es su código, que en esta etapa solo lista e inspecciona contenedores y lee sus logs.
+- Montar el socket con `:ro` no hace que la API de Docker sea de solo lectura. El agent levanta y baja stacks y edita sus compose: quien controle el agent (o el hub, que le habla con el token) tiene el equivalente a root en ese host. Por eso el login, el agent sin publicar y el acceso solo detrás del proxy.
+- El agent solo lee y escribe el `compose.yml` y el `.env` de un proyecto, y solo dentro de `--stacks-dir`: una ruta que, resueltos los symlinks, cae afuera se rechaza.
+- El `.env` viaja del agent al navegador para editarlo: lleva secretos, y por eso esa página solo existe con sesión iniciada.
 - Las líneas de log se insertan como texto, nunca como HTML: un contenedor no puede meter marcado en la página.
