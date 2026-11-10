@@ -7,7 +7,7 @@ Es un solo binario de Go con dos modos:
 - `maestro serve`: el **hub**. Web, login y base SQLite. No toca el socket de Docker: le pide los datos a los agents.
 - `maestro agent`: uno por **host**. Lee Docker y responde solo al hub, con un token.
 
-Estado: etapa 1 (esqueleto). Hay portada con login y lista de servicios desde Docker; el semáforo refleja el estado de los contenedores. Los checks HTTP se leen de la configuración pero todavía no se ejecutan.
+Estado: etapa 2 (logs en vivo). Hay portada con login y lista de servicios desde Docker; el semáforo refleja el estado de los contenedores. Cada servicio tiene su página con los logs en vivo. Los checks HTTP se leen de la configuración pero todavía no se ejecutan.
 
 ## Desarrollo
 
@@ -17,6 +17,16 @@ Requiere Go 1.27. No hace falta Node.
 go vet ./... && go test -race ./...
 go build -o maestro ./cmd/maestro
 ```
+
+### JavaScript
+
+El JavaScript propio está en `web/src/` y [esbuild](https://esbuild.github.io/) lo junta en `web/static/gen/`, que va commiteado para que `go build` alcance. esbuild está escrito en Go y figura como herramienta en `go.mod`, así que después de tocar `web/src/` se regenera con:
+
+```sh
+go generate ./web
+```
+
+Un test de `web` falla si el bundle commiteado no sale de `web/src/` tal como está. La lógica pura del visor (niveles, buffer) tiene tests aparte que sí necesitan Node: `node --test web/src/`.
 
 ### Portada de prueba
 
@@ -50,6 +60,18 @@ export MAESTRO_TOKEN_VM="$MAESTRO_AGENT_TOKEN"
 ```
 
 `--dev` deja la cookie de sesión sin `Secure` para poder entrar por `http://`. Sin `--dev`, el hub espera estar detrás de un proxy con HTTPS.
+
+## Página de un servicio
+
+Tocar una tarjeta de la portada lleva a `/services/<id>` (por ejemplo `/services/media-stack/jellyfin`). Muestra de dónde sale el servicio, su host y sus contenedores, y la pestaña Actividad con los logs en vivo.
+
+### Logs
+
+- Al abrir llegan las últimas 1000 líneas y después las nuevas, por Server-Sent Events (`GET /logs/<id>`). Si el servicio tiene réplicas, sus líneas van intercaladas por hora y cada una dice de qué contenedor es; un selector deja ver una sola.
+- Si la conexión se corta, el navegador reconecta solo y el stream sigue desde la última línea recibida, sin repetir ni perder. Cuando el contenedor se detiene, el visor lo avisa y ofrece reintentar.
+- Un contenedor que escribe más de 2000 líneas por segundo no ahoga al navegador: las de más se omiten y se avisa cuántas.
+- El visor guarda las últimas 10 000 líneas y dibuja solo las que se ven. Detecta el nivel de cada línea (`ERROR`, `level=warn`, `"level":"error"`, `[error]`, los niveles numéricos de pino) para filtrar por avisos o errores, busca sin distinguir mayúsculas y saca los códigos de color ANSI.
+- Al subir para leer se pausa el avance automático (mientras tanto guarda hasta 50 000 líneas para que lo que se lee no se borre); el botón del costado vuelve al final. Tocar una línea la muestra entera, con la fecha completa y el JSON indentado.
 
 ## Configuración
 
@@ -110,4 +132,5 @@ docker compose run --rm hub passwd --db /data/maestro.db --user <usuario>
 - Login desde la primera versión. Las contraseñas se guardan como hashes argon2id. La sesión es un token aleatorio en una cookie `HttpOnly`, `Secure` y `SameSite=Lax`, y en la base solo queda su hash.
 - Los POST de otro origen se rechazan con `http.CrossOriginProtection`.
 - El agent no se publica y exige un token Bearer. El token se compara en tiempo constante y no se muestra en los logs.
-- Montar el socket con `:ro` no hace que la API de Docker sea de solo lectura. Lo que acota al agent es su código, que en esta etapa solo lista e inspecciona contenedores.
+- Montar el socket con `:ro` no hace que la API de Docker sea de solo lectura. Lo que acota al agent es su código, que en esta etapa solo lista e inspecciona contenedores y lee sus logs.
+- Las líneas de log se insertan como texto, nunca como HTML: un contenedor no puede meter marcado en la página.
