@@ -4,8 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"iter"
 	"net/http"
 	"regexp"
+	"time"
 )
 
 // Nombres lógicos de los archivos de un stack que se pueden editar. Son
@@ -62,12 +64,47 @@ type WriteResult struct {
 	Notice string `json:"notice,omitempty"`
 }
 
+// Acciones de compose que acepta POST /v1/stacks/{project}/{action}.
+const (
+	ActionUp      = "up" // up -d
+	ActionDown    = "down"
+	ActionRestart = "restart"
+	ActionPull    = "pull"
+)
+
+// ValidAction dice si a es una de las acciones aceptadas.
+func ValidAction(a string) bool {
+	switch a {
+	case ActionUp, ActionDown, ActionRestart, ActionPull:
+		return true
+	}
+	return false
+}
+
+// ActionEvent es un renglón del stream de una acción, en NDJSON. Mientras el
+// comando corre llegan líneas (Stream y Line); el último evento lleva Exit,
+// y Error si el comando ni siquiera pudo correr.
+type ActionEvent struct {
+	TS     time.Time `json:"ts"`
+	Stream string    `json:"stream,omitempty"` // "stdout" o "stderr"
+	Line   string    `json:"line,omitempty"`
+	Exit   *int      `json:"exit,omitempty"`
+	Error  string    `json:"error,omitempty"`
+}
+
 // StackSource maneja los stacks de compose del host. Lo implementa
 // internal/stacks; los tests pasan uno falso.
 type StackSource interface {
 	Files(ctx context.Context, project string) (StackFiles, error)
 	Check(ctx context.Context, project, name string, content []byte) (CheckResult, error)
 	Write(ctx context.Context, project, name string, content []byte, hash string) (WriteResult, error)
+
+	// Action arranca docker compose <action> sobre el proyecto. Los errores
+	// de antes de arrancar (ErrStackNotFound, ErrBusy, ErrBadAction) salen
+	// enseguida; la salida sale del iterador, que termina con el evento de
+	// Exit. Cortar el range no corta el comando: sigue hasta el final, con
+	// la salida al log del agent, porque un up a medias deja el stack roto.
+	Action(ctx context.Context, project, action string) (iter.Seq[ActionEvent], error)
 }
 
 // Errores de StackSource que el handler traduce a un código HTTP.
@@ -77,6 +114,7 @@ var (
 	ErrConflict      = errors.New("el archivo cambió desde que se leyó")     // 409
 	ErrBusy          = errors.New("hay otra operación en curso en el stack") // 409
 	ErrOutsideRoot   = errors.New("el archivo está fuera de --stacks-dir")   // 403
+	ErrBadAction     = errors.New("acción desconocida")                      // 404
 )
 
 // InvalidError es un archivo que no pasa `docker compose config`. Output es
@@ -174,6 +212,33 @@ func stackRoutes(mux *http.ServeMux, st StackSource, logErr func(msg string, arg
 		}
 		writeJSON(w, http.StatusOK, res)
 	})
+	mux.HandleFunc("POST /v1/stacks/{project}/{action}", func(w http.ResponseWriter, r *http.Request) {
+		p, ok := project(w, r)
+		if !ok {
+			return
+		}
+		action := r.PathValue("action")
+		if !ValidAction(action) {
+			stackError(w, ErrBadAction, logErr, "acción", p)
+			return
+		}
+		events, err := st.Action(r.Context(), p, action)
+		if err != nil {
+			stackError(w, err, logErr, action, p)
+			return
+		}
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		w.Header().Set("Cache-Control", "no-store")
+		w.WriteHeader(http.StatusOK)
+		rc := http.NewResponseController(w)
+		enc := json.NewEncoder(w)
+		// La salida de compose es poca: un Flush por evento.
+		for ev := range events {
+			if enc.Encode(ev) != nil || rc.Flush() != nil {
+				return // el hub se fue; el comando sigue solo
+			}
+		}
+	})
 }
 
 // stackError traduce un error de StackSource. Los conocidos dicen qué pasó;
@@ -183,7 +248,7 @@ func stackError(w http.ResponseWriter, err error, logErr func(msg string, args .
 	switch {
 	case errors.As(err, &inv):
 		writeJSON(w, http.StatusUnprocessableEntity, ErrorBody{Error: "docker compose config falló", Output: inv.Output})
-	case errors.Is(err, ErrStackNotFound), errors.Is(err, ErrBadFile):
+	case errors.Is(err, ErrStackNotFound), errors.Is(err, ErrBadFile), errors.Is(err, ErrBadAction):
 		writeJSON(w, http.StatusNotFound, ErrorBody{Error: err.Error()})
 	case errors.Is(err, ErrConflict), errors.Is(err, ErrBusy):
 		writeJSON(w, http.StatusConflict, ErrorBody{Error: err.Error()})

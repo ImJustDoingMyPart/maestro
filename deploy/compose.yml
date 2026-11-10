@@ -5,7 +5,7 @@
 #                 apunta a la IP LAN del agent, por ejemplo
 #                 agent: http://192.168.0.11:9101
 #   .env          MAESTRO_AGENT_TOKEN, MAESTRO_TOKEN_VM (el mismo valor),
-#                 AGENT_LISTEN y DOCKER_GID
+#                 AGENT_LISTEN, DOCKER_GID, STACKS_DIR y STACKS_UID
 #
 # Primer usuario:
 #   docker compose run --rm hub passwd --db /data/maestro.db --user <usuario>
@@ -29,23 +29,39 @@ services:
     security_opt: ["no-new-privileges:true"]
 
   agent:
-    image: maestro:dev
+    # Imagen aparte: lleva el CLI de Docker, compose y git.
+    build:
+      context: ..
+      target: agent
+    image: maestro-agent:dev
     restart: unless-stopped
     # Red del host: hace falta para leer las métricas de red del host
     # (etapa 6) y para que el hub, desde caddy_net, llegue por la IP LAN.
     network_mode: host
-    command: ["agent", "--listen", "${AGENT_LISTEN:?falta en .env, p. ej. 192.168.0.11:9101}"]
+    command:
+      - agent
+      - --listen=${AGENT_LISTEN:?falta en .env, p. ej. 192.168.0.11:9101}
+      - --stacks-dir=${STACKS_DIR:?falta en .env, p. ej. /home/anon/docker}
     environment:
       MAESTRO_AGENT_TOKEN: ${MAESTRO_AGENT_TOKEN:?falta en .env}
-    # El usuario nonroot de la imagen lee el socket por el grupo docker del
-    # host (en debian-vm, 989: getent group docker).
+    # Corre con el uid y el grupo del dueño de los stacks, para que los
+    # archivos que escribe y los commits queden como suyos (en debian-vm,
+    # 1000:1000), y lee el socket por el grupo docker del host (989:
+    # getent group docker).
+    user: ${STACKS_UID:?falta en .env, p. ej. 1000:1000}
     group_add:
       - ${DOCKER_GID:?falta en .env}
     volumes:
       # Ojo: ":ro" impide reemplazar el archivo del socket, no limita la API.
-      # Quien habla con el socket puede hacer todo; lo que acota al agent es
-      # su código, que en esta etapa solo lista e inspecciona.
+      # Quien habla con el socket puede hacer todo, y el agent levanta y baja
+      # stacks: equivale a root en el host.
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      # En la misma ruta que en el host: los labels de compose dicen dónde
+      # está cada compose.yml con la ruta del host, y docker compose le pasa
+      # al daemon las rutas de los bind mounts tal cual.
+      - ${STACKS_DIR}:${STACKS_DIR}
+    tmpfs:
+      - /tmp    # HOME y DOCKER_CONFIG de la imagen
     read_only: true
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]

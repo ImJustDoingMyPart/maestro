@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"iter"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -38,6 +39,18 @@ func (f *fakeStacks) Write(_ context.Context, project, name string, content []by
 	return WriteResult{Hash: "sha256:2", Diff: "+x"}, f.err
 }
 
+func (f *fakeStacks) Action(_ context.Context, project, action string) (iter.Seq[ActionEvent], error) {
+	f.project, f.name = project, action
+	if f.err != nil {
+		return nil, f.err
+	}
+	return func(yield func(ActionEvent) bool) {
+		code := 3
+		_ = yield(ActionEvent{Stream: "stderr", Line: "Container demo-web-1 Started"}) &&
+			yield(ActionEvent{Exit: &code})
+	}, nil
+}
+
 func newStackClient(t *testing.T, st StackSource) *Client {
 	t.Helper()
 	h, err := NewHandler(fakeSource{}, st, testToken, slog.New(slog.DiscardHandler))
@@ -64,6 +77,40 @@ func TestStacksIdaYVuelta(t *testing.T) {
 	res, err := c.WriteStackFile(ctx, "demo", FileCompose, "services: {}\n", "sha256:1")
 	if err != nil || res.Hash != "sha256:2" || st.hash != "sha256:1" {
 		t.Fatalf("WriteStackFile = %+v, %v, recibió %+v", res, err, st)
+	}
+}
+
+func TestStackAction(t *testing.T) {
+	st := &fakeStacks{}
+	c := newStackClient(t, st)
+	events, err := c.StackAction(context.Background(), "demo", ActionUp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for ev, err := range events {
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ev.Exit != nil {
+			got = append(got, fmt.Sprint("exit ", *ev.Exit))
+		} else {
+			got = append(got, ev.Stream+": "+ev.Line)
+		}
+	}
+	if want := "stderr: Container demo-web-1 Started|exit 3"; strings.Join(got, "|") != want {
+		t.Errorf("eventos = %q, quería %q", got, want)
+	}
+	if st.name != ActionUp {
+		t.Errorf("acción = %q", st.name)
+	}
+
+	if _, err := c.StackAction(context.Background(), "demo", "rm"); !errors.Is(err, ErrBadAction) {
+		t.Errorf("acción desconocida: err = %v", err)
+	}
+	c = newStackClient(t, &fakeStacks{err: ErrBusy})
+	if _, err := c.StackAction(context.Background(), "demo", ActionDown); !errors.Is(err, ErrBusy) {
+		t.Errorf("ocupado: err = %v", err)
 	}
 }
 

@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -443,6 +444,7 @@ func (m *Manager) diff(ctx context.Context, target, tmp string) (string, error) 
 func (m *Manager) run(ctx context.Context, dir, bin string, args ...string) ([]byte, int, error) {
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = dir
+	cmd.Env = childEnv()
 	out, err := cmd.CombinedOutput()
 	if ee := (*exec.ExitError)(nil); errors.As(err, &ee) && ctx.Err() == nil {
 		return out, ee.ExitCode(), nil
@@ -474,4 +476,11 @@ func (m *Manager) release(project string) {
 func hash(b []byte) string {
 	sum := sha256.Sum256(b)
 	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+// childEnv es el entorno del agent sin las variables MAESTRO_*: compose
+// interpola con el entorno de quien lo corre, y el token del agent no tiene
+// por qué quedar a su alcance.
+func childEnv() []string {
+	return slices.DeleteFunc(os.Environ(), func(kv string) bool { return strings.HasPrefix(kv, "MAESTRO_") })
 }

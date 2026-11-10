@@ -183,8 +183,11 @@ func stackErr(err error) error {
 	case http.StatusUnprocessableEntity:
 		return &InvalidError{Output: se.body.Output}
 	case http.StatusNotFound:
-		if se.body.Error == ErrBadFile.Error() {
+		switch se.body.Error {
+		case ErrBadFile.Error():
 			return ErrBadFile
+		case ErrBadAction.Error():
+			return ErrBadAction
 		}
 		return fmt.Errorf("%w: %s", ErrStackNotFound, se.body.Error)
 	case http.StatusConflict:
@@ -196,4 +199,35 @@ func stackErr(err error) error {
 		return fmt.Errorf("%w: %s", ErrOutsideRoot, se.body.Error)
 	}
 	return err
+}
+
+// StackAction corre una acción de compose y devuelve su salida a medida que
+// sale. El iterador termina con el evento de Exit; si el stream se corta
+// antes, el último elemento es un error. Cortar el range cierra la conexión
+// pero no el comando, que en el agent sigue hasta el final.
+func (c *Client) StackAction(ctx context.Context, project, action string) (iter.Seq2[ActionEvent, error], error) {
+	path := "/v1/stacks/" + url.PathEscape(project) + "/" + url.PathEscape(action)
+	res, err := c.doMethod(ctx, c.stream, http.MethodPost, path, nil)
+	if err != nil {
+		return nil, stackErr(err)
+	}
+	return func(yield func(ActionEvent, error) bool) {
+		defer res.Body.Close()
+		dec := json.NewDecoder(res.Body)
+		for {
+			var ev ActionEvent
+			err := dec.Decode(&ev)
+			if errors.Is(err, io.EOF) {
+				yield(ActionEvent{}, fmt.Errorf("agent %s: %s de %s: el stream terminó sin el código de salida", c.baseURL, action, project))
+				return
+			}
+			if err != nil {
+				yield(ActionEvent{}, fmt.Errorf("agent %s: %s de %s: %w", c.baseURL, action, project, err))
+				return
+			}
+			if !yield(ev, nil) || ev.Exit != nil {
+				return
+			}
+		}
+	}, nil
 }
