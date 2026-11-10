@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // compose arma un contenedor de compose en el host "vm" con los labels de
@@ -331,6 +332,52 @@ func TestBuild(t *testing.T) {
 			}()},
 		},
 		{
+			name: "check TCP, intervalo, timeout y sin redirecciones",
+			containers: []Container{compose("j", "p", "j", map[string]string{
+				"maestro.check.http":           "http://j/",
+				"maestro.check.http.redirects": "false",
+				"maestro.check.tcp":            "j:5432",
+				"maestro.check.interval":       "30s",
+				"maestro.check.timeout":        "5s",
+			})},
+			want: []Service{func() Service {
+				s := composeService("p", "j", compose("j", "p", "j", map[string]string{
+					"maestro.check.http":           "http://j/",
+					"maestro.check.http.redirects": "false",
+					"maestro.check.tcp":            "j:5432",
+					"maestro.check.interval":       "30s",
+					"maestro.check.timeout":        "5s",
+				}))
+				s.Checks = []Check{
+					{Kind: CheckHTTP, Target: "http://j/", NoRedirects: true, Interval: 30 * time.Second, Timeout: 5 * time.Second},
+					{Kind: CheckTCP, Target: "j:5432", Interval: 30 * time.Second, Timeout: 5 * time.Second},
+				}
+				s.Alert = true
+				return s
+			}()},
+		},
+		{
+			name: "TCP sin puerto, intervalo inválido y expect fuera de rango se ignoran",
+			containers: []Container{compose("j", "p", "j", map[string]string{
+				"maestro.check.http":        "http://j/",
+				"maestro.check.http.expect": "42",
+				"maestro.check.tcp":         "j",
+				"maestro.check.interval":    "un rato",
+				"maestro.check.timeout":     "-5s",
+			})},
+			want: []Service{func() Service {
+				s := composeService("p", "j", compose("j", "p", "j", map[string]string{
+					"maestro.check.http":        "http://j/",
+					"maestro.check.http.expect": "42",
+					"maestro.check.tcp":         "j",
+					"maestro.check.interval":    "un rato",
+					"maestro.check.timeout":     "-5s",
+				}))
+				s.Checks, s.Alert = []Check{{Kind: CheckHTTP, Target: "http://j/"}}, true
+				return s
+			}()},
+		},
+		{
 			name: "orden por grupo, nombre e ID",
 			containers: []Container{
 				compose("z", "b-proj", "z", nil),
@@ -396,6 +443,7 @@ func TestAvisosUnaVez(t *testing.T) {
 			"maestro.colour":      "rojo", // clave desconocida
 			"maestro.alert":       "quizás",
 			"homepage.widget.url": "http://x", // homepage desconocida: sin aviso
+			"maestro.check.push":  "secreto",  // va en el archivo
 		}),
 		compose("b", "p", "b", map[string]string{"maestro.colour": "azul"}),
 	}
@@ -408,6 +456,9 @@ func TestAvisosUnaVez(t *testing.T) {
 	}
 	if n := strings.Count(out, "maestro.alert"); n != 1 {
 		t.Errorf("maestro.alert (valor inválido) aparece %d veces en el log, quería 1:\n%s", n, out)
+	}
+	if !strings.Contains(out, "va en maestro.yaml") {
+		t.Errorf("maestro.check.push tiene que avisar que va en el archivo:\n%s", out)
 	}
 	if strings.Contains(out, "homepage.") {
 		t.Errorf("no debería avisar por claves homepage.*:\n%s", out)

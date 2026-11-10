@@ -2,15 +2,18 @@ package config
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/url"
 	"os"
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"go.yaml.in/yaml/v4"
 
@@ -58,10 +61,34 @@ type Service struct {
 	Ignore *bool `yaml:"ignore"`
 }
 
-// Check es un check HTTP. En la etapa 1 se guarda pero no se ejecuta.
+// Check son los checks de un servicio: uno HTTP, uno TCP y uno push como
+// mucho, con el mismo intervalo y timeout.
 type Check struct {
-	HTTP   string `yaml:"http"`
-	Expect int    `yaml:"expect"` // código esperado; 0 si no se declara
+	HTTP      string `yaml:"http"`
+	Expect    int    `yaml:"expect"`    // código esperado; 0 si no se declara
+	Redirects *bool  `yaml:"redirects"` // seguir redirecciones; nil es sí
+	TCP       string `yaml:"tcp"`       // host:puerto
+	// Push es el token que el script pone en /push/<token>. Es un secreto:
+	// va en una variable ${...}.
+	Push string `yaml:"push"`
+	// Interval y Timeout son duraciones de Go ("30s", "96h"). Para push,
+	// Interval es cada cuánto tiene que llegar la llamada.
+	Interval string `yaml:"interval"`
+	Timeout  string `yaml:"timeout"`
+}
+
+// MinPushTokenLen es el largo mínimo del token de un check push: se puede
+// adivinar por fuerza bruta contra /push/, que no pide login.
+const MinPushTokenLen = 16
+
+// String no muestra el token push.
+func (c Check) String() string {
+	push := ""
+	if c.Push != "" {
+		push = "[censurado]"
+	}
+	return fmt.Sprintf("{http: %s, expect: %d, tcp: %s, push: %s, interval: %s, timeout: %s}",
+		c.HTTP, c.Expect, c.TCP, push, c.Interval, c.Timeout)
 }
 
 // LookupFunc busca una variable de entorno. Es la firma de os.LookupEnv; los
@@ -167,8 +194,15 @@ func (c *Config) validate() error {
 		}
 	}
 
+	pushTokens := map[string]string{} // token → primer servicio que lo usa
 	for _, key := range sortedKeys(c.Services) {
 		s := c.Services[key]
+		if s.Check != nil && s.Check.Push != "" {
+			if other, dup := pushTokens[s.Check.Push]; dup {
+				add("services.%s.check.push: el mismo token que %s; cada servicio lleva el suyo", key, other)
+			}
+			pushTokens[s.Check.Push] = key
+		}
 		if strings.Contains(key, "/") {
 			// Pisa a un servicio de compose: host y unit no aplican, y
 			// catalog los ignoraría en silencio.
@@ -189,15 +223,42 @@ func (c *Config) validate() error {
 			}
 		}
 		if s.Check != nil {
-			if err := checkURL(s.Check.HTTP); err != nil {
-				add("services.%s.check.http: %v", key, err)
-			}
-			if s.Check.Expect != 0 && (s.Check.Expect < 100 || s.Check.Expect > 599) {
-				add("services.%s.check.expect: %d no es un código HTTP", key, s.Check.Expect)
-			}
+			validateCheck(key, s.Check, add)
 		}
 	}
 	return errors.Join(errs...)
+}
+
+func validateCheck(key string, c *Check, add func(string, ...any)) {
+	if c.HTTP == "" && c.TCP == "" && c.Push == "" {
+		add("services.%s.check: falta http, tcp o push", key)
+	}
+	if c.HTTP != "" {
+		if err := checkURL(c.HTTP); err != nil {
+			add("services.%s.check.http: %v", key, err)
+		}
+	} else if c.Expect != 0 || c.Redirects != nil {
+		add("services.%s.check: expect y redirects son de http", key)
+	}
+	if c.Expect != 0 && (c.Expect < 100 || c.Expect > 599) {
+		add("services.%s.check.expect: %d no es un código HTTP", key, c.Expect)
+	}
+	if c.TCP != "" {
+		if _, port, err := net.SplitHostPort(c.TCP); err != nil || port == "" {
+			add("services.%s.check.tcp: %q no es host:puerto", key, c.TCP)
+		}
+	}
+	if c.Push != "" && len(c.Push) < MinPushTokenLen {
+		add("services.%s.check.push: el token tiene que tener al menos %d caracteres (openssl rand -hex 16)", key, MinPushTokenLen)
+	}
+	for _, d := range []struct{ name, v string }{{"interval", c.Interval}, {"timeout", c.Timeout}} {
+		if d.v == "" {
+			continue
+		}
+		if v, err := time.ParseDuration(d.v); err != nil || v <= 0 {
+			add("services.%s.check.%s: %q no es una duración (30s, 5m, 96h)", key, d.name, d.v)
+		}
+	}
 }
 
 // checkURL exige una URL absoluta http o https.
@@ -240,9 +301,32 @@ func (c *Config) FileServices() map[string]catalog.FileService {
 			Ignore:      s.Ignore,
 		}
 		if s.Check != nil {
-			fs.Checks = []catalog.Check{{Kind: catalog.CheckHTTP, Target: s.Check.HTTP, Expect: s.Check.Expect}}
+			fs.Checks = s.Check.checks()
 		}
 		out[key] = fs
+	}
+	return out
+}
+
+// checks pasa un Check ya validado a los de catalog, uno por tipo. Nunca
+// devuelve nil: un check declarado reemplaza a los de los labels.
+func (c *Check) checks() []catalog.Check {
+	// Ya validados: un error de parseo acá no puede pasar.
+	interval, _ := time.ParseDuration(cmp.Or(c.Interval, "0s"))
+	timeout, _ := time.ParseDuration(cmp.Or(c.Timeout, "0s"))
+	out := []catalog.Check{}
+	if c.HTTP != "" {
+		out = append(out, catalog.Check{
+			Kind: catalog.CheckHTTP, Target: c.HTTP, Expect: c.Expect,
+			NoRedirects: c.Redirects != nil && !*c.Redirects,
+			Interval:    interval, Timeout: timeout,
+		})
+	}
+	if c.TCP != "" {
+		out = append(out, catalog.Check{Kind: catalog.CheckTCP, Target: c.TCP, Interval: interval, Timeout: timeout})
+	}
+	if c.Push != "" {
+		out = append(out, catalog.Check{Kind: catalog.CheckPush, Target: c.Push, Interval: interval})
 	}
 	return out
 }

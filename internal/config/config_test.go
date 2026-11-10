@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ImJustDoingMyPart/maestro/internal/catalog"
 )
@@ -138,6 +139,31 @@ func TestParseErrores(t *testing.T) {
 			want: []string{"doscientos"},
 		},
 		{
+			name: "check vacío",
+			data: "services:\n  router: {check: {interval: 30s}}\n",
+			want: []string{"services.router.check: falta http, tcp o push"},
+		},
+		{
+			name: "expect sin http",
+			data: "services:\n  router: {check: {tcp: \"r:80\", expect: 200}}\n",
+			want: []string{"expect y redirects son de http"},
+		},
+		{
+			name: "tcp sin puerto, duraciones inválidas",
+			data: "services:\n  db: {check: {tcp: db, interval: un rato, timeout: -1s}}\n",
+			want: []string{"check.tcp", "check.interval", "check.timeout"},
+		},
+		{
+			name: "token push corto",
+			data: "services:\n  restic: {check: {push: corto}}\n",
+			want: []string{"check.push", "16 caracteres"},
+		},
+		{
+			name: "token push repetido",
+			data: "services:\n  a: {check: {push: 0123456789abcdef}}\n  b: {check: {push: 0123456789abcdef}}\n",
+			want: []string{"services.b.check.push", "mismo token que a"},
+		},
+		{
 			name: "YAML roto",
 			data: "hosts: [\n",
 			want: []string{"yaml"},
@@ -171,6 +197,10 @@ func TestTokenNoSeFiltra(t *testing.T) {
 
 	var buf strings.Builder
 	slog.New(slog.NewTextHandler(&buf, nil)).Info("x", "host", h)
+	c := Check{Push: "pushsecreto"}
+	if strings.Contains(fmt.Sprint(c)+fmt.Sprintf("%+v", c), "pushsecreto") {
+		t.Errorf("el token push aparece en %v", c)
+	}
 	if strings.Contains(buf.String(), "supersecreto") {
 		t.Errorf("el token aparece en el log: %s", buf.String())
 	}
@@ -181,6 +211,10 @@ func TestFileServices(t *testing.T) {
 		"adguard":    {Name: "AdGuard", Host: "vm", Unit: "a.service", Check: &Check{HTTP: "http://a/", Expect: 200}},
 		"p/s":        {Alert: ptr(false), Ignore: ptr(true)},
 		"sin-checks": {Group: "Red"},
+		"restic":     {Check: &Check{Push: "0123456789abcdef", Interval: "96h"}},
+		"db": {Check: &Check{
+			HTTP: "https://db/", Redirects: ptr(false), TCP: "db:5432", Interval: "30s", Timeout: "5s",
+		}},
 	}}
 	want := map[string]catalog.FileService{
 		"adguard": {
@@ -189,6 +223,13 @@ func TestFileServices(t *testing.T) {
 		},
 		"p/s":        {Alert: ptr(false), Ignore: ptr(true)},
 		"sin-checks": {Group: "Red"}, // Checks nil: no pisa los checks de los labels
+		"restic": {Checks: []catalog.Check{
+			{Kind: catalog.CheckPush, Target: "0123456789abcdef", Interval: 96 * time.Hour},
+		}},
+		"db": {Checks: []catalog.Check{
+			{Kind: catalog.CheckHTTP, Target: "https://db/", NoRedirects: true, Interval: 30 * time.Second, Timeout: 5 * time.Second},
+			{Kind: catalog.CheckTCP, Target: "db:5432", Interval: 30 * time.Second, Timeout: 5 * time.Second},
+		}},
 	}
 	if got := cfg.FileServices(); !reflect.DeepEqual(got, want) {
 		t.Errorf("FileServices:\n got %#v\nwant %#v", got, want)
@@ -204,6 +245,7 @@ func TestEjemploDelRepo(t *testing.T) {
 	cfg, err := Parse(data, env(map[string]string{
 		"MAESTRO_TOKEN_VM":      "a",
 		"MAESTRO_TOKEN_ADGUARD": "b",
+		"MAESTRO_PUSH_RESTIC":   "0123456789abcdef",
 	}))
 	if err != nil {
 		t.Fatal(err)

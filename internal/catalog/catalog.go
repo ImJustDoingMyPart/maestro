@@ -3,23 +3,27 @@ package catalog
 import (
 	"cmp"
 	"log/slog"
+	"net"
 	"slices"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Container es lo que el catálogo necesita de un contenedor, tal como lo
 // reporta el agent de un host.
 type Container struct {
-	Host     string // host del agent que lo reportó
-	ID       string
-	Name     string
-	Image    string
-	State    string // "running", "exited", … (el State de Docker)
-	Health   string // "healthy", "unhealthy", "starting" o "" si no tiene healthcheck
-	Restarts int
-	Labels   map[string]string
+	Host      string // host del agent que lo reportó
+	ID        string
+	Name      string
+	Image     string
+	State     string // "running", "exited", … (el State de Docker)
+	Health    string // "healthy", "unhealthy", "starting" o "" si no tiene healthcheck
+	Restarts  int
+	ExitCode  int       // exit code de la última vez que terminó (0 si nunca terminó)
+	StartedAt time.Time // última vez que arrancó; cero si nunca
+	Labels    map[string]string
 }
 
 // Source dice de dónde sale un servicio.
@@ -32,17 +36,32 @@ const (
 	SourceExternal  Source = "external"  // servicio externo declarado en maestro.yaml
 )
 
-// CheckKind es el tipo de check. En la etapa 1 solo existe HTTP, y los checks
-// se guardan pero no se ejecutan.
+// CheckKind es el tipo de check. Un servicio tiene como mucho uno de cada
+// tipo: el tipo identifica al check dentro del servicio.
 type CheckKind string
 
-const CheckHTTP CheckKind = "http"
+const (
+	CheckHTTP CheckKind = "http" // GET a una URL
+	CheckTCP  CheckKind = "tcp"  // conectar a host:puerto y cerrar
+	// CheckPush lo hace un script llamando a /push/<token>; falla si la
+	// llamada no llega a tiempo. Solo se declara en el archivo: el token
+	// es un secreto.
+	CheckPush CheckKind = "push"
+)
 
 // Check es un chequeo declarado para un servicio.
 type Check struct {
 	Kind   CheckKind
-	Target string // URL para HTTP
-	Expect int    // código HTTP esperado; 0 si no se declaró
+	Target string // URL para HTTP, host:puerto para TCP, token para push
+	Expect int    // HTTP: código esperado; 0 si no se declaró (cualquier 2xx)
+	// NoRedirects (HTTP) no sigue las redirecciones: un 3xx es la
+	// respuesta.
+	NoRedirects bool
+	// Interval es cada cuánto se corre (para push, cada cuánto tiene que
+	// llegar la llamada) y Timeout, cuánto se espera la respuesta. Cero es
+	// el valor por defecto de quien los corre.
+	Interval time.Duration
+	Timeout  time.Duration
 }
 
 // FileService es una entrada de "services:" en maestro.yaml, ya leída por
@@ -125,14 +144,16 @@ func New(logger *slog.Logger) *Catalog {
 //	Icon         maestro.icon             homepage.icon
 //	URL          maestro.url              homepage.href
 //	Description  maestro.description      homepage.description
-//	Checks       maestro.check.http (+ maestro.check.http.expect)
+//	Checks       maestro.check.http (+ .expect, .redirects), maestro.check.tcp,
+//	             maestro.check.interval, maestro.check.timeout
 //	Alert        maestro.alert ("true"/"false", strconv.ParseBool)
 //	Ignore       maestro.ignore (ídem)
 //
 // Un servicio ignorado (por label o por archivo) no aparece. Los contenedores
 // con el mismo ID son réplicas de un solo servicio; sus labels se toman de la
 // primera réplica por Name. Una clave maestro.* que no está en la tabla, o un
-// valor inválido (alert "quizás", expect "abc"), se ignora y se registra con
+// valor inválido (alert "quizás", expect "abc", un intervalo que no es una
+// duración de Go), se ignora y se registra con
 // slog en nivel Warn una sola vez por clave. Las claves homepage.*
 // desconocidas se ignoran sin avisar (Homepage tiene muchas, de widgets).
 //
@@ -202,6 +223,8 @@ var etiquetasMaestro = map[string]bool{
 	"maestro.name": true, "maestro.group": true, "maestro.icon": true,
 	"maestro.url": true, "maestro.description": true,
 	"maestro.check.http": true, "maestro.check.http.expect": true,
+	"maestro.check.http.redirects": true, "maestro.check.tcp": true,
+	"maestro.check.interval": true, "maestro.check.timeout": true,
 	"maestro.alert": true, "maestro.ignore": true,
 }
 
@@ -248,16 +271,8 @@ func (c *Catalog) fromContainers(id string, reps []Container, fs FileService) (S
 		if len(fs.Checks) > 0 {
 			s.Checks = slices.Clone(fs.Checks)
 		}
-	} else if target := labels["maestro.check.http"]; target != "" {
-		chk := Check{Kind: CheckHTTP, Target: target}
-		if e, ok := labels["maestro.check.http.expect"]; ok {
-			if n, err := strconv.Atoi(e); err == nil {
-				chk.Expect = n
-			} else {
-				c.warnOnce("maestro.check.http.expect", "valor inválido en label", "value", e)
-			}
-		}
-		s.Checks = []Check{chk}
+	} else {
+		s.Checks = c.labelChecks(labels)
 	}
 
 	s.Alert = len(s.Checks) > 0
@@ -268,6 +283,52 @@ func (c *Catalog) fromContainers(id string, reps []Container, fs FileService) (S
 		s.Alert = *fs.Alert
 	}
 	return s, true
+}
+
+// labelChecks lee los checks de los labels; nil si no declara ninguno.
+func (c *Catalog) labelChecks(labels map[string]string) []Check {
+	var interval, timeout time.Duration
+	if v, ok := labels["maestro.check.interval"]; ok {
+		interval = c.durationLabel("maestro.check.interval", v)
+	}
+	if v, ok := labels["maestro.check.timeout"]; ok {
+		timeout = c.durationLabel("maestro.check.timeout", v)
+	}
+
+	var checks []Check
+	if target := labels["maestro.check.http"]; target != "" {
+		chk := Check{Kind: CheckHTTP, Target: target, Interval: interval, Timeout: timeout}
+		if e, ok := labels["maestro.check.http.expect"]; ok {
+			if n, err := strconv.Atoi(e); err == nil && n >= 100 && n <= 599 {
+				chk.Expect = n
+			} else {
+				c.warnOnce("maestro.check.http.expect", "valor inválido en label", "value", e)
+			}
+		}
+		if r := c.boolLabel(labels, "maestro.check.http.redirects"); r != nil {
+			chk.NoRedirects = !*r
+		}
+		checks = append(checks, chk)
+	}
+	if target := labels["maestro.check.tcp"]; target != "" {
+		if _, port, err := net.SplitHostPort(target); err == nil && port != "" {
+			checks = append(checks, Check{Kind: CheckTCP, Target: target, Interval: interval, Timeout: timeout})
+		} else {
+			c.warnOnce("maestro.check.tcp", "valor inválido en label (va host:puerto)", "value", target)
+		}
+	}
+	return checks
+}
+
+// durationLabel lee una duración de Go ("30s", "5m"); 0 si es inválida o no
+// es positiva (avisa una vez).
+func (c *Catalog) durationLabel(key, v string) time.Duration {
+	d, err := time.ParseDuration(v)
+	if err != nil || d <= 0 {
+		c.warnOnce(key, "valor inválido en label (va una duración: 30s, 5m)", "value", v)
+		return 0
+	}
+	return d
 }
 
 // boolLabel lee un label booleano; nil si falta o es inválido (avisa una vez).
@@ -287,7 +348,10 @@ func (c *Catalog) boolLabel(labels map[string]string, key string) *bool {
 // warnUnknown avisa de las claves maestro.* que no están en la tabla.
 func (c *Catalog) warnUnknown(labels map[string]string) {
 	for k := range labels {
-		if strings.HasPrefix(k, "maestro.") && !etiquetasMaestro[k] {
+		switch {
+		case k == "maestro.check.push":
+			c.warnOnce(k, "el check push va en maestro.yaml, no en labels: su token es un secreto")
+		case strings.HasPrefix(k, "maestro.") && !etiquetasMaestro[k]:
 			c.warnOnce(k, "label maestro.* desconocido, se ignora")
 		}
 	}

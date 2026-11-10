@@ -27,12 +27,26 @@ services:
     unit: AdGuardHome.service
     check:
       http: http://192.168.0.12/
-      expect: 200
+      expect: 200      # sin expect vale cualquier 2xx
+      tcp: 192.168.0.12:53
+      interval: 60s    # por defecto 60s
+      timeout: 10s     # por defecto 10s
 
   router:
     name: Router
     group: Red
-    check: { http: http://192.168.0.1/ }
+    check: { http: https://192.168.0.1/, redirects: false }
+
+  # Check push: el script llama a https://<maestro>/push/<token> (GET o
+  # POST) cada vez que termina bien. Si la llamada no llega en interval
+  # (más una gracia de un 10 %), el servicio cae. El token es un secreto:
+  # openssl rand -hex 16.
+  restic:
+    name: Backups
+    group: Sistema
+    check:
+      push: ${MAESTRO_PUSH_RESTIC}
+      interval: 96h
 
   # Clave "<proyecto>/<servicio>" de compose: pisa valores del servicio
   # descubierto, por encima de sus labels maestro.* y homepage.*.
