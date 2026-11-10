@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"io"
 	"iter"
+	"log/slog"
 	"net/http"
+	"net/http/httptest"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -15,7 +18,9 @@ import (
 	"time"
 
 	"github.com/ImJustDoingMyPart/maestro/internal/agent"
+	"github.com/ImJustDoingMyPart/maestro/internal/auth"
 	"github.com/ImJustDoingMyPart/maestro/internal/catalog"
+	"github.com/ImJustDoingMyPart/maestro/internal/store"
 )
 
 // fakeLogs imita a Docker por contenedor: un historial y, con Follow, un
@@ -54,6 +59,9 @@ func (f *fakeLogs) Logs(ctx context.Context, host, id string, opts agent.LogOpti
 		hist = hist[len(hist)-opts.Tail:]
 	}
 
+	f.mu.Lock()
+	live := f.live[id] // se toma al abrir: un test puede cambiarlo para un arranque nuevo
+	f.mu.Unlock()
 	f.abiertas.Add(1)
 	return func(yield func(agent.LogLine, error) bool) {
 		defer f.abiertas.Add(-1)
@@ -69,7 +77,7 @@ func (f *fakeLogs) Logs(ctx context.Context, host, id string, opts agent.LogOpti
 			select {
 			case <-ctx.Done():
 				return
-			case l, ok := <-f.live[id]:
+			case l, ok := <-live:
 				if !ok || !yield(l, nil) {
 					return
 				}
@@ -247,12 +255,11 @@ func TestStreamUnContenedor(t *testing.T) {
 		t.Errorf("pedidos al agent: %+v", calls)
 	}
 
-	// El contenedor se detiene: evento end y fin del stream.
+	// El contenedor se detiene: evento stopped, y el stream sigue abierto.
 	close(fl.live["id-jellyfin"])
-	if ev := r.next(t); ev.Event != "end" || !strings.Contains(ev.Data, "se detuvo") {
-		t.Errorf("quería end, llegó %+v", ev)
+	if ev := r.next(t); ev.Event != "stopped" || !strings.Contains(ev.Data, "se detuvo") {
+		t.Errorf("quería stopped, llegó %+v", ev)
 	}
-	r.closed(t)
 }
 
 func TestStreamReplicasIntercaladas(t *testing.T) {
@@ -540,5 +547,97 @@ func TestStreamInundacion(t *testing.T) {
 	}
 	if ev := r.next(t); ev.Event != "notice" || !strings.Contains(ev.Data, "omitieron 15") {
 		t.Errorf("quería el aviso de 15 omitidas, llegó %+v", ev)
+	}
+}
+
+// mutableSnapshot es una foto que el test cambia mientras el stream corre.
+type mutableSnapshot struct {
+	mu   sync.Mutex
+	snap Snapshot
+}
+
+func (m *mutableSnapshot) Snapshot() Snapshot {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.snap
+}
+
+func (m *mutableSnapshot) set(s Snapshot) {
+	m.mu.Lock()
+	m.snap = s
+	m.mu.Unlock()
+}
+
+func TestStreamSigueDespuesDeDetenerse(t *testing.T) {
+	old := restartPoll
+	restartPoll = 20 * time.Millisecond
+	t.Cleanup(func() { restartPoll = old })
+
+	started := t0
+	svc := svcWith("jellyfin")
+	svc.Containers[0].StartedAt = started
+	snap := &mutableSnapshot{snap: Snapshot{Services: []catalog.Service{svc}}}
+	fl := &fakeLogs{
+		history: map[string][]agent.LogLine{"id-jellyfin": {line(1, "uno")}},
+		live:    map[string]chan agent.LogLine{"id-jellyfin": make(chan agent.LogLine)},
+	}
+	live := make(chan store.StateEvent, 4)
+	mon := &fakeMonitor{snap: snap.Snapshot(), live: live}
+
+	st, err := store.Open(context.Background(), filepath.Join(t.TempDir(), "t.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { st.Close() })
+	hash, _ := auth.HashPassword("una-contraseña-larga")
+	_ = st.SetPassword(context.Background(), "admin", hash, time.Now())
+	logger := slog.New(slog.DiscardHandler)
+	h, err := newHandler(snap, fl, nil, mon, auth.NewSessions(st, false, logger), logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+	c := loggedIn(t, srv)
+
+	r := openStream(t, context.Background(), c, srv.URL+"/logs/media/jellyfin", "")
+	if l := r.nextLine(t); l.Line != "uno" {
+		t.Fatalf("primera: %+v", l)
+	}
+
+	// Se detiene: stopped, y el cambio de estado llega igual en vivo.
+	close(fl.live["id-jellyfin"])
+	if ev := r.next(t); ev.Event != "stopped" {
+		t.Fatalf("quería stopped, llegó %+v", ev)
+	}
+	live <- store.StateEvent{ID: 1, At: t0.Add(2 * time.Second), From: "up", To: "down", Reason: "jellyfin detenido (exit 137)"}
+	if ev := r.next(t); ev.Event != "state" || !strings.Contains(ev.Data, "exit 137") {
+		t.Fatalf("estado con el contenedor detenido: %+v", ev)
+	}
+
+	// Mientras la foto siga con el arranque viejo, no se retoma nada.
+	time.Sleep(100 * time.Millisecond)
+	if n := len(fl.callsFor("id-jellyfin")); n != 2 {
+		t.Errorf("con la foto vieja se volvió a pedir logs: %d pedidos", n)
+	}
+
+	// Vuelve a arrancar (mismo contenedor, hora nueva): started y siguen
+	// los logs desde la última línea mandada.
+	fl.mu.Lock()
+	fl.live["id-jellyfin"] = make(chan agent.LogLine)
+	fl.mu.Unlock()
+	svc.Containers = []catalog.Container{svc.Containers[0]}
+	svc.Containers[0].StartedAt = started.Add(10 * time.Second)
+	snap.set(Snapshot{Services: []catalog.Service{svc}})
+	if ev := r.next(t); ev.Event != "started" {
+		t.Fatalf("quería started, llegó %+v", ev)
+	}
+	fl.live["id-jellyfin"] <- line(11, "de vuelta")
+	if l := r.nextLine(t); l.Line != "de vuelta" {
+		t.Errorf("después de arrancar: %+v", l)
+	}
+	calls := fl.callsFor("id-jellyfin")
+	if last := calls[len(calls)-1]; !last.opts.Follow || !last.opts.Since.Equal(t0.Add(time.Second)) {
+		t.Errorf("tendría que seguir desde la última línea mandada: %+v", last.opts)
 	}
 }

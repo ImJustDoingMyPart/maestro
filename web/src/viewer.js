@@ -212,6 +212,16 @@ export class Viewer {
     es.onmessage = (e) => this.enqueue(JSON.parse(e.data));
     es.addEventListener("notice", (e) => this.enqueueNotice(JSON.parse(e.data), WARN));
     es.addEventListener("state", (e) => this.enqueueState(JSON.parse(e.data)));
+    // El contenedor se detuvo pero la conexión sigue: llegan los cambios de
+    // estado y, si arranca de nuevo, "started" y las líneas nuevas.
+    es.addEventListener("stopped", (e) => {
+      this.enqueueNotice(JSON.parse(e.data), INFO);
+      this.setStatus("down", "Detenido");
+    });
+    es.addEventListener("started", (e) => {
+      this.enqueueNotice(JSON.parse(e.data), INFO);
+      this.setStatus("up", "En vivo");
+    });
     es.addEventListener("end", (e) => {
       // Sin cerrar, el navegador reconectaría solo a los 3 s.
       es.close();

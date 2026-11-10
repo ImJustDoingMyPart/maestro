@@ -76,7 +76,7 @@ Tocar una tarjeta de la portada lleva a `/services/<id>` (por ejemplo `/services
 ### Logs
 
 - Al abrir llegan las últimas 1000 líneas y después las nuevas, por Server-Sent Events (`GET /logs/<id>`). Si el servicio tiene réplicas, sus líneas van intercaladas por hora y cada una dice de qué contenedor es; un selector deja ver una sola.
-- Si la conexión se corta, el navegador reconecta solo y el stream sigue desde la última línea recibida, sin repetir ni perder. Cuando el contenedor se detiene, el visor lo avisa y ofrece reintentar.
+- Si la conexión se corta, el navegador reconecta solo y el stream sigue desde la última línea recibida, sin repetir ni perder. Cuando el contenedor se detiene, el visor lo avisa y la conexión sigue abierta: llegan los cambios de estado y, cuando el contenedor vuelve a arrancar (el mismo o uno recreado), los logs siguen desde la última línea. Si la lectura se corta por un error, el visor ofrece reintentar.
 - Un contenedor que escribe más de 2000 líneas por segundo no ahoga al navegador: las de más se omiten y se avisa cuántas.
 - El visor guarda las últimas 10 000 líneas y dibuja solo las que se ven. Detecta el nivel de cada línea (`ERROR`, `level=warn`, `"level":"error"`, `[error]`, los niveles numéricos de pino) para filtrar por avisos o errores, busca sin distinguir mayúsculas y saca los códigos de color ANSI.
 - Al subir para leer se pausa el avance automático (mientras tanto guarda hasta 50 000 líneas para que lo que se lee no se borre); el botón del costado vuelve al final. Tocar una línea la muestra entera, con la fecha completa y el JSON indentado.

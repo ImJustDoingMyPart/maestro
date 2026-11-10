@@ -57,8 +57,10 @@ type logEvent struct {
 //
 // Eventos con nombre: "state" (un cambio de estado del servicio, intercalado
 // por hora con las líneas), "notice" (un contenedor no se pudo leer; el resto
-// sigue) y "end" (no queda nada que seguir: los contenedores se
-// detuvieron). Después de "end" el cliente tiene que cerrar el
+// sigue), "stopped" (los contenedores se detuvieron: el stream sigue abierto
+// con los cambios de estado y espera a que vuelvan a arrancar), "started"
+// (arrancaron de nuevo y siguen los logs) y "end" (se cortó la lectura y no
+// hay nada más). Después de "end" el cliente tiene que cerrar el
 // EventSource, o el navegador reconectaría.
 func (s *server) streamLogs(w http.ResponseWriter, r *http.Request) {
 	svc, ok := findService(s.poller.Snapshot(), r.PathValue("id"))
@@ -99,7 +101,7 @@ func (s *server) streamLogs(w http.ResponseWriter, r *http.Request) {
 	// pase en el medio; los repetidos se descartan por ID.
 	states, unsubscribe := s.mon.Subscribe(svc.ID)
 	defer unsubscribe()
-	var lastState int64
+	tl := &timeline{sse: sse, states: states}
 
 	multi := len(svc.Containers) > 1
 	since := make(map[string]time.Time, len(cs)) // por contenedor: desde dónde seguir
@@ -117,13 +119,13 @@ func (s *server) streamLogs(w http.ResponseWriter, r *http.Request) {
 		events := s.stateEvents(ctx, svc.ID, from)
 		for _, l := range lines {
 			for len(events) > 0 && !events[0].At.After(l.TS) {
-				lastState = sse.state(events[0])
+				tl.send(events[0])
 				events = events[1:]
 			}
 			sse.line(l)
 		}
 		for _, e := range events {
-			lastState = sse.state(e)
+			tl.send(e)
 		}
 		for _, l := range lines {
 			since[l.containerID] = later(since[l.containerID], l.TS)
@@ -133,14 +135,114 @@ func (s *server) streamLogs(w http.ResponseWriter, r *http.Request) {
 			since[c.ID] = resume
 		}
 		for _, e := range s.stateEvents(ctx, svc.ID, resume.Add(time.Nanosecond)) {
-			lastState = sse.state(e)
+			tl.send(e)
 		}
 	}
 	if sse.flush() != nil {
 		return
 	}
 
-	s.followLogs(ctx, sse, cs, since, multi, states, lastState)
+	filter := r.URL.Query().Get("container")
+	for {
+		if s.followLogs(ctx, tl, cs, since, multi) {
+			sse.event("end", "Se cortó la lectura de los logs.")
+			_ = sse.flush()
+			return
+		}
+		if ctx.Err() != nil {
+			return
+		}
+		sse.event("stopped", "El contenedor se detuvo. Se sigue esperando a que vuelva a arrancar.")
+		if sse.flush() != nil {
+			return
+		}
+		started := make(map[string]time.Time, len(cs))
+		for _, c := range cs {
+			started[c.ID] = c.StartedAt
+		}
+		var ok bool
+		cs, multi, ok = s.waitStart(ctx, tl, svc.ID, filter, started)
+		if !ok {
+			return
+		}
+		for _, c := range cs {
+			// Un contenedor sin líneas mandadas (nuevo, o uno que no
+			// escribió nada) sigue desde su arranque.
+			if since[c.ID].IsZero() && !c.StartedAt.IsZero() {
+				since[c.ID] = c.StartedAt.Add(-time.Second)
+			}
+		}
+		sse.event("started", "El contenedor arrancó de nuevo.")
+		if sse.flush() != nil {
+			return
+		}
+	}
+}
+
+// restartPoll es cada cuánto se mira la foto del poller esperando que un
+// contenedor detenido vuelva a arrancar. Variable para los tests.
+var restartPoll = 2 * time.Second
+
+// timeline manda los cambios de estado sin repetir: el mismo evento puede
+// llegar del historial y de la suscripción.
+type timeline struct {
+	sse       *sseWriter
+	states    <-chan store.StateEvent
+	lastState int64
+}
+
+func (t *timeline) send(e store.StateEvent) {
+	if e.ID != 0 && e.ID <= t.lastState {
+		return
+	}
+	t.lastState = max(t.lastState, e.ID)
+	t.sse.state(e)
+}
+
+// waitStart espera, mandando los cambios de estado y el keepalive, a que
+// algún contenedor del servicio (los que pasan filter, si no es vacío)
+// arranque: uno que no estaba en started o con una hora de arranque
+// posterior. Devuelve los que corren y si el servicio tiene réplicas; ok
+// es false si el navegador se fue. Mientras el poller no vea la detención,
+// la foto sigue mostrando el arranque viejo, que no cuenta.
+func (s *server) waitStart(ctx context.Context, tl *timeline, id, filter string, started map[string]time.Time) (cs []catalog.Container, multi, ok bool) {
+	ticker := time.NewTicker(restartPoll)
+	defer ticker.Stop()
+	lastWrite := time.Now()
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, false, false
+		case e := <-tl.states:
+			tl.send(e)
+		case <-ticker.C:
+			svc, found := findService(s.poller.Snapshot(), id)
+			if found {
+				var running []catalog.Container
+				fresh := false
+				for _, c := range svc.Containers {
+					if (filter != "" && c.Name != filter) || c.State != "running" {
+						continue
+					}
+					running = append(running, c)
+					if prev, seen := started[c.ID]; !seen || c.StartedAt.After(prev) {
+						fresh = true
+					}
+				}
+				if fresh {
+					return running, len(svc.Containers) > 1, true
+				}
+			}
+			if time.Since(lastWrite) < keepalive {
+				continue
+			}
+			tl.sse.comment("keepalive")
+		}
+		if tl.sse.flush() != nil {
+			return nil, false, false
+		}
+		lastWrite = time.Now()
+	}
 }
 
 // stateEvents lee los cambios de estado de un servicio desde from. Si la
@@ -203,13 +305,17 @@ func (s *server) initialLogs(ctx context.Context, cs []catalog.Container, multi 
 
 // followLogs sigue a todos los contenedores a la vez hasta que se corte el
 // pedido o terminen todos, y manda lo que llega en tandas.
-//
-// states trae los cambios de estado en vivo; los de ID hasta lastState ya
-// se mandaron.
-func (s *server) followLogs(ctx context.Context, sse *sseWriter, cs []catalog.Container, since map[string]time.Time, multi bool, states <-chan store.StateEvent, lastState int64) {
+// Manda también los cambios de estado que llegan por tl. Anota en since la
+// hora de la última línea mandada de cada contenedor, para seguir desde ahí
+// si vuelve a arrancar. Devuelve true si la lectura se cortó por un error
+// (no porque los contenedores se detuvieron, ni porque el navegador se
+// fue).
+func (s *server) followLogs(ctx context.Context, tl *timeline, cs []catalog.Container, since map[string]time.Time, multi bool) bool {
+	sse := tl.sse
 	type msg struct {
-		ev     *logEvent // nil si es un aviso
-		notice string
+		ev          *logEvent // nil si es un aviso
+		containerID string
+		notice      string
 	}
 	ch := make(chan msg)
 	var (
@@ -244,7 +350,7 @@ func (s *server) followLogs(ctx context.Context, sse *sseWriter, cs []catalog.Co
 					return true
 				}
 				ev := tag(c, l, multi).logEvent
-				return send(msg{ev: &ev})
+				return send(msg{ev: &ev, containerID: c.ID})
 			})
 			if err != nil && ctx.Err() == nil {
 				failed.Store(true)
@@ -275,26 +381,19 @@ func (s *server) followLogs(ctx context.Context, sse *sseWriter, cs []catalog.Co
 		}
 		if ok {
 			sse.line(taggedEvent{logEvent: *m.ev})
+			since[m.containerID] = later(since[m.containerID], m.ev.TS)
 		}
 	}
 	for {
 		select {
 		case <-ctx.Done():
-			return
+			return false
 		case <-done:
-			if failed.Load() {
-				sse.event("end", "Se cortó la lectura de los logs.")
-			} else {
-				sse.event("end", "El contenedor se detuvo.")
-			}
-			_ = sse.flush()
-			return
-		case e := <-states:
-			if e.ID != 0 && e.ID <= lastState {
-				continue
-			}
-			lastState = max(lastState, e.ID)
-			sse.state(e)
+			// Lo que quedó en el canal ya se mandó: los que escriben en ch
+			// terminaron antes de cerrar done.
+			return failed.Load()
+		case e := <-tl.states:
+			tl.send(e)
 		case now := <-ticker.C:
 			if n := lim.expired(now); n > 0 {
 				skippedNotice(n)
@@ -319,7 +418,7 @@ func (s *server) followLogs(ctx context.Context, sse *sseWriter, cs []catalog.Co
 			}
 		}
 		if sse.flush() != nil {
-			return // el navegador se fue; el defer cancel() corta a los agents
+			return false // el navegador se fue; el defer cancel() corta a los agents
 		}
 		lastWrite = time.Now()
 	}
