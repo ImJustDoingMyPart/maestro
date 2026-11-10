@@ -1,0 +1,99 @@
+{{define "scripts"}}{{if and .Stack (not .Stack.Err)}}<script src="/static/gen/compose.js" defer></script>{{end}}{{end}}
+
+{{define "content"}}
+{{with .Stack}}
+<header class="transparent service-header">
+  <nav>
+    <a class="button circle transparent" href="{{if .From}}{{.From.Href}}{{else}}/{{end}}" title="Volver" aria-label="Volver"><i>arrow_back</i></a>
+    <span class="icon-badge secondary-container m l"><i class="large">stacks</i></span>
+    <div class="max">
+      <h5 class="small">{{if .From}}{{.From.Name}}{{else}}{{.Project}}{{end}}</h5>
+      <div class="small-text secondary-text">stack {{.Project}} · {{.Host}}</div>
+    </div>
+  </nav>
+</header>
+
+<div class="tabs left-align">
+  {{if .From}}<a href="{{.From.Href}}"><i>history</i><span>Actividad</span></a>{{end}}
+  <a class="active"><i>stacks</i><span>Compose</span></a>
+</div>
+
+{{if .Err}}
+<article class="small-round no-elevate surface-container-low center-align">
+  <p>{{.Err}}</p>
+  <a class="button" href="/">Volver a Servicios</a>
+</article>
+{{else}}
+<section class="compose" data-base="{{.Base}}" data-run="{{.Run}}" data-run-name="{{.RunName}}"{{if .Busy}} data-busy{{end}}>
+
+  <article class="small-round no-elevate surface-container-low stack-actions">
+    <nav class="wrap small-space">
+      <button class="small" data-action="up" title="docker compose up -d"><i>play_arrow</i><span>Up</span></button>
+      <button class="small tonal" data-action="restart" title="docker compose restart"><i>restart_alt</i><span>Restart</span></button>
+      <button class="small tonal" data-action="pull" title="docker compose pull"><i>download</i><span>Pull</span></button>
+      <button class="small border error-border error-text" data-action="down" title="docker compose down"><i>stop</i><span>Down</span></button>
+    </nav>
+    <p class="small-text secondary-text no-margin">
+      {{if gt (len .Services) 1}}Los botones actúan sobre el stack entero, que tiene {{len .Services}} servicios:
+      {{range $i, $s := .Services}}{{if $i}}, {{end}}<a class="link" href="{{$s.Href}}">{{$s.Name}}</a>{{end}}.
+      {{else if not .Services}}El stack no tiene contenedores: está bajado o nunca se levantó.
+      {{else}}Los botones actúan sobre el stack {{.Project}}.{{end}}
+    </p>
+    <p class="small-text no-margin compose-busy" hidden>Hay una operación en curso en este stack.</p>
+  </article>
+
+  <section class="log-viewer run-output" hidden>
+    <h6 class="small run-title">Salida</h6>
+    {{template "logviewer"}}
+  </section>
+
+  <div class="tabs left-align file-tabs" role="tablist">
+    <a class="active" data-file="compose" role="tab" aria-selected="true"><span>{{base .Compose.Path}}</span></a>
+    <a data-file="env" role="tab" aria-selected="false"><span>.env</span></a>
+  </div>
+
+  <div class="editor-host">
+    <textarea class="editor-source" data-file="compose" data-hash="{{.Compose.Hash}}" data-path="{{.Compose.Path}}" readonly aria-label="{{base .Compose.Path}}">{{.Compose.Content}}</textarea>
+    <textarea class="editor-source" data-file="env" data-hash="{{.Env.Hash}}" data-path="{{.Env.Path}}" readonly hidden aria-label=".env">{{.Env.Content}}</textarea>
+    <noscript><p>El editor necesita JavaScript.</p></noscript>
+  </div>
+
+  <nav class="wrap small-space editor-bar">
+    <span class="small-text secondary-text max editor-path"></span>
+    <button class="small transparent" data-revert disabled><i>undo</i><span>Descartar</span></button>
+    <button class="small" data-save disabled><i>save</i><span>Guardar</span></button>
+  </nav>
+
+  <article class="small-round no-elevate compose-msg" hidden role="status">
+    <nav>
+      <i class="msg-icon"></i>
+      <div class="max msg-text"></div>
+      <button class="circle transparent small" data-dismiss aria-label="Cerrar"><i>close</i></button>
+    </nav>
+    <pre class="msg-output" hidden></pre>
+  </article>
+</section>
+
+<dialog class="diff-dialog large-width">
+  <h6 class="small">Guardar <span class="diff-file"></span></h6>
+  <p class="small-text secondary-text">Antes de escribir se validó con <code>docker compose config</code>. Si la carpeta es un repo de git, se hace un commit solo de este archivo.</p>
+  <pre class="diff"></pre>
+  <nav class="right-align">
+    <button class="transparent" data-cancel>Cancelar</button>
+    <button data-confirm><i>save</i><span>Guardar</span></button>
+  </nav>
+</dialog>
+
+<dialog class="down-dialog">
+  <h6 class="small">¿Bajar el stack {{.Project}}?</h6>
+  <p>docker compose down detiene y borra los contenedores{{if gt (len .Services) 1}} de los {{len .Services}} servicios{{end}}. Los volúmenes y los datos quedan. Se vuelve a levantar con Up.</p>
+  <nav class="right-align">
+    <button class="transparent" data-cancel>Cancelar</button>
+    <button class="error" data-confirm><i>stop</i><span>Down</span></button>
+  </nav>
+</dialog>
+
+{{template "logdetail"}}
+{{end}}
+{{end}}
+{{end}}

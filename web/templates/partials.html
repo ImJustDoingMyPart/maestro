@@ -1,0 +1,38 @@
+{{/* Partes que comparten varias páginas. */}}
+
+{{/* Cuerpo del visor de logs (web/src/viewer.js). Va dentro de un
+     <section class="log-viewer">, y la página tiene que incluir
+     "logdetail" una vez. */}}
+{{define "logviewer"}}
+  <nav class="log-toolbar wrap small-space">
+    <div class="field small prefix round border no-margin log-search">
+      <i>search</i>
+      <input type="search" placeholder="Buscar" aria-label="Buscar en los logs" autocomplete="off">
+    </div>
+    <nav class="group connected log-levels" role="radiogroup" aria-label="Nivel">
+      <button class="left-round small active" data-level="all">Todo</button>
+      <button class="no-round small" data-level="warn">Avisos</button>
+      <button class="right-round small" data-level="error">Errores</button>
+    </nav>
+    <span class="chip no-border surface-container log-status" role="status"><span class="dot unknown"></span><span>Conectando…</span></span>
+  </nav>
+  <div class="log-scroll" tabindex="0" aria-label="Logs">
+    <div class="log-spacer"></div>
+    <div class="log-window"></div>
+  </div>
+  <button class="log-bottom extend circle small-elevate" hidden aria-label="Ir al final">
+    <i>arrow_downward</i><span>Ir al final</span>
+  </button>
+{{end}}
+
+{{define "logdetail"}}
+<dialog class="bottom log-detail">
+  <nav>
+    <h6 class="max small">Línea</h6>
+    <button class="circle transparent" data-copy title="Copiar" aria-label="Copiar"><i>content_copy</i></button>
+    <button class="circle transparent" data-close title="Cerrar" aria-label="Cerrar"><i>close</i></button>
+  </nav>
+  <div class="small-text secondary-text log-detail-meta"></div>
+  <pre class="log-detail-text"></pre>
+</dialog>
+{{end}}

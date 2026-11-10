@@ -250,3 +250,106 @@ body.dark  { --status-warn: #ffb74d; }
   max-block-size: 60vh;
   overflow: auto;
 }
+
+/* Pestaña Compose */
+
+.stack-actions {
+  margin-block-start: 0.75rem;
+  padding: 0.75rem 1rem;
+}
+.stack-actions > nav {
+  margin-block-end: 0.5rem;
+}
+.compose-busy {
+  color: var(--status-warn);
+}
+
+.run-output {
+  margin-block-end: 1rem;
+}
+.run-output[hidden] {
+  display: none;
+}
+.run-output .run-title {
+  margin: 0.5rem 0 0;
+}
+/* La salida de una acción es corta: alto fijo, no hasta el borde. */
+.run-output .log-scroll {
+  height: 16rem;
+}
+
+.file-tabs a.dirty span::after {
+  content: " •";
+  color: var(--primary);
+}
+.file-tabs a {
+  cursor: pointer;
+}
+
+.editor-host {
+  margin-block-start: 0.5rem;
+}
+.editor-host .cm-editor {
+  height: min(65vh, 48rem);
+}
+.editor-host textarea {
+  width: 100%;
+  height: 50vh;
+  font-family: ui-monospace, monospace;
+}
+
+.editor-bar {
+  margin-block: 0.5rem;
+}
+.editor-path {
+  overflow-wrap: anywhere;
+}
+
+.compose-msg {
+  padding: 0.5rem 0.75rem;
+  margin-block-end: 1rem;
+  background: var(--surface-container);
+}
+.compose-msg[hidden] {
+  display: none;
+}
+.compose-msg.msg-ok .msg-icon   { color: var(--status-up); }
+.compose-msg.msg-warn .msg-icon { color: var(--status-warn); }
+.compose-msg.msg-info .msg-icon { color: var(--primary); }
+.compose-msg.msg-error {
+  background: var(--error-container);
+  color: var(--on-error-container);
+}
+.compose-msg .msg-output {
+  margin: 0.5rem 0 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.25rem;
+  background: color-mix(in srgb, var(--on-error-container) 10%, transparent);
+  color: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.8125rem;
+}
+
+.diff-dialog {
+  max-width: min(56rem, 100vw - 2rem);
+}
+.diff {
+  max-height: 60vh;
+  overflow: auto;
+  margin: 0.5rem 0 1rem;
+  padding: 0.5rem 0;
+  border-radius: 0.5rem;
+  background: var(--surface-container-lowest);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+.diff span {
+  display: block;
+  padding-inline: 0.75rem;
+  white-space: pre;
+}
+.diff .diff-add  { background: color-mix(in srgb, var(--status-up) 18%, transparent); }
+.diff .diff-del  { background: color-mix(in srgb, var(--error) 18%, transparent); }
+.diff .diff-hunk { color: var(--on-surface-variant); background: var(--surface-container); }
+.diff .diff-meta { color: var(--on-surface-variant); font-style: italic; }

@@ -2,6 +2,7 @@ package hub
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"iter"
 	"log/slog"
@@ -22,6 +23,10 @@ import (
 type agentClient interface {
 	Containers(ctx context.Context) ([]agent.Container, error)
 	Logs(ctx context.Context, id string, opts agent.LogOptions) (iter.Seq2[agent.LogLine, error], error)
+	StackFiles(ctx context.Context, project string) (agent.StackFiles, error)
+	CheckStackFile(ctx context.Context, project, name, content string) (agent.CheckResult, error)
+	WriteStackFile(ctx context.Context, project, name, content, hash string) (agent.WriteResult, error)
+	StackAction(ctx context.Context, project, action string) (iter.Seq2[agent.ActionEvent, error], error)
 }
 
 // HostStatus es cómo le fue al último pedido a un agent.
@@ -102,6 +107,53 @@ func (p *Poller) Logs(ctx context.Context, host, containerID string, opts agent.
 		return nil, fmt.Errorf("el host %q no tiene agent", host)
 	}
 	return a.Logs(ctx, containerID, opts)
+}
+
+// errNoAgent es un host que no está en la config.
+var errNoAgent = errors.New("el host no tiene agent")
+
+func (p *Poller) agent(host string) (agentClient, error) {
+	a, ok := p.agents[host]
+	if !ok {
+		return nil, fmt.Errorf("%w: %q", errNoAgent, host)
+	}
+	return a, nil
+}
+
+// StackFiles lee los archivos de un stack del host.
+func (p *Poller) StackFiles(ctx context.Context, host, project string) (agent.StackFiles, error) {
+	a, err := p.agent(host)
+	if err != nil {
+		return agent.StackFiles{}, err
+	}
+	return a.StackFiles(ctx, project)
+}
+
+// CheckStackFile valida un archivo de un stack del host sin escribirlo.
+func (p *Poller) CheckStackFile(ctx context.Context, host, project, name, content string) (agent.CheckResult, error) {
+	a, err := p.agent(host)
+	if err != nil {
+		return agent.CheckResult{}, err
+	}
+	return a.CheckStackFile(ctx, project, name, content)
+}
+
+// WriteStackFile escribe un archivo de un stack del host.
+func (p *Poller) WriteStackFile(ctx context.Context, host, project, name, content, hash string) (agent.WriteResult, error) {
+	a, err := p.agent(host)
+	if err != nil {
+		return agent.WriteResult{}, err
+	}
+	return a.WriteStackFile(ctx, project, name, content, hash)
+}
+
+// StackAction corre una acción de compose en un stack del host.
+func (p *Poller) StackAction(ctx context.Context, host, project, action string) (iter.Seq2[agent.ActionEvent, error], error) {
+	a, err := p.agent(host)
+	if err != nil {
+		return nil, err
+	}
+	return a.StackAction(ctx, project, action)
 }
 
 // Snapshot devuelve la última foto. Se puede llamar desde cualquier goroutine.

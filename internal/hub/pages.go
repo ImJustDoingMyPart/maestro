@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
+	"path"
 )
 
 // State es el semáforo de un servicio en la portada.
@@ -76,7 +77,8 @@ type pageData struct {
 	Demo    bool
 	Live    bool // la grilla se refresca sola (no en el demo)
 
-	Svc *serviceDetail // página de un servicio; nil si no existe
+	Svc   *serviceDetail // página de un servicio; nil si no existe
+	Stack *stackPage     // pestaña Compose de un stack
 
 	Groups       []group
 	Summary      summary
@@ -88,15 +90,20 @@ type pageData struct {
 	Username string
 }
 
-// pages tiene una plantilla compilada por página: cada una es layout.html más
-// el archivo de la página, que define el bloque "content". Se compilan por
+// funcs son las funciones que pueden usar las plantillas.
+var funcs = template.FuncMap{
+	"base": path.Base, // nombre de un archivo sin la carpeta
+}
+
+// pages tiene una plantilla compilada por página: cada una es layout.html y
+// partials.html más el archivo de la página, que define el bloque "content". Se compilan por
 // separado porque todas definen "content" y en un mismo conjunto chocarían.
 type pages map[string]*template.Template
 
 func parsePages(tfs fs.FS, names ...string) (pages, error) {
 	p := make(pages, len(names))
 	for _, name := range names {
-		t, err := template.ParseFS(tfs, "layout.html", name+".html")
+		t, err := template.New(name).Funcs(funcs).ParseFS(tfs, "layout.html", "partials.html", name+".html")
 		if err != nil {
 			return nil, fmt.Errorf("plantilla %s: %w", name, err)
 		}

@@ -48,7 +48,7 @@ func Serve(ctx context.Context, opts Options, logger *slog.Logger) error {
 	poller := NewPoller(cfg, logger)
 	go poller.Run(ctx)
 
-	h, err := newHandler(poller, poller, auth.NewSessions(st, !opts.Dev, logger), logger)
+	h, err := newHandler(poller, poller, poller, auth.NewSessions(st, !opts.Dev, logger), logger)
 	if err != nil {
 		return err
 	}
@@ -63,17 +63,19 @@ type snapshotter interface {
 type server struct {
 	poller   snapshotter
 	logs     logOpener
+	stacks   stackClient
+	runs     *runStore
 	sessions *auth.Sessions
 	pages    pages
 	logger   *slog.Logger
 }
 
-func newHandler(poller snapshotter, logs logOpener, sessions *auth.Sessions, logger *slog.Logger) (http.Handler, error) {
-	p, err := parsePages(web.Templates, "services", "service", "hardware", "login")
+func newHandler(poller snapshotter, logs logOpener, stacks stackClient, sessions *auth.Sessions, logger *slog.Logger) (http.Handler, error) {
+	p, err := parsePages(web.Templates, "services", "service", "stack", "hardware", "login")
 	if err != nil {
 		return nil, err
 	}
-	s := &server{poller: poller, logs: logs, sessions: sessions, pages: p, logger: logger}
+	s := &server{poller: poller, logs: logs, stacks: stacks, runs: newRunStore(), sessions: sessions, pages: p, logger: logger}
 
 	mux := http.NewServeMux()
 	mux.Handle("GET /static/", http.StripPrefix("/static/", staticHandler()))
@@ -91,6 +93,14 @@ func newHandler(poller snapshotter, logs logOpener, sessions *auth.Sessions, log
 	// /services/<id>/logs, "a/logs" sería ambiguo.
 	private.HandleFunc("GET /services/{id...}", s.servicePage)
 	private.HandleFunc("GET /logs/{id...}", s.streamLogs)
+	// Un stack se nombra por host y proyecto, no por servicio: después de
+	// un down no le quedan contenedores ni servicios, y hay que poder
+	// levantarlo de nuevo.
+	private.HandleFunc("GET /stacks/{host}/{project}", s.stackPage)
+	private.HandleFunc("POST /stacks/{host}/{project}/files/{name}/check", s.checkStackFile)
+	private.HandleFunc("POST /stacks/{host}/{project}/files/{name}", s.saveStackFile)
+	private.HandleFunc("POST /stacks/{host}/{project}/actions/{action}", s.startAction)
+	private.HandleFunc("GET /runs/{id}", s.streamRun)
 	mux.Handle("/", sessions.RequireLogin(private))
 
 	// Rechaza POST (y demás métodos no seguros) que vengan de otro origen:

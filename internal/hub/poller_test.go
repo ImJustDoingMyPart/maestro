@@ -31,6 +31,22 @@ func (f *fakeAgent) Logs(context.Context, string, agent.LogOptions) (iter.Seq2[a
 	return nil, errors.New("fakeAgent no tiene logs")
 }
 
+func (f *fakeAgent) StackFiles(context.Context, string) (agent.StackFiles, error) {
+	return agent.StackFiles{}, errors.New("fakeAgent no tiene stacks")
+}
+
+func (f *fakeAgent) CheckStackFile(context.Context, string, string, string) (agent.CheckResult, error) {
+	return agent.CheckResult{}, errors.New("fakeAgent no tiene stacks")
+}
+
+func (f *fakeAgent) WriteStackFile(context.Context, string, string, string, string) (agent.WriteResult, error) {
+	return agent.WriteResult{}, errors.New("fakeAgent no tiene stacks")
+}
+
+func (f *fakeAgent) StackAction(context.Context, string, string) (iter.Seq2[agent.ActionEvent, error], error) {
+	return nil, errors.New("fakeAgent no tiene stacks")
+}
+
 func (f *fakeAgent) set(cs []agent.Container, err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -97,7 +113,7 @@ func TestPollerAgentQueFallaYVuelve(t *testing.T) {
 }
 
 func TestPollerSobreviveAUnPanico(t *testing.T) {
-	p := newPoller(map[string]agentClient{"vm": panicAgent{}}, nil, slog.New(slog.DiscardHandler))
+	p := newPoller(map[string]agentClient{"vm": panicAgent{&fakeAgent{}}}, nil, slog.New(slog.DiscardHandler))
 	p.safePoll(context.Background()) // no tiene que propagar el pánico
 	snap := p.Snapshot()
 	if snap.HostOK("vm") || len(snap.Hosts) != 1 || !strings.Contains(snap.Hosts[0].Err, "boom") {
@@ -105,7 +121,8 @@ func TestPollerSobreviveAUnPanico(t *testing.T) {
 	}
 }
 
-type panicAgent struct{}
+// panicAgent toma de fakeAgent los métodos que no redefine.
+type panicAgent struct{ *fakeAgent }
 
 func (panicAgent) Containers(context.Context) ([]agent.Container, error) { panic("boom") }
 

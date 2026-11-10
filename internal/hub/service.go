@@ -19,6 +19,7 @@ type serviceDetail struct {
 	Source      string // de dónde sale, en palabras
 	Host        string
 	Containers  []containerRow
+	StackURL    string // pestaña Compose; vacío si no es de compose
 	LogsURL     string // vacío si el servicio no tiene logs que mostrar
 	NoLogs      string // por qué no hay logs, si LogsURL está vacío
 }
@@ -59,6 +60,7 @@ func detail(svc catalog.Service, snap Snapshot) serviceDetail {
 	switch svc.Source {
 	case catalog.SourceCompose:
 		d.Source = "compose · " + svc.Project
+		d.StackURL = stackPath(svc.Host, svc.Project) + "?svc=" + url.QueryEscape(svc.ID)
 	case catalog.SourceContainer:
 		d.Source = "contenedor suelto"
 	case catalog.SourceSystemd:
