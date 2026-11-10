@@ -136,3 +136,36 @@ func TestStreamConCambiosDeEstado(t *testing.T) {
 		t.Errorf("en vivo: %+v", ev)
 	}
 }
+
+func TestFragmentoDeEstado(t *testing.T) {
+	snap := Snapshot{
+		Hosts: []HostStatus{{Name: "vm", OK: true}},
+		Services: []catalog.Service{{ID: "a/parado", Source: catalog.SourceCompose, Name: "Parado", Host: "vm",
+			Containers: []catalog.Container{{Name: "parado", State: "exited", ExitCode: 1}}}},
+	}
+	srv := testServer(t, snap)
+	c := loggedIn(t, srv)
+
+	res, _ := c.Get(srv.URL + "/services/a/parado")
+	b := body(t, res)
+	if !strings.Contains(b, `hx-get="/fragments/service/a/parado"`) || strings.Contains(b, "hx-swap-oob") {
+		t.Error("la página tiene que pedir el fragmento y no llevar oob")
+	}
+
+	res, _ = c.Get(srv.URL + "/fragments/service/a/parado")
+	b = body(t, res)
+	for _, want := range []string{`id="svc-live"`, "parado detenido (exit 1)", `id="svc-status"`, `hx-swap-oob="true"`, "Caído"} {
+		if !strings.Contains(b, want) {
+			t.Errorf("el fragmento no tiene %q", want)
+		}
+	}
+	if strings.Contains(b, "<html") {
+		t.Error("el fragmento trae la página entera")
+	}
+
+	res, _ = c.Get(srv.URL + "/fragments/service/no/existe")
+	res.Body.Close()
+	if res.StatusCode != http.StatusNotFound {
+		t.Errorf("servicio inexistente = %d", res.StatusCode)
+	}
+}

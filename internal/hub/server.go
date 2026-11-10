@@ -118,6 +118,7 @@ func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon moni
 	private.HandleFunc("GET /services/{id...}", s.servicePage)
 	private.HandleFunc("GET /logs/{id...}", s.streamLogs)
 	private.HandleFunc("GET /fragments/checks/{id...}", s.checksFragment)
+	private.HandleFunc("GET /fragments/service/{id...}", s.liveFragment)
 	// Un stack se nombra por host y proyecto, no por servicio: después de
 	// un down no le quedan contenedores ni servicios, y hay que poder
 	// levantarlo de nuevo.

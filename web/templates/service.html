@@ -10,10 +10,7 @@
       <h5 class="small">{{.Name}}</h5>
       <div class="small-text secondary-text">{{.Description}}</div>
     </div>
-    <span class="status {{.State}}" title="{{.State.Label}}">
-      <span class="dot {{.State}}"></span>
-      <span class="small-text">{{.State.Label}}</span>
-    </span>
+    {{template "svcstatus" .}}
     {{if .URL}}
     <a class="button transparent small m l" href="{{.URL}}" target="_blank" rel="noopener">
       <span>Abrir</span>
@@ -23,28 +20,7 @@
   </nav>
 </header>
 
-<nav class="wrap small-space service-facts">
-  <span class="chip no-border surface-container"><i>category</i><span>{{.Source}}</span></span>
-  {{if .Host}}<span class="chip no-border surface-container"><i>dns</i><span>{{.Host}}</span></span>{{end}}
-  {{range .Containers}}
-  <span class="chip no-border surface-container" title="{{.Image}}">
-    <span class="dot {{if eq .State "running"}}{{if eq .Health "unhealthy"}}down{{else}}up{{end}}{{else}}down{{end}}"></span>
-    <span>{{.Name}} · {{.State}}{{if .Health}} ({{.Health}}){{end}}{{if .Restarts}} · {{.Restarts}} reinicios{{end}}</span>
-  </span>
-  {{end}}
-  {{if .URL}}<a class="chip no-border surface-container s" href="{{.URL}}" target="_blank" rel="noopener"><i>open_in_new</i><span>Abrir</span></a>{{end}}
-</nav>
-
-{{if and .Reasons (ne .State "up")}}
-<article class="small-round no-elevate state-reasons {{.State}}">
-  <nav>
-    <i>{{if eq .State "down"}}error{{else if eq .State "degraded"}}warning{{else}}help{{end}}</i>
-    <div class="max">
-      {{range .Reasons}}<div>{{.}}</div>{{end}}
-    </div>
-  </nav>
-</article>
-{{end}}
+{{template "live" .}}
 
 {{if .ChecksURL}}{{template "checks" $}}{{end}}
 
@@ -115,4 +91,43 @@
   {{end}}
 </section>
 {{end}}
+{{end}}
+
+{{/* Semáforo de la cabecera. En el fragmento "live" va con
+     hx-swap-oob: htmx lo reemplaza en su lugar, fuera del div que pidió. */}}
+{{define "svcstatus"}}
+<span id="svc-status" class="status {{.State}}" title="{{.State.Label}}"{{if .OOB}} hx-swap-oob="true"{{end}}>
+  <span class="dot {{.State}}"></span>
+  <span class="small-text">{{.State.Label}}</span>
+</span>
+{{end}}
+
+{{/* Contenedores y motivos del estado: htmx lo vuelve a pedir cada 15 s,
+     como la portada. Recibe el serviceDetail. */}}
+{{define "live"}}
+<div id="svc-live" hx-get="{{.LiveURL}}" hx-trigger="every 15s" hx-swap="outerHTML">
+<nav class="wrap small-space service-facts">
+  <span class="chip no-border surface-container"><i>category</i><span>{{.Source}}</span></span>
+  {{if .Host}}<span class="chip no-border surface-container"><i>dns</i><span>{{.Host}}</span></span>{{end}}
+  {{range .Containers}}
+  <span class="chip no-border surface-container" title="{{.Image}}">
+    <span class="dot {{if eq .State "running"}}{{if eq .Health "unhealthy"}}down{{else}}up{{end}}{{else}}down{{end}}"></span>
+    <span>{{.Name}} · {{.State}}{{if .Health}} ({{.Health}}){{end}}{{if .Restarts}} · {{.Restarts}} reinicios{{end}}</span>
+  </span>
+  {{end}}
+  {{if .URL}}<a class="chip no-border surface-container s" href="{{.URL}}" target="_blank" rel="noopener"><i>open_in_new</i><span>Abrir</span></a>{{end}}
+</nav>
+
+{{if and .Reasons (ne .State "up")}}
+<article class="small-round no-elevate state-reasons {{.State}}">
+  <nav>
+    <i>{{if eq .State "down"}}error{{else if eq .State "degraded"}}warning{{else}}help{{end}}</i>
+    <div class="max">
+      {{range .Reasons}}<div>{{.}}</div>{{end}}
+    </div>
+  </nav>
+</article>
+{{end}}
+</div>
+{{if .OOB}}{{template "svcstatus" .}}{{end}}
 {{end}}

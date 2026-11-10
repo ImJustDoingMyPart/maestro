@@ -159,6 +159,12 @@ func (p pages) renderCode(w http.ResponseWriter, logger *slog.Logger, code int, 
 // renderFragment ejecuta solo el bloque block de la página, sin el layout:
 // es lo que htmx pide para reemplazar una parte.
 func (p pages) renderFragment(w http.ResponseWriter, logger *slog.Logger, page, block string, data pageData) {
+	p.renderFragmentData(w, logger, page, block, data)
+}
+
+// renderFragmentData es renderFragment para un bloque que no recibe
+// pageData.
+func (p pages) renderFragmentData(w http.ResponseWriter, logger *slog.Logger, page, block string, data any) {
 	t, ok := p[page]
 	if !ok {
 		logger.Error("página inexistente", "page", page)

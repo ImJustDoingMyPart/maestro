@@ -25,6 +25,8 @@ type serviceDetail struct {
 	LogsURL     string // vacío si el servicio no tiene logs que mostrar
 	NoLogs      string // por qué no hay logs, si LogsURL está vacío
 	ChecksURL   string // fragmento con el historial de checks; vacío si no tiene
+	LiveURL     string // fragmento con contenedores, motivos y semáforo
+	OOB         bool   // se arma para el fragmento: el semáforo va con hx-swap-oob
 	Checks      []checkPanel
 	// Events son los cambios de estado recientes, para un servicio sin logs
 	// (la línea de tiempo de los que tienen logs va por el visor).
@@ -71,6 +73,7 @@ func detail(svc catalog.Service, st status.Status) serviceDetail {
 		State:       State(st.State),
 		Reasons:     st.Reasons,
 		Host:        svc.Host,
+		LiveURL:     "/fragments/service/" + escapeID(svc.ID),
 	}
 	switch svc.Source {
 	case catalog.SourceCompose:
@@ -108,4 +111,18 @@ func escapeID(id string) string {
 		parts[i] = url.PathEscape(p)
 	}
 	return strings.Join(parts, "/")
+}
+
+// liveFragment atiende /fragments/service/{id...}: contenedores, motivos y
+// el semáforo de la cabecera, que la página vuelve a pedir cada 15 s. Si el
+// servicio ya no existe da 404, y htmx deja lo que había.
+func (s *server) liveFragment(w http.ResponseWriter, r *http.Request) {
+	svc, ok := findService(s.poller.Snapshot(), r.PathValue("id"))
+	if !ok {
+		http.Error(w, "servicio inexistente", http.StatusNotFound)
+		return
+	}
+	d := detail(svc, s.mon.Status(svc.ID))
+	d.OOB = true
+	s.pages.renderFragmentData(w, s.logger, "service", "live", d)
 }
