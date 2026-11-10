@@ -46,6 +46,14 @@ type serviceCard struct {
 	URL         string
 	State       State
 	Reason      string // motivo principal del estado; vacío si está arriba
+	Group       string // "" va a "Otros"
+	// Key es la clave para ocultarla ("service:<id>" o "stack:<host>/<proyecto>");
+	// vacía en el demo, que no oculta nada.
+	Key string
+	// Members son los servicios de una tarjeta de stack; vacío en la de un
+	// servicio.
+	Members   []memberRow
+	StackHref string // pestaña Compose del stack
 }
 
 type group struct {
@@ -90,6 +98,8 @@ type pageData struct {
 
 	Groups       []group
 	Summary      summary
+	HiddenCount  int         // cuántas tarjetas están ocultas
+	Hidden       []hiddenRow // página de ocultos
 	HostProblems []HostStatus
 	Updated      time.Time // hora de la última vuelta del poller; cero si no hubo
 

@@ -378,6 +378,19 @@ func TestBuild(t *testing.T) {
 			}()},
 		},
 		{
+			name:       "maestro.separate y el archivo que lo pisa",
+			containers: []Container{compose("a", "p", "a", map[string]string{"maestro.separate": "true"}), compose("b", "p", "b", map[string]string{"maestro.separate": "true"})},
+			file:       map[string]FileService{"p/b": {Separate: ptr(false)}},
+			want: []Service{
+				func() Service {
+					s := composeService("p", "a", compose("a", "p", "a", map[string]string{"maestro.separate": "true"}))
+					s.Separate = true
+					return s
+				}(),
+				composeService("p", "b", compose("b", "p", "b", map[string]string{"maestro.separate": "true"})),
+			},
+		},
+		{
 			name: "orden por grupo, nombre e ID",
 			containers: []Container{
 				compose("z", "b-proj", "z", nil),

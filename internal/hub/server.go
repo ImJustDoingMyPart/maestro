@@ -58,7 +58,7 @@ func Serve(ctx context.Context, opts Options, logger *slog.Logger) error {
 	poller.onPoll = mon.Update
 	go poller.Run(ctx)
 
-	h, err := newHandler(poller, poller, poller, mon, auth.NewSessions(st, !opts.Dev, logger), logger)
+	h, err := newHandler(poller, poller, poller, mon, st, auth.NewSessions(st, !opts.Dev, logger), logger)
 	if err != nil {
 		return err
 	}
@@ -68,6 +68,14 @@ func Serve(ctx context.Context, opts Options, logger *slog.Logger) error {
 // snapshotter es lo que los handlers necesitan del poller.
 type snapshotter interface {
 	Snapshot() Snapshot
+}
+
+// prefStore guarda la configuración que se hace desde la interfaz. Lo
+// cumple *store.Store.
+type prefStore interface {
+	Hidden(ctx context.Context) (map[string]time.Time, error)
+	Hide(ctx context.Context, key string, at time.Time) error
+	Unhide(ctx context.Context, key string) error
 }
 
 // monitorView es lo que los handlers necesitan del monitor. Lo cumple
@@ -85,18 +93,19 @@ type server struct {
 	logs     logOpener
 	stacks   stackClient
 	mon      monitorView
+	prefs    prefStore
 	runs     *runStore
 	sessions *auth.Sessions
 	pages    pages
 	logger   *slog.Logger
 }
 
-func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon monitorView, sessions *auth.Sessions, logger *slog.Logger) (http.Handler, error) {
-	p, err := parsePages(web.Templates, "services", "service", "stack", "hardware", "login")
+func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon monitorView, prefs prefStore, sessions *auth.Sessions, logger *slog.Logger) (http.Handler, error) {
+	p, err := parsePages(web.Templates, "services", "service", "stack", "hardware", "login", "hidden")
 	if err != nil {
 		return nil, err
 	}
-	s := &server{poller: poller, logs: logs, stacks: stacks, mon: mon, runs: newRunStore(), sessions: sessions, pages: p, logger: logger}
+	s := &server{poller: poller, logs: logs, stacks: stacks, mon: mon, prefs: prefs, runs: newRunStore(), sessions: sessions, pages: p, logger: logger}
 
 	mux := http.NewServeMux()
 	mux.Handle("GET /static/", http.StripPrefix("/static/", staticHandler()))
@@ -111,6 +120,9 @@ func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon moni
 	private.HandleFunc("GET /{$}", s.servicesPage)
 	private.HandleFunc("GET /fragments/services", s.servicesFragment)
 	private.HandleFunc("GET /hardware", s.hardwarePage)
+	private.HandleFunc("GET /hidden", s.hiddenPage)
+	private.HandleFunc("POST /hidden", s.hide)
+	private.HandleFunc("POST /hidden/show", s.unhide)
 	// El ID de un servicio de compose lleva "/" ("media-stack/jellyfin"),
 	// así que va al final de la ruta con {id...}, que toma el resto. Por
 	// eso la acción va antes del ID (/logs/<id>) y no después: con
@@ -148,13 +160,13 @@ func securityHeaders(next http.Handler) http.Handler {
 }
 
 func (s *server) servicesPage(w http.ResponseWriter, r *http.Request) {
-	data := s.servicesData()
+	data := s.servicesData(r.Context())
 	data.Title, data.Active, data.ShowNav = "Servicios", "services", true
 	s.pages.render(w, s.logger, "services", data)
 }
 
 func (s *server) servicesFragment(w http.ResponseWriter, r *http.Request) {
-	s.pages.renderFragment(w, s.logger, "services", "grid", s.servicesData())
+	s.pages.renderFragment(w, s.logger, "services", "grid", s.servicesData(r.Context()))
 }
 
 func (s *server) hardwarePage(w http.ResponseWriter, r *http.Request) {
@@ -162,39 +174,15 @@ func (s *server) hardwarePage(w http.ResponseWriter, r *http.Request) {
 }
 
 // servicesData arma la grilla desde la última foto del poller.
-func (s *server) servicesData() pageData {
+func (s *server) servicesData(ctx context.Context) pageData {
 	snap := s.poller.Snapshot()
 	data := pageData{Live: true}
 
-	var others *group // los servicios sin grupo van al final
-	for _, svc := range snap.Services {
-		st := s.mon.Status(svc.ID)
-		card := serviceCard{
-			Href:        servicePath(svc.ID),
-			Name:        svc.Name,
-			Description: describe(svc),
-			Icon:        sourceIcon(svc.Source),
-			URL:         svc.URL,
-			State:       State(st.State),
-			Reason:      st.Reason(),
-		}
-		if svc.Group == "" {
-			if others == nil {
-				others = &group{Name: "Otros"}
-			}
-			others.Services = append(others.Services, card)
-			continue
-		}
-		// catalog ya los ordena por grupo: alcanza con mirar el último.
-		if n := len(data.Groups); n == 0 || data.Groups[n-1].Name != svc.Group {
-			data.Groups = append(data.Groups, group{Name: svc.Group})
-		}
-		g := &data.Groups[len(data.Groups)-1]
-		g.Services = append(g.Services, card)
+	hidden, err := s.prefs.Hidden(ctx)
+	if err != nil {
+		s.logger.Error("leer ocultos", "err", err) // se muestra todo
 	}
-	if others != nil {
-		data.Groups = append(data.Groups, *others)
-	}
+	data.Groups, data.HiddenCount = buildGroups(snap.Services, s.mon.Status, hidden)
 	data.Summary = summarize(data.Groups)
 
 	for _, h := range snap.Hosts {

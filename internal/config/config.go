@@ -59,6 +59,8 @@ type Service struct {
 	// Punteros: nil es "no declarado", que no es lo mismo que false.
 	Alert  *bool `yaml:"alert"`
 	Ignore *bool `yaml:"ignore"`
+	// Separate saca a un servicio de compose de la tarjeta de su stack.
+	Separate *bool `yaml:"separate"`
 }
 
 // Check son los checks de un servicio: uno HTTP, uno TCP y uno push como
@@ -299,6 +301,7 @@ func (c *Config) FileServices() map[string]catalog.FileService {
 			Unit:        s.Unit,
 			Alert:       s.Alert,
 			Ignore:      s.Ignore,
+			Separate:    s.Separate,
 		}
 		if s.Check != nil {
 			fs.Checks = s.Check.checks()

@@ -69,6 +69,15 @@ export MAESTRO_TOKEN_VM="$MAESTRO_AGENT_TOKEN"
 
 `--dev` deja la cookie de sesión sin `Secure` para poder entrar por `http://`. Sin `--dev`, el hub espera estar detrás de un proxy con HTTPS.
 
+## Portada
+
+Tarjetas por grupo, en orden alfabético (sin distinguir mayúsculas) y con "Otros" al final. Se refresca cada 15 segundos.
+
+- **Un stack, una tarjeta.** Un proyecto de compose con más de un servicio es una sola tarjeta (Immich, no sus cinco contenedores). Si uno solo de sus servicios tiene link, la tarjeta toma su nombre, grupo y link; si no, el nombre del proyecto y el primer grupo que declare alguno de sus servicios. Su semáforo es el peor de sus servicios, con el motivo de ese servicio. Al tocarla se despliegan sus servicios, cada uno con su semáforo y el link a su página, y abajo está el link a la pestaña Compose. La portada recuerda qué tarjetas están desplegadas mientras dure la pestaña del navegador.
+- `maestro.separate: "true"` (o `separate: true` en el archivo) saca a un servicio de la tarjeta de su stack.
+- **Ocultar.** Toda tarjeta, y cada servicio dentro de un stack, tiene un botón para ocultarla. Ocultar solo la saca de la portada: el estado se sigue calculando y la página del servicio sigue existiendo. `/hidden` lista lo oculto, con un botón para mostrarlo de nuevo. Lo oculto se guarda en la base del hub. Es distinto de `maestro.ignore`, que saca al servicio del catálogo.
+- Nombre, descripción y motivo se cortan con "…" en una línea (el texto entero queda al pasar el mouse) y el semáforo tiene ancho fijo, así el contenido no cambia el tamaño de la tarjeta.
+
 ## Página de un servicio
 
 Tocar una tarjeta de la portada lleva a `/services/<id>` (por ejemplo `/services/media-stack/jellyfin`). Muestra de dónde sale el servicio, su host y sus contenedores, y la pestaña Actividad con los logs en vivo.
@@ -142,7 +151,8 @@ Un servicio de compose se identifica como `<proyecto>/<servicio>`, por ejemplo `
 | `maestro.check.interval` | cada cuánto, duración de Go (`30s`, `5m`) | | `60s` |
 | `maestro.check.timeout` | cuánto esperar la respuesta | | `10s` |
 | `maestro.alert` | `true`/`false`: avisar por Telegram | | `true` si tiene checks |
-| `maestro.ignore` | `true`: no mostrarlo | | se muestra |
+| `maestro.ignore` | `true`: no mostrarlo ni vigilarlo | | se muestra |
+| `maestro.separate` | `true`: tarjeta propia, fuera de la de su stack | | en la tarjeta del stack |
 
 Una clave `maestro.*` desconocida o un valor inválido se ignora y queda en el log una vez. El check push no tiene label: su token es un secreto y va en `maestro.yaml`.
 
@@ -158,6 +168,7 @@ Ver [`maestro.example.yaml`](maestro.example.yaml). Tiene dos secciones:
 | `name`, `group`, `icon`, `url`, `description` | texto | todos |
 | `check` | `{http, expect, redirects, tcp, push, interval, timeout}` (ver abajo) | todos |
 | `alert`, `ignore` | `true`/`false` | todos |
+| `separate` | `true`/`false` | servicios de compose |
 | `host` | nombre de un host de `hosts` | solo propios |
 | `unit` | unidad systemd | solo propios |
 

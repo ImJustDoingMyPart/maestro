@@ -592,7 +592,7 @@ func TestStreamSigueDespuesDeDetenerse(t *testing.T) {
 	hash, _ := auth.HashPassword("una-contraseña-larga")
 	_ = st.SetPassword(context.Background(), "admin", hash, time.Now())
 	logger := slog.New(slog.DiscardHandler)
-	h, err := newHandler(snap, fl, nil, mon, auth.NewSessions(st, false, logger), logger)
+	h, err := newHandler(snap, fl, nil, mon, st, auth.NewSessions(st, false, logger), logger)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -188,3 +188,31 @@ func TestStateEvents(t *testing.T) {
 		t.Errorf("StateEvents con límite 1 tiene que dar el último: %+v", evs)
 	}
 }
+
+func TestHidden(t *testing.T) {
+	s, _ := openTest(t)
+	ctx := context.Background()
+	if err := s.Hide(ctx, "stack:vm/immich", t0); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Hide(ctx, "stack:vm/immich", t0.Add(time.Hour)); err != nil {
+		t.Fatalf("ocultar dos veces: %v", err)
+	}
+	_ = s.Hide(ctx, "service:frigate/frigate", t0)
+	h, err := s.Hidden(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(h) != 2 || !h["stack:vm/immich"].Equal(t0) {
+		t.Errorf("Hidden = %v", h)
+	}
+	if err := s.Unhide(ctx, "stack:vm/immich"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Unhide(ctx, "no-existe"); err != nil {
+		t.Fatalf("mostrar una que no está oculta: %v", err)
+	}
+	if h, _ := s.Hidden(ctx); len(h) != 1 {
+		t.Errorf("después de mostrar: %v", h)
+	}
+}

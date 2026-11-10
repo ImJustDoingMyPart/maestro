@@ -51,7 +51,7 @@ func testServerMon(t *testing.T, snap Snapshot, logs logOpener, stacks stackClie
 	logger := slog.New(slog.DiscardHandler)
 	// secure=false: el servidor de prueba es HTTP y el cliente no mandaría
 	// una cookie Secure.
-	h, err := newHandler(fixedSnapshot(snap), logs, stacks, mon, auth.NewSessions(st, false, logger), logger)
+	h, err := newHandler(fixedSnapshot(snap), logs, stacks, mon, st, auth.NewSessions(st, false, logger), logger)
 	if err != nil {
 		t.Fatal(err)
 	}

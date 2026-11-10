@@ -46,7 +46,7 @@ func TestDemoRoutes(t *testing.T) {
 
 func TestSummarize(t *testing.T) {
 	got := summarize(demoGroups)
-	want := summary{Up: 9, Down: 2, Unknown: 1}
+	want := summary{Up: 10, Degraded: 1, Down: 2, Unknown: 1}
 	if got != want {
 		t.Errorf("summarize = %+v, quería %+v", got, want)
 	}

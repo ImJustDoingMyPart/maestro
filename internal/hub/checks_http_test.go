@@ -41,9 +41,9 @@ func TestPortadaConEstadoCombinado(t *testing.T) {
 		At:    time.Now(),
 		Hosts: []HostStatus{{Name: "vm", OK: true}},
 		Services: []catalog.Service{
-			{ID: "a/enfermo", Source: catalog.SourceCompose, Name: "Enfermo", Group: "G", Host: "vm",
+			{ID: "a/enfermo", Source: catalog.SourceCompose, Name: "Enfermo", Group: "G", Host: "vm", Project: "a",
 				Containers: []catalog.Container{{Name: "enfermo", State: "running", Health: "unhealthy"}}},
-			{ID: "a/parado", Source: catalog.SourceCompose, Name: "Parado", Group: "G", Host: "vm",
+			{ID: "b/parado", Source: catalog.SourceCompose, Name: "Parado", Group: "G", Host: "vm", Project: "b",
 				Containers: []catalog.Container{{Name: "parado", State: "exited", ExitCode: 137}}},
 		},
 	}

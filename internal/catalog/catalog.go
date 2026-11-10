@@ -91,6 +91,7 @@ type FileService struct {
 	Checks      []Check // nil: se quedan los de los labels; no nil: los reemplaza
 	Alert       *bool
 	Ignore      *bool
+	Separate    *bool
 }
 
 // Service es un servicio ya combinado, listo para mostrar. Los slices sin
@@ -120,6 +121,9 @@ type Service struct {
 	// Alert dice si una caída avisa por Telegram. Si nadie lo declara, es
 	// true cuando el servicio tiene checks.
 	Alert bool
+	// Separate saca al servicio de la tarjeta de su stack en la portada:
+	// va en una tarjeta propia.
+	Separate bool
 }
 
 // Catalog combina las fuentes. Guarda qué claves de labels desconocidas ya
@@ -153,6 +157,7 @@ func New(logger *slog.Logger) *Catalog {
 //	             maestro.check.interval, maestro.check.timeout
 //	Alert        maestro.alert ("true"/"false", strconv.ParseBool)
 //	Ignore       maestro.ignore (ídem)
+//	Separate     maestro.separate (ídem)
 //
 // Un servicio ignorado (por label o por archivo) no aparece. Los contenedores
 // con el mismo ID son réplicas de un solo servicio; sus labels se toman de la
@@ -230,7 +235,7 @@ var etiquetasMaestro = map[string]bool{
 	"maestro.check.http": true, "maestro.check.http.expect": true,
 	"maestro.check.http.redirects": true, "maestro.check.tcp": true,
 	"maestro.check.interval": true, "maestro.check.timeout": true,
-	"maestro.alert": true, "maestro.ignore": true,
+	"maestro.alert": true, "maestro.ignore": true, "maestro.separate": true,
 }
 
 // fromContainers arma el servicio de un grupo de réplicas (ya ordenadas por
@@ -286,6 +291,12 @@ func (c *Catalog) fromContainers(id string, reps []Container, fs FileService) (S
 	}
 	if fs.Alert != nil {
 		s.Alert = *fs.Alert
+	}
+	if sep := c.boolLabel(labels, "maestro.separate"); sep != nil {
+		s.Separate = *sep
+	}
+	if fs.Separate != nil {
+		s.Separate = *fs.Separate
 	}
 	return s, true
 }

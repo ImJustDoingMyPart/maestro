@@ -17,7 +17,12 @@ body.dark  { --status-up: #81c995; }
 
 .service {
   margin: 0;
-  height: 100%;
+}
+
+/* Las tarjetas no se estiran a la altura de la fila: al desplegar un
+   stack, las de al lado quedan como estaban. */
+.grid.cards {
+  align-items: start;
 }
 
 /* Barra superior. Beer le pone al header.fixed el fondo del body; acá va
@@ -441,3 +446,68 @@ body.dark  { --status-warn: #ffb74d; }
 }
 .log-line.state .dot { margin-inline-end: 0.5rem; vertical-align: middle; }
 .log-line.state-up { border-inline-start-color: var(--status-up); }
+
+/* Acciones de abajo de la tarjeta: ocultar a la izquierda, links a la
+   derecha. */
+.card-actions {
+  margin-block-start: 0.25rem;
+  align-items: center;
+}
+.hide-form {
+  display: inline-flex;
+  margin: 0;
+}
+.card-actions .hide-form button {
+  color: var(--on-surface-variant);
+}
+
+/* Tarjeta de un stack: el resumen es la misma fila de una tarjeta común y
+   se toca para desplegar los servicios. */
+.service.stack summary {
+  list-style: none;
+  cursor: pointer;
+}
+.service.stack summary::-webkit-details-marker {
+  display: none;
+}
+.service.stack summary .expand {
+  flex: none;
+  transition: transform 0.2s;
+  color: var(--on-surface-variant);
+}
+.service.stack details[open] summary .expand {
+  transform: rotate(180deg);
+}
+.stack-members {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  border-block-start: 1px solid var(--outline-variant);
+}
+.stack-members li {
+  gap: 0.5rem;
+  padding-block: 0.25rem;
+  min-block-size: 2.5rem;
+}
+.stack-members li > .max {
+  min-inline-size: 0;
+}
+.stack-members li > .max > * {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.stack-members a {
+  color: inherit;
+}
+.stack-members a:hover {
+  text-decoration: underline;
+}
+.stack-members .hide-form button {
+  color: var(--on-surface-variant);
+}
+
+.hidden-list form {
+  margin: 0;
+}

@@ -1,3 +1,5 @@
+{{define "scripts"}}{{if .Live}}<script src="/static/services.js" defer></script>{{end}}{{end}}
+
 {{define "content"}}
 <header class="transparent">
   <nav>
@@ -31,6 +33,7 @@
     <span class="chip no-border surface-container"><span class="dot down"></span>{{.Summary.Down}} caídos</span>
     <span class="chip no-border surface-container"><span class="dot unknown"></span>{{.Summary.Unknown}} sin datos</span>
     {{if not .Updated.IsZero}}<span class="small-text secondary-text updated">Actualizado {{localTime .Updated "time"}}</span>{{end}}
+    {{if .HiddenCount}}<a class="chip no-border surface-container" href="/hidden"><i>visibility_off</i><span>{{.HiddenCount}} {{if eq .HiddenCount 1}}oculto{{else}}ocultos{{end}}</span></a>{{end}}
   </nav>
 
   {{if not .Groups}}
@@ -41,34 +44,93 @@
 
   {{range .Groups}}
   <h6 class="group-title">{{.Name}}</h6>
-  <div class="grid small-space">
+  <div class="grid small-space cards">
     {{range .Services}}
     <div class="s12 m6 l4">
-      <article class="small-round no-elevate surface-container-low service">
-        <div class="row">
-          <span class="icon-badge secondary-container"><i class="extra">{{.Icon}}</i></span>
-          <div class="max">
-            <div class="bold" title="{{.Name}}">{{if .Href}}<a class="stretched" href="{{.Href}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</div>
-            <div class="small-text secondary-text" title="{{.Description}}">{{.Description}}</div>
-            {{if and .Reason (ne .State "up")}}<div class="small-text state-reason {{.State}}" title="{{.Reason}}">{{.Reason}}</div>{{end}}
-          </div>
-          <span class="status {{.State}}" title="{{.State.Label}}{{with .Reason}}: {{.}}{{end}}">
-            <span class="dot {{.State}}"></span>
-            <span class="small-text">{{.State.Label}}</span>
-          </span>
-        </div>
-        {{if .URL}}
-        <nav class="right-align no-space">
-          <a class="button transparent small above" href="{{.URL}}" target="_blank" rel="noopener">
-            <span>Abrir</span>
-            <i>open_in_new</i>
-          </a>
-        </nav>
-        {{end}}
-      </article>
+      {{if .Members}}{{template "stackcard" .}}{{else}}{{template "servicecard" .}}{{end}}
     </div>
     {{end}}
   </div>
   {{end}}
 </div>
+{{end}}
+
+{{/* Cabecera común de una tarjeta: ícono, nombre, descripción, motivo y
+     semáforo. */}}
+{{define "cardhead"}}
+<span class="icon-badge secondary-container"><i class="extra">{{.Icon}}</i></span>
+<div class="max">
+  <div class="bold" title="{{.Name}}">{{if .Href}}<a class="stretched" href="{{.Href}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</div>
+  <div class="small-text secondary-text" title="{{.Description}}">{{.Description}}</div>
+  {{if and .Reason (ne .State "up")}}<div class="small-text state-reason {{.State}}" title="{{.Reason}}">{{.Reason}}</div>{{end}}
+</div>
+<span class="status {{.State}}" title="{{.State.Label}}{{with .Reason}}: {{.}}{{end}}">
+  <span class="dot {{.State}}"></span>
+  <span class="small-text">{{.State.Label}}</span>
+</span>
+{{end}}
+
+{{/* Botón de ocultar. Es un formulario: sin JavaScript también anda
+     (vuelve a la portada); con htmx reemplaza la grilla. Recibe la clave. */}}
+{{define "hidebtn"}}
+<form class="hide-form above" method="post" action="/hidden" hx-post="/hidden" hx-target="#services" hx-swap="outerHTML">
+  <input type="hidden" name="key" value="{{.}}">
+  <button class="circle transparent small" title="Ocultar" aria-label="Ocultar"><i>visibility_off</i></button>
+</form>
+{{end}}
+
+{{define "servicecard"}}
+<article class="small-round no-elevate surface-container-low service">
+  <div class="row">{{template "cardhead" .}}</div>
+  {{if or .Key .URL}}
+  <nav class="no-space card-actions">
+    {{with .Key}}{{template "hidebtn" .}}{{end}}
+    <div class="max"></div>
+    {{if .URL}}
+    <a class="button transparent small above" href="{{.URL}}" target="_blank" rel="noopener">
+      <span>Abrir</span>
+      <i>open_in_new</i>
+    </a>
+    {{end}}
+  </nav>
+  {{end}}
+</article>
+{{end}}
+
+{{/* Tarjeta de un stack: el resumen se toca para desplegar sus servicios.
+     web/static/services.js recuerda cuáles estaban abiertas, porque htmx
+     reemplaza la grilla cada 15 s. */}}
+{{define "stackcard"}}
+<article class="small-round no-elevate surface-container-low service stack">
+  <details data-key="{{.Key}}">
+    <summary class="row">
+      {{template "cardhead" .}}
+      <i class="expand">expand_more</i>
+    </summary>
+    <ul class="stack-members">
+      {{range .Members}}
+      <li class="row">
+        <span class="dot {{.State}}" title="{{.State.Label}}"></span>
+        <div class="max">
+          <a href="{{.Href}}" title="{{.Name}}">{{.Name}}</a>
+          {{if and .Reason (ne .State "up")}}<div class="small-text state-reason {{.State}}" title="{{.Reason}}">{{.Reason}}</div>{{end}}
+        </div>
+        <span class="small-text secondary-text">{{.State.Label}}</span>
+        {{with .Key}}{{template "hidebtn" .}}{{end}}
+      </li>
+      {{end}}
+    </ul>
+  </details>
+  <nav class="no-space card-actions">
+    {{with .Key}}{{template "hidebtn" .}}{{end}}
+    <div class="max"></div>
+    {{if .StackHref}}<a class="button transparent small above" href="{{.StackHref}}"><i>stacks</i><span>Compose</span></a>{{end}}
+    {{if .URL}}
+    <a class="button transparent small above" href="{{.URL}}" target="_blank" rel="noopener">
+      <span>Abrir</span>
+      <i>open_in_new</i>
+    </a>
+    {{end}}
+  </nav>
+</article>
 {{end}}

@@ -11,6 +11,17 @@ import (
 
 // demoGroups son servicios inventados para mirar la estética sin agents.
 var demoGroups = []group{
+	{Name: "Archivos", Services: []serviceCard{
+		{Name: "Immich", Description: "Fotos · 5 servicios", Icon: "deployed_code", URL: "https://fotos.example.org",
+			State: StateDegraded, Reason: "redis: redis reiniciado (exit 137)", Members: []memberRow{
+				{Name: "database", State: StateUp},
+				{Name: "immich-folder-album-creator", State: StateUp},
+				{Name: "immich-machine-learning", State: StateUp},
+				{Name: "immich-server", State: StateUp},
+				{Name: "redis", State: StateDegraded, Reason: "redis reiniciado (exit 137)"},
+			}},
+		{Name: "Syncthing", Description: "Sincronización de carpetas", Icon: "sync", URL: "https://sync.example.org", State: StateUp},
+	}},
 	{Name: "Media", Services: []serviceCard{
 		{Name: "Jellyfin", Description: "Películas y series", Icon: "movie", URL: "https://jellyfin.example.org", State: StateUp},
 		{Name: "Sonarr", Description: "Series", Icon: "live_tv", URL: "https://sonarr.example.org", State: StateUp},

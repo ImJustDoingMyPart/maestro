@@ -209,7 +209,7 @@ func TestTokenNoSeFiltra(t *testing.T) {
 func TestFileServices(t *testing.T) {
 	cfg := &Config{Services: map[string]Service{
 		"adguard":    {Name: "AdGuard", Host: "vm", Unit: "a.service", Check: &Check{HTTP: "http://a/", Expect: 200}},
-		"p/s":        {Alert: ptr(false), Ignore: ptr(true)},
+		"p/s":        {Alert: ptr(false), Ignore: ptr(true), Separate: ptr(true)},
 		"sin-checks": {Group: "Red"},
 		"restic":     {Check: &Check{Push: "0123456789abcdef", Interval: "96h"}},
 		"db": {Check: &Check{
@@ -221,7 +221,7 @@ func TestFileServices(t *testing.T) {
 			Name: "AdGuard", Host: "vm", Unit: "a.service",
 			Checks: []catalog.Check{{Kind: catalog.CheckHTTP, Target: "http://a/", Expect: 200}},
 		},
-		"p/s":        {Alert: ptr(false), Ignore: ptr(true)},
+		"p/s":        {Alert: ptr(false), Ignore: ptr(true), Separate: ptr(true)},
 		"sin-checks": {Group: "Red"}, // Checks nil: no pisa los checks de los labels
 		"restic": {Checks: []catalog.Check{
 			{Kind: catalog.CheckPush, Target: "0123456789abcdef", Interval: 96 * time.Hour},

@@ -1,0 +1,30 @@
+{{define "content"}}
+<header class="transparent">
+  <nav>
+    <a class="button circle transparent" href="/" title="Volver" aria-label="Volver a Servicios"><i>arrow_back</i></a>
+    <h5 class="max">Ocultos</h5>
+  </nav>
+</header>
+<p class="secondary-text">No se muestran en la portada, pero se siguen vigilando y su página sigue existiendo.</p>
+{{if .Hidden}}
+<ul class="list border hidden-list">
+  {{range .Hidden}}
+  <li>
+    <i>visibility_off</i>
+    <div class="max">
+      <div>{{.Name}}</div>
+      <div class="small-text secondary-text">{{.Detail}} · oculto el {{localTime .At "datetime"}}</div>
+    </div>
+    <form method="post" action="/hidden/show">
+      <input type="hidden" name="key" value="{{.Key}}">
+      <button class="small"><i>visibility</i><span>Mostrar</span></button>
+    </form>
+  </li>
+  {{end}}
+</ul>
+{{else}}
+<article class="small-round no-elevate surface-container-low center-align">
+  <p>No hay nada oculto.</p>
+</article>
+{{end}}
+{{end}}
