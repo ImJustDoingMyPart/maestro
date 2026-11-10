@@ -183,7 +183,7 @@ Una clave desconocida es un error al arrancar, igual que una variable `${VAR}` q
 - `hub` en la red del proxy (por ejemplo, `caddy_net`), sin socket de Docker.
 - `agent` con `network_mode: host`, el socket montado y el grupo `docker` del host por `group_add`, y la carpeta de los stacks montada **en la misma ruta que en el host**: los labels de compose dan la ruta del host, y `docker compose` le pasa al daemon las rutas de los bind mounts tal cual. Corre con el uid y el gid del dueño de esa carpeta (`user:`), para que lo que escribe y los commits queden como suyos.
 
-Son dos imágenes del mismo `Dockerfile`: el hub (por defecto, `distroless/static`) y el agent (`--target agent`, Alpine con el CLI de Docker, el plugin de compose y git). Los dos corren como usuario sin privilegios, con el sistema de archivos de solo lectura y sin capacidades. El primer usuario se crea con:
+Son dos imágenes del mismo `Dockerfile`: el hub (por defecto, `distroless/static`) y el agent (`--target agent`, Alpine con el CLI de Docker, el plugin de compose y git). Los dos corren como usuario sin privilegios, con el sistema de archivos de solo lectura y sin capacidades. Mientras no hay ningún usuario, la pantalla de login ofrece crear el primero (usuario, contraseña de 12 caracteres o más y repetirla) y entra con él; apenas existe, esa pantalla desaparece y `/setup` se niega. La creación es atómica: de dos pedidos a la vez, gana uno. Queda en el log con la IP. Hasta crearlo, cualquiera que llegue a la página puede hacerlo: conviene crearlo enseguida después del primer despliegue. También se puede crear, o cambiar la contraseña, por la terminal:
 
 ```sh
 docker compose run --rm hub passwd --db /data/maestro.db --user <usuario>

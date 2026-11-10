@@ -167,6 +167,28 @@ func (s *Store) SetPassword(ctx context.Context, username, hash string, now time
 	})
 }
 
+// ErrUsersExist sale de CreateFirstUser si ya hay algún usuario.
+var ErrUsersExist = errors.New("ya hay un usuario")
+
+// CreateFirstUser crea el usuario solo si todavía no hay ninguno. Es una
+// sola sentencia: SQLite serializa las escrituras, así que de dos pedidos a
+// la vez gana uno y el otro recibe ErrUsersExist.
+func (s *Store) CreateFirstUser(ctx context.Context, username, hash string, now time.Time) error {
+	res, err := s.db.ExecContext(ctx, `
+		INSERT INTO users (username, password_hash, created_at, updated_at)
+		SELECT ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM users)`,
+		username, hash, now.Unix(), now.Unix())
+	if err != nil {
+		return err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return ErrUsersExist
+	}
+	return nil
+}
+
 // UserByName busca un usuario por nombre.
 func (s *Store) UserByName(ctx context.Context, username string) (User, error) {
 	var u User

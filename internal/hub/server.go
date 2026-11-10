@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/ImJustDoingMyPart/maestro/internal/auth"
@@ -42,7 +43,7 @@ func Serve(ctx context.Context, opts Options, logger *slog.Logger) error {
 	if has, err := st.HasUsers(ctx); err != nil {
 		return err
 	} else if !has {
-		logger.Warn("no hay usuarios: nadie va a poder entrar. Crealo con: maestro passwd --db " + opts.DBPath)
+		logger.Warn("no hay usuarios: la primera persona que abra la web lo crea (o: maestro passwd --db " + opts.DBPath + ")")
 	}
 	if opts.Dev {
 		logger.Warn("modo --dev: la cookie de sesión viaja sin Secure; usarlo solo en local")
@@ -111,6 +112,7 @@ func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon moni
 	mux.Handle("GET /static/", http.StripPrefix("/static/", staticHandler()))
 	mux.HandleFunc("GET /login", s.loginPage)
 	mux.HandleFunc("POST /login", s.login)
+	mux.HandleFunc("POST /setup", s.setup)
 	mux.HandleFunc("POST /logout", s.logout)
 	// Push: lo llaman scripts, sin sesión. El token es la credencial.
 	mux.HandleFunc("GET /push/{token}", s.push)
@@ -212,7 +214,67 @@ func (s *server) loginPage(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/", http.StatusSeeOther)
 		return
 	}
+	setup, err := s.sessions.NeedsSetup(r.Context())
+	if err != nil {
+		s.logger.Error("¿hay usuarios?", "err", err)
+		http.Error(w, "error interno", http.StatusInternalServerError)
+		return
+	}
+	if setup {
+		s.pages.render(w, s.logger, "login", pageData{Title: "Crear usuario", Setup: true})
+		return
+	}
 	s.pages.render(w, s.logger, "login", pageData{Title: "Entrar"})
+}
+
+// setup atiende POST /setup: crea el primer usuario y entra con él. Solo
+// mientras no haya ninguno; después responde como un login viejo, con el
+// formulario de entrar.
+func (s *server) setup(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "formulario inválido", http.StatusBadRequest)
+		return
+	}
+	username, password := r.PostFormValue("username"), r.PostFormValue("password")
+	again := func(code int, msg string) {
+		s.pages.renderCode(w, s.logger, code, "login", pageData{
+			Title: "Crear usuario", Setup: true, Error: msg, Username: username,
+		})
+	}
+	if password != r.PostFormValue("password2") {
+		again(http.StatusBadRequest, "Las contraseñas no coinciden.")
+		return
+	}
+	err := s.sessions.Setup(r.Context(), w, username, password)
+	switch {
+	case errors.Is(err, auth.ErrSetupDone):
+		s.pages.renderCode(w, s.logger, http.StatusConflict, "login", pageData{
+			Title: "Entrar", Error: "Ya hay un usuario: entrá con él.",
+		})
+		return
+	case errors.Is(err, auth.ErrWeakPassword), errors.Is(err, auth.ErrBadUsername):
+		again(http.StatusBadRequest, capitalize(err.Error())+".")
+		return
+	case err != nil:
+		s.logger.Error("crear el primer usuario", "err", err)
+		http.Error(w, "error interno", http.StatusInternalServerError)
+		return
+	}
+	// Queda en el log con la IP, como los logins fallidos: es la creación
+	// de la única cuenta del panel.
+	s.logger.Warn("primer usuario creado desde la web", "user", username, "remote", r.RemoteAddr,
+		"forwarded_for", r.Header.Get("X-Forwarded-For"))
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// capitalize pone en mayúscula la primera letra de un mensaje de error.
+func capitalize(s string) string {
+	if s == "" {
+		return s
+	}
+	r := []rune(s)
+	return strings.ToUpper(string(r[0])) + string(r[1:])
 }
 
 func (s *server) login(w http.ResponseWriter, r *http.Request) {

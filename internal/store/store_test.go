@@ -116,3 +116,32 @@ func TestUsuariosYSesiones(t *testing.T) {
 		t.Errorf("DeleteExpiredSessions = %d, %v; quería 1", n, err)
 	}
 }
+
+func TestCreateFirstUser(t *testing.T) {
+	s, _ := openTest(t)
+	ctx := context.Background()
+	now := time.Now()
+
+	// Dos a la vez: gana uno solo.
+	errs := make(chan error, 2)
+	for _, name := range []string{"a", "b"} {
+		go func() { errs <- s.CreateFirstUser(ctx, name, "hash", now) }()
+	}
+	var ok, exist int
+	for range 2 {
+		switch err := <-errs; {
+		case err == nil:
+			ok++
+		case errors.Is(err, ErrUsersExist):
+			exist++
+		default:
+			t.Fatal(err)
+		}
+	}
+	if ok != 1 || exist != 1 {
+		t.Errorf("creados %d, rechazados %d; quería 1 y 1", ok, exist)
+	}
+	if err := s.CreateFirstUser(ctx, "c", "hash", now); !errors.Is(err, ErrUsersExist) {
+		t.Errorf("con un usuario ya creado: %v", err)
+	}
+}

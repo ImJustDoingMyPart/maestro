@@ -120,8 +120,8 @@ func runPasswd(ctx context.Context, args []string, stdin *os.File, stderr io.Wri
 	if err != nil {
 		return err
 	}
-	if len(password) < 12 {
-		return errors.New("passwd: la contraseña tiene que tener al menos 12 caracteres")
+	if len([]rune(password)) < auth.MinPasswordLen {
+		return fmt.Errorf("passwd: %w", auth.ErrWeakPassword)
 	}
 
 	hash, err := auth.HashPassword(password)

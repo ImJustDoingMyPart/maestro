@@ -6,9 +6,13 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/ImJustDoingMyPart/maestro/internal/store"
 )
@@ -82,6 +86,50 @@ func (s *Sessions) Login(ctx context.Context, w http.ResponseWriter, username, p
 
 	http.SetCookie(w, s.cookie(token, int(SessionTTL.Seconds())))
 	return nil
+}
+
+// MinPasswordLen es el largo mínimo de una contraseña.
+const MinPasswordLen = 12
+
+// Errores de Setup.
+var (
+	ErrSetupDone    = errors.New("ya hay un usuario: entrá con él")
+	ErrWeakPassword = fmt.Errorf("la contraseña tiene que tener al menos %d caracteres", MinPasswordLen)
+	ErrBadUsername  = errors.New("el usuario no puede estar vacío, tener espacios ni pasar de 64 caracteres")
+)
+
+// Setup crea el primer usuario y entra con él. Solo funciona mientras no
+// haya ningún usuario: después devuelve ErrSetupDone.
+func (s *Sessions) Setup(ctx context.Context, w http.ResponseWriter, username, password string) error {
+	if username == "" || len(username) > 64 || strings.ContainsFunc(username, unicode.IsSpace) {
+		return ErrBadUsername
+	}
+	if utf8.RuneCountInString(password) < MinPasswordLen {
+		return ErrWeakPassword
+	}
+	// Barato antes del hash (argon2id tarda): si ya hay usuario, ni se
+	// calcula. CreateFirstUser lo vuelve a mirar de forma atómica.
+	if has, err := s.store.HasUsers(ctx); err != nil {
+		return err
+	} else if has {
+		return ErrSetupDone
+	}
+	hash, err := HashPassword(password)
+	if err != nil {
+		return err
+	}
+	if err := s.store.CreateFirstUser(ctx, username, hash, s.now()); errors.Is(err, store.ErrUsersExist) {
+		return ErrSetupDone
+	} else if err != nil {
+		return err
+	}
+	return s.Login(ctx, w, username, password)
+}
+
+// NeedsSetup dice si todavía no hay ningún usuario.
+func (s *Sessions) NeedsSetup(ctx context.Context) (bool, error) {
+	has, err := s.store.HasUsers(ctx)
+	return !has, err
 }
 
 // Logout borra la sesión de la petición y la cookie.

@@ -106,6 +106,7 @@ type pageData struct {
 	// Login
 	Error    string
 	Username string
+	Setup    bool // no hay usuarios: el formulario crea el primero
 }
 
 // funcs son las funciones que pueden usar las plantillas.
