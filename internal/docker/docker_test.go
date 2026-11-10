@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/events"
 
 	"github.com/ImJustDoingMyPart/maestro/internal/agent"
 )
@@ -55,5 +56,34 @@ func TestFromSummary(t *testing.T) {
 				t.Errorf("fromSummary:\n got %+v\nwant %+v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestExitFromEvent(t *testing.T) {
+	at := time.Date(2026, 11, 10, 21, 2, 29, 119299790, time.UTC)
+	die := events.Message{
+		Type: events.ContainerEventType, Action: events.ActionDie, TimeNano: at.UnixNano(),
+		Actor: events.Actor{ID: "abc", Attributes: map[string]string{"exitCode": "137", "name": "jellyfin"}},
+	}
+	id, e, ok := exitFromEvent(die)
+	if !ok || id != "abc" || e.code != 137 || !e.at.Equal(at) {
+		t.Errorf("die: %q %+v %v", id, e, ok)
+	}
+
+	sinNano := die
+	sinNano.TimeNano, sinNano.Time = 0, at.Unix()
+	if _, e, _ := exitFromEvent(sinNano); !e.at.Equal(at.Truncate(time.Second)) {
+		t.Errorf("sin TimeNano: %v", e.at)
+	}
+
+	for name, m := range map[string]events.Message{
+		"otra acción":    {Type: events.ContainerEventType, Action: events.ActionStart, Actor: die.Actor},
+		"otro tipo":      {Type: events.ImageEventType, Action: events.ActionDie, Actor: die.Actor},
+		"sin exit code":  {Type: events.ContainerEventType, Action: events.ActionDie, Actor: events.Actor{ID: "abc"}},
+		"sin contenedor": {Type: events.ContainerEventType, Action: events.ActionDie, Actor: events.Actor{Attributes: die.Actor.Attributes}},
+	} {
+		if _, _, ok := exitFromEvent(m); ok {
+			t.Errorf("%s: no tendría que dar salida", name)
+		}
 	}
 }

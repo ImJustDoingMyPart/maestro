@@ -238,9 +238,21 @@ func (m *Monitor) Update(snap Snapshot) {
 	m.runner.Sync(specs) // fuera del lock: Sync no llama de vuelta, pero no hace falta tenerlo
 }
 
-// trackContainer anota la hora de arranque y, si cambió desde la vuelta
-// anterior con el contenedor arriba, que reinició. Con el host sin
+// quickRestart es cuánto puede pasar entre que un contenedor termina y
+// vuelve a arrancar para contarlo como reinicio sin haberlo visto caer (el
+// hub recién arranca y no tiene la vuelta anterior).
+const quickRestart = time.Minute
+
+// trackContainer anota la hora de arranque y si reinició. Con el host sin
 // responder los datos son viejos y no se tocan.
+//
+// Reinicio es una hora de arranque nueva en un contenedor que en la vuelta
+// anterior estaba arriba (corriendo o en "restarting"); si estaba detenido,
+// es alguien que lo levantó, no un reinicio. La primera vez que se ve un
+// contenedor no hay vuelta anterior: cuenta como reinicio si el agent lo
+// vio terminar menos de quickRestart antes de su arranque. El exit code
+// sale del evento "die" que vio el agent o, si no, del estado
+// "restarting" que vio el hub.
 func (m *Monitor) trackContainer(c catalog.Container, hostOK bool) {
 	if !hostOK {
 		return
@@ -248,7 +260,13 @@ func (m *Monitor) trackContainer(c catalog.Container, hostOK bool) {
 	up := c.State == "running" || c.State == "restarting"
 	cs := m.containers[c.ID]
 	if cs == nil {
-		m.containers[c.ID] = &containerSeen{startedAt: c.StartedAt, up: up}
+		cs = &containerSeen{startedAt: c.StartedAt, up: up}
+		m.containers[c.ID] = cs
+		if c.State == "running" && c.LastExitCode != nil && !c.StartedAt.IsZero() &&
+			!c.LastExitAt.After(c.StartedAt) && c.StartedAt.Sub(c.LastExitAt) < quickRestart {
+			code := *c.LastExitCode
+			cs.restartedAt, cs.restartExit = c.StartedAt, &code
+		}
 		return
 	}
 	if c.State == "restarting" {
@@ -256,7 +274,12 @@ func (m *Monitor) trackContainer(c catalog.Container, hostOK bool) {
 		cs.lastExit = &code
 	}
 	if cs.up && !cs.startedAt.IsZero() && c.StartedAt.After(cs.startedAt) {
-		cs.restartedAt, cs.restartExit, cs.lastExit = c.StartedAt, cs.lastExit, nil
+		exit := cs.lastExit
+		if c.LastExitCode != nil && c.LastExitAt.After(cs.startedAt) && !c.LastExitAt.After(c.StartedAt) {
+			code := *c.LastExitCode
+			exit = &code
+		}
+		cs.restartedAt, cs.restartExit, cs.lastExit = c.StartedAt, exit, nil
 	}
 	if c.StartedAt.After(cs.startedAt) {
 		cs.startedAt = c.StartedAt

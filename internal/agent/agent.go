@@ -24,9 +24,15 @@ type Container struct {
 	// ExitCode es el de la última vez que terminó; StartedAt, la última vez
 	// que arrancó (cero si nunca). Con los dos el hub ve un reinicio y su
 	// causa.
-	ExitCode  int               `json:"exit_code"`
-	StartedAt time.Time         `json:"started_at,omitzero"`
-	Labels    map[string]string `json:"labels"`
+	ExitCode  int       `json:"exit_code"`
+	StartedAt time.Time `json:"started_at,omitzero"`
+	// LastExitCode y LastExitAt son la última vez que el agent vio terminar
+	// al contenedor (evento "die" de Docker); nil si no lo vio. A
+	// diferencia de ExitCode, sobreviven a que el contenedor vuelva a
+	// arrancar.
+	LastExitCode *int              `json:"last_exit_code,omitempty"`
+	LastExitAt   time.Time         `json:"last_exit_at,omitzero"`
+	Labels       map[string]string `json:"labels"`
 }
 
 // ContainersResponse es el cuerpo de GET /v1/containers. Va envuelto en un

@@ -190,6 +190,9 @@ func runAgent(ctx context.Context, args []string, stderr io.Writer) error {
 		return fmt.Errorf("agent: cliente de Docker: %w", err)
 	}
 	defer dc.Close()
+	// Los eventos "die" dan el exit code de un reinicio, que el inspect ya
+	// no tiene cuando el contenedor volvió a arrancar.
+	go dc.WatchExits(ctx, logger)
 
 	// stacksSrc es una interfaz: queda nil si no hay --stacks-dir. Ojo con
 	// asignarle un *stacks.Manager nil: una interfaz que guarda un puntero

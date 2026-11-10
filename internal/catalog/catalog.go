@@ -23,7 +23,12 @@ type Container struct {
 	Restarts  int
 	ExitCode  int       // exit code de la última vez que terminó (0 si nunca terminó)
 	StartedAt time.Time // última vez que arrancó; cero si nunca
-	Labels    map[string]string
+	// LastExitCode y LastExitAt: la última vez que el agent lo vio terminar
+	// (nil y cero si no lo vio). Sobreviven al rearranque, a diferencia de
+	// ExitCode.
+	LastExitCode *int
+	LastExitAt   time.Time
+	Labels       map[string]string
 }
 
 // Source dice de dónde sale un servicio.

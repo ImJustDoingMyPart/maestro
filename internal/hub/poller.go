@@ -257,6 +257,7 @@ func (p *Poller) poll(ctx context.Context) {
 				Host: name, ID: c.ID, Name: c.Name, Image: c.Image,
 				State: c.State, Health: c.Health, Restarts: c.Restarts,
 				ExitCode: c.ExitCode, StartedAt: c.StartedAt, Labels: c.Labels,
+				LastExitCode: c.LastExitCode, LastExitAt: c.LastExitAt,
 			})
 		}
 	}

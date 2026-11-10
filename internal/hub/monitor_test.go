@@ -238,3 +238,49 @@ func TestMonitorAgentCaidoNoEsEvento(t *testing.T) {
 		t.Errorf("eventos = %+v, quería solo el primero", evs)
 	}
 }
+
+func TestMonitorReinicioConEventoDie(t *testing.T) {
+	st, _ := openStore(t)
+	m, _ := newTestMonitor(t, st)
+	const id = "web/app"
+	exit := func(n int) *int { return &n }
+	snap := func(c catalog.Container) Snapshot {
+		c.ID, c.Name, c.Host = "c1", "app", "vm"
+		return Snapshot{
+			Hosts:    []HostStatus{{Name: "vm", OK: true}},
+			Services: []catalog.Service{{ID: id, Source: catalog.SourceCompose, Host: "vm", Containers: []catalog.Container{c}}},
+		}
+	}
+	t0 := time.Now().Add(-5 * time.Minute)
+
+	// El hub arranca y ve un contenedor que terminó con 137 y volvió a
+	// arrancar enseguida: reinicio, con su exit code.
+	m.Update(snap(catalog.Container{State: "running", StartedAt: t0, LastExitCode: exit(137), LastExitAt: t0.Add(-2 * time.Second)}))
+	if s := m.Status(id); s.Reason() != "app reiniciado (exit 137)" {
+		t.Errorf("primera vista con die reciente: %+v", s)
+	}
+
+	// Reinicio rápido visto por el hub: el exit code sale del evento.
+	t1 := t0.Add(time.Minute)
+	m.Update(snap(catalog.Container{State: "running", StartedAt: t1, LastExitCode: exit(2), LastExitAt: t1.Add(-time.Second)}))
+	if s := m.Status(id); s.Reason() != "app reiniciado (exit 2)" {
+		t.Errorf("reinicio con die: %+v", s)
+	}
+}
+
+func TestMonitorPrimeraVistaSinReinicio(t *testing.T) {
+	st, _ := openStore(t)
+	m, _ := newTestMonitor(t, st)
+	exit := 0
+	t0 := time.Now().Add(-5 * time.Minute)
+	// Detenido hace una hora y levantado a mano ahora: no es reinicio.
+	m.Update(Snapshot{
+		Hosts: []HostStatus{{Name: "vm", OK: true}},
+		Services: []catalog.Service{{ID: "a", Source: catalog.SourceContainer, Host: "vm",
+			Containers: []catalog.Container{{ID: "c", Name: "a", Host: "vm", State: "running",
+				StartedAt: t0, LastExitCode: &exit, LastExitAt: t0.Add(-time.Hour)}}}},
+	})
+	if s := m.Status("a"); s.State != "up" {
+		t.Errorf("arranque a mano: %+v", s)
+	}
+}

@@ -3,19 +3,34 @@ package docker
 import (
 	"context"
 	"fmt"
+	"log/slog"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	cerrdefs "github.com/containerd/errdefs"
 	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/events"
 	"github.com/moby/moby/client"
 
 	"github.com/ImJustDoingMyPart/maestro/internal/agent"
 )
 
-// Client lee Docker. En esta etapa solo lista e inspecciona.
+// Client lee Docker: contenedores, logs y la última salida de cada uno.
 type Client struct {
 	api *client.Client
+
+	mu    sync.Mutex
+	exits map[string]exitInfo // por ID de contenedor; lo llena WatchExits
+}
+
+// exitInfo es la última vez que terminó un contenedor. Docker borra el exit
+// code del inspect cuando el contenedor vuelve a arrancar, así que la única
+// forma de saber por qué reinició es haber visto el evento "die".
+type exitInfo struct {
+	code int
+	at   time.Time
 }
 
 // New crea el cliente desde el entorno (DOCKER_HOST y compañía). La versión
@@ -29,7 +44,7 @@ func New() (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Client{api: api}, nil
+	return &Client{api: api, exits: make(map[string]exitInfo)}, nil
 }
 
 // Close libera las conexiones.
@@ -55,7 +70,88 @@ func (c *Client) Containers(ctx context.Context) ([]agent.Container, error) {
 		}
 		out = append(out, fromSummary(s, ins.Container.State, ins.Container.RestartCount))
 	}
+
+	// Suma la última salida vista y olvida la de los contenedores que ya
+	// no existen.
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	alive := make(map[string]bool, len(out))
+	for i := range out {
+		alive[out[i].ID] = true
+		if e, ok := c.exits[out[i].ID]; ok {
+			code := e.code
+			out[i].LastExitCode, out[i].LastExitAt = &code, e.at
+		}
+	}
+	for id := range c.exits {
+		if !alive[id] {
+			delete(c.exits, id)
+		}
+	}
 	return out, nil
+}
+
+// WatchExits escucha los eventos "die" de Docker y guarda el exit code de
+// cada contenedor, hasta que se cancele ctx. Si el stream de eventos se
+// corta (Docker reinició, se cayó el socket), lo vuelve a abrir con
+// espera creciente.
+func (c *Client) WatchExits(ctx context.Context, logger *slog.Logger) {
+	wait := time.Second
+	for {
+		opened := time.Now()
+		err := c.watchOnce(ctx)
+		if ctx.Err() != nil {
+			return
+		}
+		if time.Since(opened) > time.Minute {
+			wait = time.Second // anduvo un rato: no era un error que se repite
+		}
+		logger.Warn("eventos de Docker cortados; se reabren", "err", err, "en", wait)
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(wait):
+		}
+		wait = min(wait*2, 30*time.Second)
+	}
+}
+
+func (c *Client) watchOnce(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel() // cierra el stream si se sale por un error
+	res := c.api.Events(ctx, client.EventsListOptions{
+		Filters: make(client.Filters).Add("type", "container").Add("event", "die"),
+	})
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case err := <-res.Err:
+			return err
+		case m := <-res.Messages:
+			if id, e, ok := exitFromEvent(m); ok {
+				c.mu.Lock()
+				c.exits[id] = e
+				c.mu.Unlock()
+			}
+		}
+	}
+}
+
+// exitFromEvent saca el exit code y la hora de un evento "die".
+func exitFromEvent(m events.Message) (string, exitInfo, bool) {
+	if m.Type != events.ContainerEventType || m.Action != events.ActionDie || m.Actor.ID == "" {
+		return "", exitInfo{}, false
+	}
+	code, err := strconv.Atoi(m.Actor.Attributes["exitCode"])
+	if err != nil {
+		return "", exitInfo{}, false
+	}
+	at := time.Unix(0, m.TimeNano)
+	if m.TimeNano == 0 {
+		at = time.Unix(m.Time, 0)
+	}
+	return m.Actor.ID, exitInfo{code: code, at: at}, true
 }
 
 // fromSummary pasa del tipo del SDK al que viaja al hub. st es el estado
