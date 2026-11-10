@@ -277,7 +277,7 @@ export class Viewer {
   enqueueState(ev) {
     const ts = new Date(ev.ts);
     const level = ev.state === "down" ? ERROR : ev.state === "degraded" ? WARN : INFO;
-    const text = `${ev.label}: ${ev.reason}`;
+    const text = ev.reason ? `${ev.label}: ${ev.reason}` : ev.label;
     this.pending.push({ ts, time: timeFmt.format(ts), stream: "estado", c: "", text, lower: null, level, notice: true, state: ev.state });
     this.schedule();
   }

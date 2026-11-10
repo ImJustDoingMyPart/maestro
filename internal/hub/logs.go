@@ -453,13 +453,13 @@ type stateEvent struct {
 	TS     time.Time `json:"ts"`
 	State  string    `json:"state"` // "up", "degraded", "down"
 	Label  string    `json:"label"` // "Caído"
-	Reason string    `json:"reason"`
+	Reason string    `json:"reason,omitempty"`
 }
 
 // state manda un cambio de estado y devuelve su ID. No lleva id de SSE: el
 // id es la hora de la última línea de log, desde donde se reconecta.
 func (s *sseWriter) state(e store.StateEvent) int64 {
-	data, _ := json.Marshal(stateEvent{TS: e.At, State: e.To, Label: State(e.To).Label(), Reason: e.Reason})
+	data, _ := json.Marshal(stateEvent{TS: e.At, State: e.To, Label: State(e.To).Label(), Reason: shownReason(e.Reason)})
 	s.raw("event: state\ndata: " + string(data) + "\n\n")
 	return e.ID
 }

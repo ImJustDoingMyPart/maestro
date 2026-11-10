@@ -69,7 +69,7 @@
   <li>
     <span class="dot {{.State}}"></span>
     <div class="max">
-      <div>{{.State.Label}} · {{.Reason}}</div>
+      <div>{{.State.Label}}{{with .Reason}} · {{.}}{{end}}</div>
     </div>
     <span class="small-text secondary-text">{{localTime .At "datetime"}}</span>
   </li>

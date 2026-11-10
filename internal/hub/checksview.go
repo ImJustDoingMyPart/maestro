@@ -72,7 +72,7 @@ func (s *server) checkPanels(r *http.Request, svc catalog.Service) ([]checkPanel
 	var rows []eventRow
 	for i := len(events) - 1; i >= 0; i-- { // el más nuevo primero
 		e := events[i]
-		rows = append(rows, eventRow{At: e.At, State: State(e.To), Reason: e.Reason})
+		rows = append(rows, eventRow{At: e.At, State: State(e.To), Reason: shownReason(e.Reason)})
 	}
 
 	var panels []checkPanel
@@ -195,4 +195,13 @@ func plural(n int, one, many string) string {
 		return "1 " + one
 	}
 	return fmt.Sprintf("%d %s", n, many)
+}
+
+// shownReason es el motivo de un evento para mostrar al lado de su estado:
+// el "arriba" de un evento a Up repetiría la etiqueta ("Arriba: arriba").
+func shownReason(reason string) string {
+	if reason == "arriba" {
+		return ""
+	}
+	return reason
 }
