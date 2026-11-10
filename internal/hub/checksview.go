@@ -65,18 +65,29 @@ func (s *server) checksFragment(w http.ResponseWriter, r *http.Request) {
 // estado de historySpan.
 func (s *server) checkPanels(r *http.Request, svc catalog.Service) ([]checkPanel, []eventRow) {
 	now := time.Now()
-	results, events, err := s.mon.History(r.Context(), svc.ID, now.Add(-historySpan))
+	start := now.Add(-historySpan)
+	views := s.mon.Checks(svc.ID)
+	// Un push bueno de antes de la ventana puede cubrir parte de ella: se
+	// lee desde un plazo antes.
+	lookback := time.Duration(0)
+	for _, v := range views {
+		lookback = max(lookback, v.Deadline)
+	}
+	results, events, err := s.mon.History(r.Context(), svc.ID, start.Add(-lookback))
 	if err != nil {
 		s.logger.Error("leer historial", "service", svc.ID, "err", err)
 	}
 	var rows []eventRow
 	for i := len(events) - 1; i >= 0; i-- { // el más nuevo primero
 		e := events[i]
+		if e.At.Before(start) {
+			break
+		}
 		rows = append(rows, eventRow{At: e.At, State: State(e.To), Reason: shownReason(e.Reason)})
 	}
 
 	var panels []checkPanel
-	for _, v := range s.mon.Checks(svc.ID) {
+	for _, v := range views {
 		p := checkPanel{Kind: kindLabel(v.Kind), Target: v.Target, State: checkLight(v)}
 		if v.Results > 0 {
 			p.Last, p.LastAt = v.Last.Detail, v.Last.At
@@ -91,12 +102,17 @@ func (s *server) checkPanels(r *http.Request, svc catalog.Service) ([]checkPanel
 		}
 		var mine []store.CheckResult
 		for _, res := range results {
-			if res.Kind == string(v.Kind) {
+			if res.Kind == string(v.Kind) && (v.Kind == catalog.CheckPush || !res.At.Before(start)) {
 				mine = append(mine, res)
 			}
 		}
-		p.Uptime = uptime(mine)
-		p.Bars = bars(mine, now, historySpan, historyBars)
+		if v.Kind == catalog.CheckPush {
+			p.Uptime = pushUptime(mine, v.Deadline, start, now)
+			p.Bars = pushBars(mine, v.Deadline, now, historySpan, historyBars)
+		} else {
+			p.Uptime = uptime(mine)
+			p.Bars = bars(mine, now, historySpan, historyBars)
+		}
 		panels = append(panels, p)
 	}
 	return panels, rows
@@ -145,11 +161,7 @@ func uptime(results []store.CheckResult) string {
 			ok++
 		}
 	}
-	if ok == len(results) {
-		return "100 %"
-	}
-	pct := math.Floor(float64(ok)*1000/float64(len(results))) / 10
-	return strings.Replace(fmt.Sprintf("%.1f %%", pct), ".", ",", 1)
+	return percent(float64(ok), float64(len(results)))
 }
 
 // bars reparte los resultados de [now-span, now) en n barras. Cada una
@@ -188,6 +200,103 @@ func bars(results []store.CheckResult, now time.Time, span time.Duration, n int)
 		out[i] = b
 	}
 	return out
+}
+
+// coverage mide un push en [from, to): cuánto tiempo hay datos (known) y
+// cuánto de ese tiempo estuvo cubierto por una llamada a tiempo (covered).
+// Cada llamada buena en t cubre [t, t+deadline). Los datos empiezan con el
+// primer resultado: si es una falla ("no llegó"), el plazo que venció
+// había empezado deadline antes. results va del más viejo al más nuevo.
+func coverage(results []store.CheckResult, deadline time.Duration, from, to time.Time) (covered, known time.Duration) {
+	if len(results) == 0 || !from.Before(to) {
+		return 0, 0
+	}
+	first := results[0].At
+	if !results[0].OK {
+		first = first.Add(-deadline)
+	}
+	start := later(from, first)
+	if !start.Before(to) {
+		return 0, 0
+	}
+	known = to.Sub(start)
+
+	// Unión de los tramos cubiertos, recortada a [start, to).
+	var curFrom, curTo time.Time
+	flush := func() {
+		a, b := later(curFrom, start), curTo
+		if b.After(to) {
+			b = to
+		}
+		if a.Before(b) {
+			covered += b.Sub(a)
+		}
+	}
+	open := false
+	for _, r := range results {
+		if !r.OK {
+			continue
+		}
+		a, b := r.At, r.At.Add(deadline)
+		if open && !a.After(curTo) {
+			curTo = later(curTo, b)
+			continue
+		}
+		if open {
+			flush()
+		}
+		curFrom, curTo, open = a, b, true
+	}
+	if open {
+		flush()
+	}
+	return covered, known
+}
+
+// pushUptime es la parte del tiempo con datos de las últimas 24 horas en
+// que el push estuvo al día. Contar resultados no sirve: cada intervalo sin
+// llamada suma una falla, y una sola llamada buena cubre todo un intervalo.
+func pushUptime(results []store.CheckResult, deadline time.Duration, from, to time.Time) string {
+	covered, known := coverage(results, deadline, from, to)
+	if known == 0 {
+		return ""
+	}
+	return percent(float64(covered), float64(known))
+}
+
+// pushBars es bars para un push: cada barra según cuánto de su tramo
+// estuvo cubierto.
+func pushBars(results []store.CheckResult, deadline time.Duration, now time.Time, span time.Duration, n int) []bar {
+	start := now.Add(-span)
+	width := span / time.Duration(n)
+	out := make([]bar, n)
+	for i := range out {
+		b := bar{From: start.Add(time.Duration(i) * width)}
+		b.To = b.From.Add(width)
+		covered, known := coverage(results, deadline, b.From, b.To)
+		switch {
+		case known == 0:
+			b.Class, b.Summary = "none", "sin datos"
+		case covered == known:
+			b.Class, b.Summary = "up", "al día"
+		case covered == 0:
+			b.Class, b.Summary = "down", "atrasado"
+		default:
+			b.Class, b.Summary = "partial", "al día "+percent(float64(covered), float64(known))
+		}
+		out[i] = b
+	}
+	return out
+}
+
+// percent escribe a/b como porcentaje con coma decimal, sin redondear a
+// 100 si no lo es.
+func percent(a, b float64) string {
+	if a >= b {
+		return "100 %"
+	}
+	pct := math.Floor(a*1000/b) / 10
+	return strings.Replace(fmt.Sprintf("%.1f %%", pct), ".", ",", 1)
 }
 
 func plural(n int, one, many string) string {

@@ -399,6 +399,9 @@ type CheckView struct {
 	Last     checks.Result
 	Results  int // 0: todavía no corrió
 	Failures int
+	// Deadline (solo push) es cuánto cubre cada llamada: el intervalo más
+	// la gracia.
+	Deadline time.Duration
 }
 
 // Checks da el estado de los checks declarados de un servicio, en el orden
@@ -415,6 +418,7 @@ func (m *Monitor) Checks(id string) []CheckView {
 		v := CheckView{Kind: c.Kind, Target: c.Target}
 		if c.Kind == catalog.CheckPush {
 			v.Target = ""
+			v.Deadline = checks.Spec{Service: id, Check: c}.PushDeadline()
 		}
 		if cs := m.checks[checks.Key{Service: id, Kind: c.Kind}]; cs != nil {
 			v.Last, v.Results, v.Failures = cs.last, cs.results, cs.failures

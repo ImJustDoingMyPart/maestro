@@ -51,6 +51,9 @@ func (s Spec) timeout() time.Duration {
 // grace es cuánto se espera un push después de su intervalo.
 func (s Spec) grace() time.Duration { return s.interval() / 10 }
 
+// PushDeadline es cuánto vale un push: pasado este tiempo sin otro, falla.
+func (s Spec) PushDeadline() time.Duration { return s.interval() + s.grace() }
+
 // Key identifica un check.
 type Key struct {
 	Service string
