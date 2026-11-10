@@ -1,0 +1,13 @@
+# Secretos y datos locales
+.env
+*.db
+*.db-shm
+*.db-wal
+maestro.yaml
+
+# Binarios
+/maestro
+/dist/
+
+# Config local de Claude Code
+.claude/settings.local.json
