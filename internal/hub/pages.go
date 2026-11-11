@@ -20,6 +20,7 @@ const (
 	StateDegraded State = "degraded"
 	StateDown     State = "down"
 	StateUnknown  State = "unknown"
+	StateStopped  State = "stopped"
 )
 
 // Label es el texto que acompaña al color, para no depender solo de él.
@@ -31,6 +32,8 @@ func (s State) Label() string {
 		return "Degradado"
 	case StateDown:
 		return "Caído"
+	case StateStopped:
+		return "Detenido"
 	default:
 		return "Sin datos"
 	}
@@ -81,7 +84,7 @@ type group struct {
 }
 
 type summary struct {
-	Up, Degraded, Down, Unknown int
+	Up, Degraded, Down, Unknown, Stopped int
 }
 
 func summarize(groups []group) summary {
@@ -95,6 +98,8 @@ func summarize(groups []group) summary {
 				s.Degraded++
 			case StateDown:
 				s.Down++
+			case StateStopped:
+				s.Stopped++
 			default:
 				s.Unknown++
 			}

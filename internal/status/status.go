@@ -18,6 +18,10 @@ const (
 	Degraded State = "degraded"
 	Down     State = "down"
 	Unknown  State = "unknown"
+	// Stopped es algo parado sin haber fallado: un servicio de systemd
+	// inactivo, un timer desactivado, una LXC o VM apagada. No es una
+	// falla, pero sí un estado conocido (se guarda como evento).
+	Stopped State = "stopped"
 )
 
 // Container es lo que importa de un contenedor del servicio.
@@ -163,10 +167,11 @@ func (s Status) Reason() string {
 func Evaluate(in Input, now time.Time, p Params) Status {
 	var down, degraded, unknown []string
 	useContainers := in.FromContainers && in.HostOK
+	var stopped []string
 	useUnit := in.Unit != nil && in.HostOK
 	if useUnit {
-		d, g, u := unitReasons(*in.Unit)
-		down, degraded, unknown = append(down, d...), append(degraded, g...), append(unknown, u...)
+		d, g, st, u := unitReasons(*in.Unit)
+		down, degraded, stopped, unknown = append(down, d...), append(degraded, g...), append(stopped, st...), append(unknown, u...)
 	}
 
 	if useContainers {
@@ -221,6 +226,8 @@ func Evaluate(in Input, now time.Time, p Params) Status {
 		return Status{Down, down}
 	case len(degraded) > 0:
 		return Status{Degraded, degraded}
+	case len(stopped) > 0:
+		return Status{Stopped, stopped}
 	case !useContainers && !useUnit && !withData:
 		if in.FromContainers || in.Unit != nil {
 			return Status{Unknown, []string{"sin datos del agent"}}
@@ -234,24 +241,25 @@ func Evaluate(in Input, now time.Time, p Params) Status {
 	return Status{State: Up}
 }
 
-// unitReasons da los motivos de caída, de degradado y de desconocido de una
-// unidad o un invitado:
+// unitReasons da los motivos de caída, de degradado, de detenido y de
+// desconocido de una unidad o un invitado. Parar no es fallar: solo cae
+// lo que falló.
 //
 //   - Missing: caída, "<name> no existe en el host".
 //   - servicio: active o reloading está bien; failed es caída, "<name>
 //     falló (exit <ExitStatus>)" si Result es "exit-code" y "<name> falló
-//     (<Result>)" si no (o "<name> falló" sin Result); inactive es caída,
-//     "<name> detenido"; activating, "<name> arrancando" (desconocido);
-//     deactivating, "<name> deteniéndose" (desconocido); cualquier otro,
-//     desconocido "<name>: <Active>".
+//     (<Result>)" si no (o "<name> falló" sin Result); inactive es
+//     detenido, "<name> detenido"; activating, "<name> arrancando"
+//     (desconocido); deactivating, "<name> deteniéndose" (desconocido);
+//     cualquier otro, desconocido "<name>: <Active>".
 //   - timer: si Result no es "" ni "success", caída "última corrida falló
-//     (exit <ExitStatus>)" o "última corrida falló (<Result>)". Además, un
-//     timer que no está active es degradado: "timer detenido".
-//   - lxc o vm: running está bien; stopped es caída, "<name> apagada";
+//     (exit <ExitStatus>)" o "última corrida falló (<Result>)". Si no, un
+//     timer que no está active es detenido: "timer detenido".
+//   - lxc o vm: running está bien; stopped es detenido, "<name> apagada";
 //     cualquier otro estado, degradado "<name>: <Active>".
-func unitReasons(u Unit) (down, degraded, unknown []string) {
+func unitReasons(u Unit) (down, degraded, stopped, unknown []string) {
 	if u.Missing {
-		return []string{u.Name + " no existe en el host"}, nil, nil
+		return []string{u.Name + " no existe en el host"}, nil, nil, nil
 	}
 	failed := func(prefix string) string {
 		switch u.Result {
@@ -266,15 +274,14 @@ func unitReasons(u Unit) (down, degraded, unknown []string) {
 	case "timer":
 		if u.Result != "" && u.Result != "success" {
 			down = append(down, failed("última corrida falló"))
-		}
-		if u.Active != "active" {
-			degraded = append(degraded, "timer detenido")
+		} else if u.Active != "active" {
+			stopped = append(stopped, "timer detenido")
 		}
 	case "lxc", "vm":
 		switch u.Active {
 		case "running":
 		case "stopped":
-			down = append(down, u.Name+" apagada")
+			stopped = append(stopped, u.Name+" apagada")
 		default:
 			degraded = append(degraded, u.Name+": "+u.Active)
 		}
@@ -284,7 +291,7 @@ func unitReasons(u Unit) (down, degraded, unknown []string) {
 		case "failed":
 			down = append(down, failed(u.Name+" falló"))
 		case "inactive":
-			down = append(down, u.Name+" detenido")
+			stopped = append(stopped, u.Name+" detenido")
 		case "activating":
 			unknown = append(unknown, u.Name+" arrancando")
 		case "deactivating":
@@ -293,7 +300,7 @@ func unitReasons(u Unit) (down, degraded, unknown []string) {
 			unknown = append(unknown, u.Name+": "+u.Active)
 		}
 	}
-	return down, degraded, unknown
+	return down, degraded, stopped, unknown
 }
 
 // Event es un cambio de estado que se guarda.

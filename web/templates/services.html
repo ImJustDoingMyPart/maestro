@@ -136,6 +136,7 @@
     {{if .Summary.Degraded}}<span class="chip no-border surface-container"><span class="dot degraded"></span>{{.Summary.Degraded}} degradados</span>{{end}}
     <span class="chip no-border surface-container"><span class="dot down"></span>{{.Summary.Down}} caídos</span>
     <span class="chip no-border surface-container"><span class="dot unknown"></span>{{.Summary.Unknown}} sin datos</span>
+    {{if .Summary.Stopped}}<span class="chip no-border surface-container"><span class="dot stopped"></span>{{.Summary.Stopped}} detenidos</span>{{end}}
     {{if not .Updated.IsZero}}<span class="small-text secondary-text updated">Actualizado {{localTime .Updated "time"}}</span>{{end}}
     {{if .FoundPending}}<a class="chip no-border surface-container" href="/discovered"><i>travel_explore</i><span>{{.FoundPending}} {{if eq .FoundPending 1}}descubierto{{else}}descubiertos{{end}}</span></a>{{end}}
     {{if .HiddenCount}}<a class="chip no-border surface-container" href="/hidden"><i>visibility_off</i><span>{{.HiddenCount}} {{if eq .HiddenCount 1}}oculto{{else}}ocultos{{end}}</span></a>{{end}}

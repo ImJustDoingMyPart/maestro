@@ -112,9 +112,9 @@ El agent toma una muestra cada 15 segundos y el hub guarda cada una (una sola ve
 
 El agent lee por D-Bus (el bus del sistema, que deja leer sin ser root) los servicios y timers de systemd cargados y, con `--proxmox` en un host de Proxmox, las LXC y VMs con `pvesh` cada 30 segundos. Todo va a la bandeja (`/discovered`), por host, con lo que falla primero y un filtro.
 
-- **Estado**: un servicio `active` está arriba; `failed` está caído con el motivo (`falló (exit 1)`); `inactive`, caído ("detenido"); arrancando o deteniéndose, sin datos. Un timer se juzga por cómo terminó la última corrida del servicio que dispara (`última corrida falló (exit 1)`) y sale degradado si el timer mismo no está activo. Una LXC o VM prendida está arriba, apagada está caída y pausada, degradada. Un script con timer (Restic) se vigila así, sin push.
+- **Estado**: parar no es fallar. Un servicio `active` está arriba; `failed` está caído con el motivo (`falló (exit 1)`); `inactive` está **detenido** (punto gris hueco), no caído: muchas unidades del sistema corren una vez y quedan así; arrancando o deteniéndose, sin datos. Un timer se juzga por cómo terminó la última corrida del servicio que dispara (`última corrida falló (exit 1)`) y está detenido si el timer mismo no está activo. Una LXC o VM prendida está arriba, apagada está detenida y pausada, degradada. Un script con timer (Restic) se vigila así, sin push.
 - **Mostrar** la pasa a la portada como un servicio más: se renombra, se mueve y se ordena como cualquier tarjeta, sus cambios de estado se guardan y tiene su página (`/services/found:<host>/<tipo>/<nombre>`, por ejemplo `found:vm/timer/restic-backup.timer` o `found:pve/lxc/102`; las LXC y VMs se nombran por VMID, que no cambia). "Volver a la bandeja" (o "Ocultar") la saca.
-- **Una unidad que falla avisa aunque no esté en la portada**: arriba de la portada aparece cuántas hay, con link a la bandeja.
+- **Una unidad que falla avisa aunque no esté en la portada**: arriba de la portada aparece cuántas hay, con link a la bandeja. Las detenidas no avisan.
 - Una unidad declarada en el archivo (`unit` y `host` en `services`) toma su estado del mismo lugar; si el agent responde y no la tiene, sale caída ("no existe en el host").
 - El journal de las unidades todavía no se muestra.
 

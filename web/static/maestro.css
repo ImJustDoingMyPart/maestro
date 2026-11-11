@@ -104,6 +104,8 @@ header.fixed.topbar {
 .dot.degraded { background: var(--status-warn); }
 .dot.down     { background: var(--error); }
 .dot.unknown  { background: var(--outline); }
+/* Detenido: hueco, para no confundirlo con "sin datos" (relleno gris). */
+.dot.stopped  { background: transparent; box-shadow: inset 0 0 0 2px var(--outline); }
 
 .chip .dot {
   margin-inline-end: 0.5rem;
@@ -711,6 +713,14 @@ a.found-failing {
   overflow-x: auto;
   font-size: 0.875rem;
   white-space: pre;
+}
+
+/* Beer CSS les pone display a los li de una lista: sin esto, el atributo
+   hidden (el filtro de la bandeja) no los esconde. */
+.found-list > li[hidden],
+.found-host[hidden],
+.found-empty[hidden] {
+  display: none !important;
 }
 
 /* Hardware y gráficos (etapa 7) */

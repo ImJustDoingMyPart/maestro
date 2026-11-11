@@ -42,8 +42,10 @@ type memberRow struct {
 func stateRank(s status.State) int {
 	switch s {
 	case status.Down:
-		return 3
+		return 4
 	case status.Degraded:
+		return 3
+	case status.Stopped:
 		return 2
 	case status.Unknown:
 		return 1

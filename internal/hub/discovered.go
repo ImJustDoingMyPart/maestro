@@ -36,7 +36,9 @@ func foundRows(found []Discovered, shown map[string]bool) []foundHost {
 			r.Label = r.Name
 		}
 		switch {
-		case d.Reason != "" && d.State != StateUp:
+		case d.Reason != "" && d.State != StateUp && d.State != StateStopped:
+			// Detenido no lleva motivo: el punto ya lo dice, y la
+			// descripción de la unidad dice más que "x detenido".
 			r.Sub = foundKindLabel(d.Kind) + " · " + d.Reason
 		case d.Kind == "lxc" || d.Kind == "vm":
 			r.Sub = cmp.Or(d.Detail, foundKindLabel(d.Kind))
