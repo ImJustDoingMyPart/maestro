@@ -7,6 +7,8 @@
 package report
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/ImJustDoingMyPart/maestro/internal/loglevel"
@@ -112,5 +114,228 @@ type File struct {
 // Render escribe el informe en Markdown. Ver testdata/*.md y los tests
 // para el formato exacto.
 func Render(r Report) string {
-	panic("sin implementar")
+	var blocks []string
+	add := func(b string) { blocks = append(blocks, b) }
+
+	add("# Informe de " + r.Name)
+	add("Generado por Maestro el " + fmtTime(r.Generated) + ". Las horas están en UTC. Los secretos del compose, del `.env` y de los logs están reemplazados por `[censurado]`.")
+
+	// Qué es
+	add("## Qué es")
+	var que []string
+	field := func(label, v string, code bool) {
+		if v == "" {
+			return
+		}
+		if code {
+			v = "`" + v + "`"
+		}
+		que = append(que, "- **"+label+"**: "+v)
+	}
+	field("ID", r.ID, true)
+	field("Descripción", r.Description, false)
+	field("Grupo", r.Group, false)
+	field("URL", r.URL, false)
+	field("Origen", r.Source, false)
+	field("Host", r.Host, false)
+	if len(que) > 0 {
+		add(strings.Join(que, "\n"))
+	}
+
+	// Estado
+	add("## Estado: " + r.State)
+	if !r.StateSince.IsZero() {
+		add("Desde " + fmtTime(r.StateSince) + ".")
+	}
+	if len(r.Reasons) > 0 {
+		items := make([]string, len(r.Reasons))
+		for i, reason := range r.Reasons {
+			items[i] = "- " + reason
+		}
+		add(strings.Join(items, "\n"))
+	}
+	if len(r.Containers) > 0 {
+		add("### Contenedores")
+		rows := [][]string{{"Contenedor", "Imagen", "Estado", "Health", "Exit code", "Arrancó", "Reinicios"}}
+		for _, c := range r.Containers {
+			exit := ""
+			if c.ExitCode != nil {
+				exit = fmt.Sprint(*c.ExitCode)
+			}
+			started := ""
+			if !c.StartedAt.IsZero() {
+				started = fmtTime(c.StartedAt)
+			}
+			rows = append(rows, []string{c.Name, c.Image, c.State, c.Health, exit, started, fmt.Sprint(c.Restarts)})
+		}
+		add(table(rows))
+	}
+
+	// Checks
+	add(fmt.Sprintf("## Checks (últimas %d h)", r.WindowHours))
+	if len(r.Checks) == 0 {
+		add("Sin checks declarados.")
+	} else {
+		rows := [][]string{{"Check", "Objetivo", "Último resultado", "Hora", "Latencia", "Disponibilidad", "Certificado vence"}}
+		for _, c := range r.Checks {
+			last := c.Last
+			if last == "" {
+				last = "todavía no corrió"
+			}
+			at, cert := "", ""
+			if !c.LastAt.IsZero() {
+				at = fmtTime(c.LastAt)
+			}
+			if !c.CertExpiry.IsZero() {
+				cert = c.CertExpiry.UTC().Format("2006-01-02")
+			}
+			rows = append(rows, []string{c.Kind, c.Target, last, at, c.Latency, c.Uptime, cert})
+		}
+		add(table(rows))
+		for _, c := range r.Checks {
+			if len(c.Failures) == 0 {
+				continue
+			}
+			add("### Últimas fallas de " + c.Kind)
+			items := make([]string, len(c.Failures))
+			for i, f := range c.Failures {
+				items[i] = "- " + fmtTime(f.At) + " · " + f.Detail
+			}
+			add(strings.Join(items, "\n"))
+		}
+	}
+
+	// Cambios de estado
+	add(fmt.Sprintf("## Cambios de estado (últimas %d h)", r.WindowHours))
+	if len(r.Events) == 0 {
+		add("Ninguno.")
+	} else {
+		items := make([]string, len(r.Events))
+		for i, e := range r.Events {
+			items[i] = "- " + fmtTime(e.At) + " · " + e.From + " → " + e.To
+			if e.Reason != "" {
+				items[i] += " · " + e.Reason
+			}
+		}
+		add(strings.Join(items, "\n"))
+	}
+
+	// Logs
+	add("## Logs")
+	if r.LogsNote != "" {
+		add(r.LogsNote)
+	} else {
+		prefix := fmt.Sprintf("Últimas %d líneas de cada contenedor: ", r.LogsTail)
+		if len(r.Logs) == 0 {
+			add(prefix + "ninguna.")
+		} else {
+			var errs, warns int
+			var sb strings.Builder
+			for _, l := range r.Logs {
+				switch l.Level {
+				case loglevel.Error:
+					errs++
+					sb.WriteString("E ")
+				case loglevel.Warn:
+					warns++
+					sb.WriteString("W ")
+				default:
+					sb.WriteString("  ")
+				}
+				if !l.At.IsZero() {
+					sb.WriteString(fmtTime(l.At) + " ")
+				}
+				if l.Container != "" {
+					sb.WriteString("[" + l.Container + "] ")
+				}
+				sb.WriteString(strings.ReplaceAll(l.Text, "\n", " ") + "\n")
+			}
+			count := "sin errores ni avisos"
+			if errs > 0 || warns > 0 {
+				count = plural(errs, "error", "errores") + " y " + plural(warns, "aviso", "avisos")
+			}
+			add(prefix + count + ". `E` marca los errores y `W` los avisos.")
+			add(codeBlock("text", sb.String()))
+		}
+	}
+
+	// Archivos
+	if r.FilesNote != "" {
+		add("## Archivos del stack")
+		add(r.FilesNote)
+	} else {
+		for _, f := range r.Files {
+			add("## " + f.Name)
+			switch {
+			case !f.Exists:
+				add("`" + f.Path + "`: no existe.")
+			case f.Content == "":
+				add("`" + f.Path + "`: vacío.")
+			default:
+				add("`" + f.Path + "`")
+				content := f.Content
+				if !strings.HasSuffix(content, "\n") {
+					content += "\n"
+				}
+				add(codeBlock(f.Lang, content))
+			}
+		}
+	}
+
+	return strings.Join(blocks, "\n\n") + "\n"
+}
+
+func fmtTime(t time.Time) string { return t.UTC().Format("2006-01-02 15:04:05") }
+
+func plural(n int, one, many string) string {
+	if n == 1 {
+		return "1 " + one
+	}
+	return fmt.Sprintf("%d %s", n, many)
+}
+
+// cell prepara el texto de una celda: vacío es "—", "|" se escapa y los
+// saltos de línea pasan a espacios.
+func cell(s string) string {
+	if s == "" {
+		return "—"
+	}
+	s = strings.ReplaceAll(s, "|", "\\|")
+	return strings.ReplaceAll(s, "\n", " ")
+}
+
+// table arma una tabla Markdown; la primera fila es el encabezado.
+func table(rows [][]string) string {
+	var sb strings.Builder
+	for i, row := range rows {
+		cells := make([]string, len(row))
+		for j, c := range row {
+			if i == 0 {
+				cells[j] = c
+			} else {
+				cells[j] = cell(c)
+			}
+		}
+		sb.WriteString("| " + strings.Join(cells, " | ") + " |\n")
+		if i == 0 {
+			sb.WriteString("|" + strings.Repeat("---|", len(row)) + "\n")
+		}
+	}
+	return strings.TrimSuffix(sb.String(), "\n")
+}
+
+// codeBlock envuelve content (que termina en "\n") en una cerca más larga
+// que cualquier tira de backticks que tenga adentro.
+func codeBlock(lang, content string) string {
+	longest, run := 0, 0
+	for _, c := range content {
+		if c == '`' {
+			run++
+			longest = max(longest, run)
+		} else {
+			run = 0
+		}
+	}
+	fence := strings.Repeat("`", max(3, longest+1))
+	return fence + lang + "\n" + content + fence
 }
