@@ -677,3 +677,10 @@ body.dark  { --status-warn: #ffb74d; }
   align-items: center;
   gap: 0.5rem;
 }
+
+.export-yaml {
+  padding: 1rem;
+  overflow-x: auto;
+  font-size: 0.875rem;
+  white-space: pre;
+}

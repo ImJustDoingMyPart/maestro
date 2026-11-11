@@ -15,7 +15,7 @@ import (
 // loadPrefs lee la configuración de la interfaz. Si la base falla en una
 // parte, esa parte queda vacía (se muestra lo de los labels) y se registra.
 func (s *server) loadPrefs(ctx context.Context) uiPrefs {
-	var p uiPrefs
+	p := uiPrefs{FileStacks: s.layout.Stacks, FileGroups: s.layout.Groups}
 	var err error
 	if p.Hidden, err = s.prefs.Hidden(ctx); err != nil {
 		s.logger.Error("leer ocultos", "err", err)
@@ -302,6 +302,10 @@ func (s *server) orderCards(w http.ResponseWriter, r *http.Request) {
 // orderGroups atiende POST /layout/groups: los grupos "name" quedan en ese
 // orden. "Otros" va siempre al final y no se guarda. Responde 204.
 func (s *server) orderGroups(w http.ResponseWriter, r *http.Request) {
+	if len(s.layout.Groups) > 0 {
+		http.Error(w, "el orden de los grupos viene de maestro.yaml", http.StatusConflict)
+		return
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "formulario inválido", http.StatusBadRequest)

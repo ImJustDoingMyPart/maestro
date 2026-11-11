@@ -139,7 +139,7 @@
   {{range .Groups}}
   <section class="group{{if .Empty}} empty{{end}}{{if .Otros}} otros{{end}}" data-group="{{.Name}}">
     <nav class="group-head">
-      {{if and $.Live (not .Otros)}}<i class="edit-only group-handle" title="Arrastrar para ordenar los grupos" aria-hidden="true">drag_indicator</i>{{end}}
+      {{if and $.Live (not .Otros) (not .OrderLocked)}}<i class="edit-only group-handle" title="Arrastrar para ordenar los grupos" aria-hidden="true">drag_indicator</i>{{end}}
       <h6 class="group-title max">{{.Name}}</h6>
       {{if $.Live}}
       <button type="button" class="circle transparent small edit-only" data-dialog="group-rename-dialog" data-set-name="{{.Name}}" data-set-to="{{.Name}}"
@@ -165,6 +165,7 @@
     <a class="button border" href="/externals/new"><i>public</i><span>Agregar servicio externo</span></a>
     <a class="button border" href="/discovered"><i>travel_explore</i><span>Descubiertos</span></a>
     <a class="button border" href="/hidden"><i>visibility_off</i><span>Ocultos</span></a>
+    <a class="button border" href="/export"><i>output</i><span>Exportar a maestro.yaml</span></a>
   </nav>
   <datalist id="group-names">{{range .Groups}}{{if not .Otros}}<option value="{{.Name}}"></option>{{end}}{{end}}</datalist>
   {{end}}
@@ -241,7 +242,7 @@
 {{define "hideitem"}}
 <form method="post" action="/hidden" hx-post="/hidden" hx-target="#services" hx-swap="outerHTML">
   <input type="hidden" name="key" value="{{.Key}}">
-  <button class="transparent"><i>visibility_off</i><span>Ocultar</span></button>
+  <button class="transparent"{{if .HiddenLocked}} disabled title="maestro.yaml dice hidden: false"{{end}}><i>visibility_off</i><span>Ocultar</span></button>
 </form>
 {{end}}
 

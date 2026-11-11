@@ -56,8 +56,8 @@ func (d Discovered) Key() string { return "found:" + d.Host + "/" + d.Kind + "/"
 type Snapshot struct {
 	Services   []catalog.Service
 	Discovered []Discovered
-	Hosts    []HostStatus // ordenados por nombre
-	At       time.Time    // cero hasta la primera vuelta
+	Hosts      []HostStatus // ordenados por nombre
+	At         time.Time    // cero hasta la primera vuelta
 }
 
 // HostOK dice si el agent de host respondió en la última vuelta.
@@ -77,9 +77,12 @@ type hostState struct {
 
 // Poller consulta a los agents cada intervalo y arma la lista de servicios.
 type Poller struct {
-	agents   map[string]agentClient
-	file     map[string]catalog.FileService
-	ui       map[string]catalog.FileService // externos de la interfaz; protegido por mu
+	agents map[string]agentClient
+	file   map[string]catalog.FileService
+	ui     map[string]catalog.FileService // externos de la interfaz; protegido por mu
+	// layout es lo del archivo que solo usa la portada (stacks: y
+	// groups:). No cambia después de NewPoller.
+	layout   fileLayout
 	catalog  *catalog.Catalog
 	interval time.Duration
 	timeout  time.Duration
@@ -99,8 +102,19 @@ func NewPoller(cfg *config.Config, logger *slog.Logger) *Poller {
 	for name, h := range cfg.Hosts {
 		agents[name] = agent.NewClient(h.Agent, h.Token)
 	}
-	return newPoller(agents, cfg.FileServices(), logger)
+	p := newPoller(agents, cfg.FileServices(), logger)
+	p.layout = fileLayout{Stacks: cfg.Stacks, Groups: cfg.Groups}
+	return p
 }
+
+// fileLayout es lo de maestro.yaml que solo usa la portada.
+type fileLayout struct {
+	Stacks map[string]config.Stack // por "<host>/<proyecto>"
+	Groups []string                // orden de los grupos; vacío si no lo fija
+}
+
+// FileLayout da las secciones stacks: y groups: del archivo.
+func (p *Poller) FileLayout() fileLayout { return p.layout }
 
 func newPoller(agents map[string]agentClient, file map[string]catalog.FileService, logger *slog.Logger) *Poller {
 	p := &Poller{

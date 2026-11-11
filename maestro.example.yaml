@@ -60,3 +60,21 @@ services:
 
   beszel/beszel-agent:
     ignore: true
+
+  immich/redis:
+    hidden: true # no se muestra en la portada, pero se sigue vigilando
+
+# Lo que sigue también se hace desde la interfaz (modo edición de la
+# portada) y se exporta con "Exportar a maestro.yaml". Lo que se declara
+# acá ya no se cambia desde la interfaz.
+
+# Tarjeta de un stack de compose: clave "<host>/<proyecto>".
+stacks:
+  vm/immich:
+    name: Fotos
+    group: Archivos
+  # vm/juguete: { hidden: true }
+
+# Orden de los grupos de la portada. Los que no están van después, por
+# nombre, y "Otros" (las tarjetas sin grupo) siempre al final.
+groups: [Archivos, Media, Red, Sistema]

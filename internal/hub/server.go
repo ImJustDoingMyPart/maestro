@@ -127,12 +127,13 @@ type server struct {
 	apiToken string          // vacío: la API solo con sesión
 	ui       uiServiceSetter // nil si el poller no recibe externos (tests con foto fija)
 	fileKeys map[string]bool // claves de services: en el archivo
+	layout   fileLayout      // stacks: y groups: del archivo
 	pages    pages
 	logger   *slog.Logger
 }
 
 func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon monitorView, prefs prefStore, sessions *auth.Sessions, apiToken string, logger *slog.Logger) (http.Handler, error) {
-	p, err := parsePages(web.Templates, "services", "service", "stack", "hardware", "login", "hidden", "external", "discovered")
+	p, err := parsePages(web.Templates, "services", "service", "stack", "hardware", "login", "hidden", "external", "discovered", "export")
 	if err != nil {
 		return nil, err
 	}
@@ -142,6 +143,9 @@ func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon moni
 	}
 	if f, ok := poller.(interface{ FileKeys() map[string]bool }); ok {
 		s.fileKeys = f.FileKeys()
+	}
+	if f, ok := poller.(interface{ FileLayout() fileLayout }); ok {
+		s.layout = f.FileLayout()
 	}
 
 	mux := http.NewServeMux()
@@ -172,6 +176,8 @@ func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon moni
 	private.HandleFunc("POST /layout/cards", s.orderCards)
 	private.HandleFunc("POST /layout/groups", s.orderGroups)
 	private.HandleFunc("POST /separate", s.separate)
+	private.HandleFunc("GET /export", s.exportPage)
+	private.HandleFunc("GET /export.yaml", s.exportFile)
 	private.HandleFunc("GET /discovered", s.discoveredPage)
 	private.HandleFunc("POST /discovered/show", s.showFound)
 	private.HandleFunc("POST /discovered/unshow", s.unshowFound)

@@ -66,6 +66,8 @@ type serviceCard struct {
 	EditHref string
 	// Found: viene de la bandeja de Descubiertos; "Ocultar" lo devuelve ahí.
 	Found bool
+	// HiddenLocked: maestro.yaml dice hidden: false; no se oculta desde acá.
+	HiddenLocked bool
 }
 
 type group struct {
@@ -74,6 +76,8 @@ type group struct {
 	Otros    bool // las tarjetas sin grupo: no se renombra, borra ni mueve
 	Locked   bool // alguna tarjeta tiene el grupo del archivo: no se renombra ni borra
 	Empty    bool // creado desde la interfaz, sin tarjetas: solo se ve en el modo edición
+	// OrderLocked: maestro.yaml fija el orden de los grupos (groups:).
+	OrderLocked bool
 }
 
 type summary struct {
@@ -117,6 +121,7 @@ type pageData struct {
 	HiddenCount  int         // cuántas tarjetas están ocultas
 	FoundPending int         // cuántos descubiertos quedan en la bandeja
 	Found        []foundRow  // página de Descubiertos
+	Export       string      // página de exportar: el YAML
 	Hidden       []hiddenRow // página de ocultos
 	HostProblems []HostStatus
 	Updated      time.Time // hora de la última vuelta del poller; cero si no hubo

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/ImJustDoingMyPart/maestro/internal/catalog"
+	"github.com/ImJustDoingMyPart/maestro/internal/config"
 	"github.com/ImJustDoingMyPart/maestro/internal/status"
 )
 
@@ -24,6 +25,7 @@ type memberRow struct {
 	NameLocked bool   // el nombre viene del archivo: no se cambia desde acá
 	// SeparateLocked: separate viene del archivo, no se saca desde acá.
 	SeparateLocked bool
+	HiddenLocked   bool // hidden viene del archivo
 	State          State
 	Reason         string
 }
@@ -62,6 +64,26 @@ type uiPrefs struct {
 	Separate map[string]bool
 	// Shown es lo descubierto que se pasó a la portada, por clave.
 	Shown map[string]bool
+
+	// FileStacks y FileGroups son las secciones stacks: y groups: de
+	// maestro.yaml: ganan a lo de la interfaz.
+	FileStacks map[string]config.Stack
+	FileGroups []string
+}
+
+// groupOrder es el orden de los grupos: el del archivo si lo fija (con los
+// de la interfaz que no nombra después) y si no, el de la interfaz.
+func (p uiPrefs) groupOrder() []string {
+	if len(p.FileGroups) == 0 {
+		return p.GroupOrder
+	}
+	out := slices.Clone(p.FileGroups)
+	for _, g := range p.GroupOrder {
+		if !slices.Contains(out, g) {
+			out = append(out, g)
+		}
+	}
+	return out
 }
 
 // otros es el grupo de las tarjetas sin grupo.
@@ -89,8 +111,13 @@ const otros = "Otros"
 // De found (la bandeja de Descubiertos) salen como tarjeta solo los de
 // p.Shown.
 func buildGroups(services []catalog.Service, found []Discovered, statusOf func(id string) status.Status, p uiPrefs) (groups []group, hiddenCount int) {
-	isHidden := func(key string) bool {
+	// isHidden: fromFile es el hidden del archivo (nil si no lo declara),
+	// que gana al de la interfaz.
+	isHidden := func(key string, fromFile *bool) bool {
 		_, ok := p.Hidden[key]
+		if fromFile != nil {
+			ok = *fromFile
+		}
 		if ok {
 			hiddenCount++
 		}
@@ -107,7 +134,7 @@ func buildGroups(services []catalog.Service, found []Discovered, statusOf func(i
 		byKey   = map[string]*stackBucket{}
 	)
 	for _, svc := range services {
-		if isHidden(serviceKey(svc.ID)) {
+		if isHidden(serviceKey(svc.ID), svc.Hidden) {
 			continue
 		}
 		if v, ok := p.Separate[serviceKey(svc.ID)]; ok && !svc.SeparateFromFile {
@@ -129,7 +156,8 @@ func buildGroups(services []catalog.Service, found []Discovered, statusOf func(i
 		b.members = append(b.members, svc)
 	}
 	for _, b := range buckets {
-		if isHidden(stackKey(b.host, b.project)) {
+		fs := p.FileStacks[b.host+"/"+b.project]
+		if isHidden(stackKey(b.host, b.project), fs.Hidden) {
 			continue
 		}
 		if len(b.members) == 1 {
@@ -140,6 +168,13 @@ func buildGroups(services []catalog.Service, found []Discovered, statusOf func(i
 		if n := p.Names[c.Key]; n != "" {
 			c.Name = n
 		}
+		if fs.Name != "" {
+			c.Name, c.NameLocked = fs.Name, true
+		}
+		if fs.Group != "" {
+			c.Group, c.GroupLocked = fs.Group, true
+		}
+		c.HiddenLocked = fs.Hidden != nil
 		cards = append(cards, c)
 	}
 
@@ -167,14 +202,15 @@ func buildGroups(services []catalog.Service, found []Discovered, statusOf func(i
 		g.Locked = g.Locked || c.GroupLocked
 		g.Services = append(g.Services, c)
 	}
-	for _, name := range p.GroupOrder {
+	order := p.groupOrder()
+	for _, name := range order {
 		if byGroup[name] == nil && name != otros {
 			byGroup[name] = &group{Name: name, Empty: true}
 		}
 	}
 
 	pos := map[string]int{}
-	for i, name := range p.GroupOrder {
+	for i, name := range order {
 		if _, ok := pos[name]; !ok {
 			pos[name] = i
 		}
@@ -193,6 +229,8 @@ func buildGroups(services []catalog.Service, found []Discovered, statusOf func(i
 			}
 			return cmp.Or(cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)), cmp.Compare(a.Key, b.Key))
 		})
+		g.OrderLocked = len(p.FileGroups) > 0
+		g.Locked = g.Locked || slices.Contains(p.FileGroups, g.Name)
 		groups = append(groups, *g)
 	}
 	slices.SortFunc(groups, func(a, b group) int {
@@ -232,6 +270,7 @@ func singleCard(svc catalog.Service, st status.Status) serviceCard {
 		GroupLocked:    svc.GroupFromFile,
 		SeparateLocked: svc.SeparateFromFile,
 		EditHref:       editHref(svc),
+		HiddenLocked:   svc.Hidden != nil,
 	}
 }
 
@@ -305,8 +344,8 @@ func stackCard(host, project string, members []catalog.Service, statusOf func(st
 		st := statusOf(m.ID)
 		c.Members = append(c.Members, memberRow{
 			Href: servicePath(m.ID), Name: m.Name, Key: serviceKey(m.ID), NameLocked: m.NameFromFile,
-			SeparateLocked: m.SeparateFromFile,
-			State:          State(st.State), Reason: st.Reason(),
+			SeparateLocked: m.SeparateFromFile, HiddenLocked: m.Hidden != nil,
+			State: State(st.State), Reason: st.Reason(),
 		})
 		if r := stateRank(st.State); r > worst {
 			worst = r

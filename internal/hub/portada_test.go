@@ -205,9 +205,13 @@ func TestCambiarNombre(t *testing.T) {
 	}
 	rename("stack:vm/immich", "  Fotos  ")
 	rename("service:solo/web", "Mi web")
-	rename("service:otro/app", "No va")
+	res := postForm(t, c, srv.URL+"/names", url.Values{"key": {"service:otro/app"}, "name": {"No va"}}, srv.URL)
+	res.Body.Close()
+	if res.StatusCode != http.StatusConflict {
+		t.Errorf("renombrar un nombre del archivo = %d", res.StatusCode)
+	}
 
-	res, _ := c.Get(srv.URL + "/")
+	res, _ = c.Get(srv.URL + "/")
 	b := body(t, res)
 	for _, want := range []string{">Fotos<", ">Mi web<", "Del archivo", `data-set-name="Fotos"`, "El nombre viene de maestro.yaml"} {
 		if !strings.Contains(b, want) {

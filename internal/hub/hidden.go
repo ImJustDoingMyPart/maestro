@@ -18,6 +18,7 @@ type hiddenRow struct {
 	Name   string
 	Detail string // "stack, 5 servicios", "servicio de immich", "ya no existe"
 	At     time.Time
+	Locked bool // lo oculta maestro.yaml: no se muestra desde la interfaz
 }
 
 // hide atiende POST /hidden: oculta la tarjeta de la clave "key". Con htmx
@@ -25,6 +26,10 @@ type hiddenRow struct {
 func (s *server) hide(w http.ResponseWriter, r *http.Request) {
 	key, ok := s.prefKey(w, r)
 	if !ok {
+		return
+	}
+	if s.hiddenFromFile(key) != nil {
+		http.Error(w, "hidden viene de maestro.yaml", http.StatusConflict)
 		return
 	}
 	if err := s.prefs.Hide(r.Context(), key, time.Now()); err != nil {
@@ -43,6 +48,10 @@ func (s *server) hide(w http.ResponseWriter, r *http.Request) {
 func (s *server) unhide(w http.ResponseWriter, r *http.Request) {
 	key, ok := s.prefKey(w, r)
 	if !ok {
+		return
+	}
+	if s.hiddenFromFile(key) != nil {
+		http.Error(w, "hidden viene de maestro.yaml", http.StatusConflict)
 		return
 	}
 	if err := s.prefs.Unhide(r.Context(), key); err != nil {
@@ -71,11 +80,43 @@ func (s *server) prefKey(w http.ResponseWriter, r *http.Request) (string, bool) 
 	return key, true
 }
 
+// hiddenFromFile es el hidden que maestro.yaml declara para la clave; nil
+// si no declara nada.
+func (s *server) hiddenFromFile(key string) *bool {
+	kind, rest, _ := strings.Cut(key, ":")
+	switch kind {
+	case "service":
+		if svc, ok := findService(s.poller.Snapshot(), rest); ok {
+			return svc.Hidden
+		}
+	case "stack":
+		return s.layout.Stacks[rest].Hidden
+	}
+	return nil
+}
+
+// nameFromFile dice si maestro.yaml fija el nombre de la clave.
+func (s *server) nameFromFile(key string) bool {
+	kind, rest, _ := strings.Cut(key, ":")
+	switch kind {
+	case "service":
+		svc, ok := findService(s.poller.Snapshot(), rest)
+		return ok && svc.NameFromFile
+	case "stack":
+		return s.layout.Stacks[rest].Name != ""
+	}
+	return false
+}
+
 // rename atiende POST /names: cambia el nombre de una tarjeta. Vacío
 // vuelve al original. Con htmx devuelve la grilla nueva.
 func (s *server) rename(w http.ResponseWriter, r *http.Request) {
 	key, ok := s.prefKey(w, r)
 	if !ok {
+		return
+	}
+	if s.nameFromFile(key) {
+		http.Error(w, "el nombre viene de maestro.yaml", http.StatusConflict)
 		return
 	}
 	name := strings.TrimSpace(r.PostFormValue("name"))
@@ -126,8 +167,29 @@ func (s *server) hiddenPage(w http.ResponseWriter, r *http.Request) {
 	names := s.names(r.Context())
 	snap.Services = applyNames(snap.Services, names)
 	var rows []hiddenRow
+	// Lo que oculta el archivo también va, sin el botón.
+	all := map[string]hiddenRow{}
 	for key, at := range hidden {
-		row := hiddenRow{Key: key, Name: key, Detail: "ya no existe", At: at}
+		all[key] = hiddenRow{At: at}
+	}
+	for _, svc := range snap.Services {
+		if svc.Hidden != nil {
+			delete(all, serviceKey(svc.ID))
+			if *svc.Hidden {
+				all[serviceKey(svc.ID)] = hiddenRow{Locked: true}
+			}
+		}
+	}
+	for k, fs := range s.layout.Stacks {
+		if fs.Hidden != nil {
+			delete(all, "stack:"+k)
+			if *fs.Hidden {
+				all["stack:"+k] = hiddenRow{Locked: true}
+			}
+		}
+	}
+	for key, base := range all {
+		row := hiddenRow{Key: key, Name: key, Detail: "ya no existe", At: base.At, Locked: base.Locked}
 		kind, rest, _ := strings.Cut(key, ":")
 		switch kind {
 		case "service":

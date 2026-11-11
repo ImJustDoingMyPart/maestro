@@ -13,11 +13,11 @@
     <i>visibility_off</i>
     <div class="max">
       <div>{{.Name}}</div>
-      <div class="small-text secondary-text">{{.Detail}} · oculto el {{localTime .At "datetime"}}</div>
+      <div class="small-text secondary-text">{{.Detail}} · {{if .Locked}}lo oculta maestro.yaml{{else}}oculto el {{localTime .At "datetime"}}{{end}}</div>
     </div>
     <form method="post" action="/hidden/show">
       <input type="hidden" name="key" value="{{.Key}}">
-      <button class="small"><i>visibility</i><span>Mostrar</span></button>
+      <button class="small"{{if .Locked}} disabled title="Se muestra sacando hidden: true de maestro.yaml"{{end}}><i>visibility</i><span>Mostrar</span></button>
     </form>
   </li>
   {{end}}
