@@ -28,8 +28,9 @@ EnvironmentFile=/etc/maestro/agent.env
 ExecStart=/usr/local/bin/maestro agent --listen 192.168.0.X:9101 --docker=false
 Restart=on-failure
 RestartSec=5s
-# Solo lee: sin escrituras al sistema.
-ProtectSystem=strict
+# Solo lee. ProtectSystem=full deja /usr, /boot y /etc de solo lectura;
+# strict sería más estricto, pero pvesh escribe en /run y /var.
+ProtectSystem=full
 ProtectHome=read-only
 PrivateTmp=true
 NoNewPrivileges=true
