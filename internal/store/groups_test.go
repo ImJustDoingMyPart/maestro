@@ -39,7 +39,7 @@ func TestGrupos(t *testing.T) {
 	if err := s.AddGroup(ctx, "Media"); !errors.Is(err, ErrExists) {
 		t.Errorf("grupo repetido: %v", err)
 	}
-	// Mandar una tarjeta a un grupo nuevo lo agrega al final.
+	// Mandar una tarjeta a un grupo no lo agrega a la lista.
 	if err := s.SetCardGroup(ctx, "service:a/x", "Archivos", now); err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestGrupos(t *testing.T) {
 	if err := s.SetCardGroup(ctx, "service:b", "", now); err != nil {
 		t.Fatal(err)
 	}
-	if g := groups(); !reflect.DeepEqual(g, []string{"Media", "Red", "Archivos"}) {
+	if g := groups(); !reflect.DeepEqual(g, []string{"Media", "Red"}) {
 		t.Errorf("grupos = %v", g)
 	}
 
@@ -60,6 +60,9 @@ func TestGrupos(t *testing.T) {
 	want := map[string]string{"service:a/x": "Archivos", "service:a/y": "Multimedia", "service:b": "", "stack:vm/jelly": "Multimedia"}
 	if c := cards(); !reflect.DeepEqual(c, want) {
 		t.Errorf("tarjetas = %v", c)
+	}
+	if err := s.AddGroup(ctx, "Archivos"); err != nil {
+		t.Fatal(err)
 	}
 	if g := groups(); !reflect.DeepEqual(g, []string{"Multimedia", "Red", "Archivos"}) {
 		t.Errorf("grupos después de renombrar = %v", g)

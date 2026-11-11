@@ -65,8 +65,9 @@ func (s *Store) CardGroups(ctx context.Context) (map[string]string, error) {
 	return out, rows.Err()
 }
 
-// SetCardGroup manda una tarjeta a un grupo ("" es "Otros"). Un grupo que
-// la interfaz no conocía se agrega al final.
+// SetCardGroup manda una tarjeta a un grupo ("" es "Otros"). No toca la
+// lista de grupos: un grupo nuevo así se ordena por nombre hasta que se lo
+// arrastre (si no, mover una tarjeta cambiaría el orden de los grupos).
 func (s *Store) SetCardGroup(ctx context.Context, key, group string, at time.Time) error {
 	return s.inTx(ctx, func(tx *sql.Tx) error {
 		return setCardGroups(ctx, tx, []string{key}, group, at)
@@ -81,14 +82,6 @@ func (s *Store) ResetCardGroup(ctx context.Context, key string) error {
 }
 
 func setCardGroups(ctx context.Context, tx *sql.Tx, keys []string, group string, at time.Time) error {
-	if group != "" {
-		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO groups (name, position)
-			SELECT ?, coalesce(max(position), -1) + 1 FROM groups WHERE true
-			ON CONFLICT (name) DO NOTHING`, group); err != nil {
-			return err
-		}
-	}
 	for _, key := range keys {
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO card_groups (key, grp, at) VALUES (?, ?, ?)

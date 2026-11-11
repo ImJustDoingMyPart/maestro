@@ -100,6 +100,12 @@ func TestGruposDesdeLaInterfaz(t *testing.T) {
 		t.Fatalf("crear grupo = %d", code)
 	}
 	b := portada()
+	if i, j := strings.Index(b, `data-group="Web"`), strings.Index(b, `data-group="Media"`); i < 0 || j < i {
+		t.Error("el grupo nuevo no va al final")
+	}
+	if code, _ := post("/groups", url.Values{"name": {"Web"}}); code != http.StatusConflict {
+		t.Errorf("crear uno que ya sale de los labels = %d", code)
+	}
 	if !strings.Contains(b, `class="group empty" data-group="Media"`) || !strings.Contains(b, `<option value="Media">`) {
 		t.Error("el grupo nuevo no sale vacío en la portada")
 	}
@@ -167,7 +173,7 @@ func TestGruposDesdeLaInterfaz(t *testing.T) {
 	if code, _ := post("/groups/rename", url.Values{"name": {"Otros"}, "to": {"X"}}); code != http.StatusConflict {
 		t.Errorf("renombrar Otros = %d", code)
 	}
-	if code, _ := post("/groups/move", url.Values{"key": {"service:c/db"}, "reset": {"1"}}); code != http.StatusSeeOther {
+	if code, _ := post("/groups/move", url.Values{"key": {"service:c/db"}, "original": {"1"}}); code != http.StatusSeeOther {
 		t.Fatalf("grupo original = %d", code)
 	}
 }

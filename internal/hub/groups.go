@@ -87,6 +87,25 @@ func (s *server) addGroup(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// El orden que se ve pasa a la base antes de agregarlo: si no, el
+	// grupo nuevo, el único con posición, quedaría primero.
+	var current []string
+	for _, g := range s.currentGroups(r.Context()) {
+		if g.Name == name {
+			http.Error(w, "ya hay un grupo con ese nombre", http.StatusConflict)
+			return
+		}
+		if !g.Otros {
+			current = append(current, g.Name)
+		}
+	}
+	if len(current) > 0 {
+		if err := s.prefs.SetGroupOrder(r.Context(), current); err != nil {
+			s.logger.Error("crear grupo", "name", name, "err", err)
+			http.Error(w, "no se pudo crear el grupo", http.StatusInternalServerError)
+			return
+		}
+	}
 	if err := s.prefs.AddGroup(r.Context(), name); errors.Is(err, store.ErrExists) {
 		http.Error(w, "ya hay un grupo con ese nombre", http.StatusConflict)
 		return
@@ -184,7 +203,7 @@ func findCard(groups []group, key string) (serviceCard, bool) {
 }
 
 // moveCard atiende POST /groups/move: manda la tarjeta "key" al grupo
-// "group" (vacío es "Otros"). Con reset=1 vuelve al grupo de los labels.
+// "group" (vacío es "Otros"). Con original=1 vuelve al grupo de los labels.
 func (s *server) moveCard(w http.ResponseWriter, r *http.Request) {
 	key, ok := s.prefKey(w, r)
 	if !ok {
@@ -195,7 +214,7 @@ func (s *server) moveCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var err error
-	if r.PostFormValue("reset") == "1" {
+	if r.PostFormValue("original") == "1" {
 		err = s.prefs.ResetCardGroup(r.Context(), key)
 	} else {
 		grp := strings.TrimSpace(r.PostFormValue("group"))

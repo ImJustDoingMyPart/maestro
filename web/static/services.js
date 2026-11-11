@@ -56,7 +56,7 @@
     if (!dlg) return;
     closeMenus(null);
     var form = dlg.querySelector("form");
-    if (form) form.reset();
+    if (form) HTMLFormElement.prototype.reset.call(form); // un control name="reset" taparía form.reset
     var err = dlg.querySelector(".dialog-error");
     if (err) err.textContent = "";
     Array.prototype.forEach.call(btn.attributes, function (a) {
@@ -109,7 +109,9 @@
   // Arrastrar (SortableJS, que anda con el dedo: en pantallas táctiles hay
   // que mantener apretado un momento, así el gesto de desplazar la página
   // no arrastra). Las tarjetas se mueven dentro de su grupo y entre grupos;
-  // los grupos, por su manija. Cada cambio se guarda enseguida.
+  // los grupos, por su manija. Cada cambio se guarda enseguida. forceFallback
+  // usa eventos de puntero en vez del drag and drop de HTML5: el mismo
+  // camino en la computadora y en el celular.
   var sortables = [];
   function stopSorting() {
     sortables.forEach(function (s) { s.destroy(); });
@@ -118,7 +120,7 @@
   function startSorting() {
     stopSorting();
     if (!window.Sortable) return;
-    var common = { animation: 150, delay: 250, delayOnTouchOnly: true, ghostClass: "drag-ghost", chosenClass: "drag-chosen" };
+    var common = { animation: 150, delay: 250, delayOnTouchOnly: true, forceFallback: true, fallbackTolerance: 4, ghostClass: "drag-ghost", chosenClass: "drag-chosen" };
     document.querySelectorAll("#services .group .grid.cards").forEach(function (grid) {
       sortables.push(Sortable.create(grid, Object.assign({}, common, {
         group: "cards",
