@@ -386,6 +386,11 @@ func (c *Collector) filesystems() []agent.FSUsage {
 		if !procfs.RealFS(m.FSType) {
 			continue
 		}
+		// Docker monta archivos sueltos (/etc/hosts, /etc/resolv.conf)
+		// con el dispositivo del disco: no son un sistema de archivos.
+		if fi, err := os.Stat(m.Point); err != nil || !fi.IsDir() {
+			continue
+		}
 		show := m.Point
 		if prefix != "" {
 			rest, ok := strings.CutPrefix(m.Point, prefix)
