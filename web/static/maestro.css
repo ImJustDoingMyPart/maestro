@@ -587,3 +587,17 @@ body.dark  { --status-warn: #ffb74d; }
 .hidden-list form {
   margin: 0;
 }
+
+/* Diálogo del informe para IA, cuando no se pudo copiar solo. */
+.report-dialog {
+  width: min(48rem, 92vw);
+}
+.report-dialog .field.textarea {
+  height: auto;
+}
+.report-dialog textarea {
+  min-height: 50vh;
+  font-family: monospace;
+  font-size: 0.8rem;
+  white-space: pre;
+}

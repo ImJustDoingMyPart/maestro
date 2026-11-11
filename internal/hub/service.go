@@ -26,6 +26,7 @@ type serviceDetail struct {
 	NoLogs      string // por qué no hay logs, si LogsURL está vacío
 	ChecksURL   string // fragmento con el historial de checks; vacío si no tiene
 	LiveURL     string // fragmento con contenedores, motivos y semáforo
+	ReportURL   string // informe para IA
 	OOB         bool   // se arma para el fragmento: el semáforo va con hx-swap-oob
 	Checks      []checkPanel
 	// Events son los cambios de estado recientes, para un servicio sin logs
@@ -73,6 +74,7 @@ func detail(svc catalog.Service, st status.Status) serviceDetail {
 		Reasons:     st.Reasons,
 		Host:        svc.Host,
 		LiveURL:     "/fragments/service/" + escapeID(svc.ID),
+		ReportURL:   "/api/services/" + escapeID(svc.ID) + reportSuffix,
 	}
 	switch svc.Source {
 	case catalog.SourceCompose:

@@ -1,4 +1,4 @@
-{{define "scripts"}}{{if and .Svc .Svc.LogsURL}}<script src="/static/gen/logs.js" defer></script>{{end}}{{end}}
+{{define "scripts"}}{{if and .Svc .Svc.LogsURL}}<script src="/static/gen/logs.js" defer></script>{{end}}{{if .Svc}}<script src="/static/report.js" defer></script>{{end}}{{end}}
 
 {{define "content"}}
 {{with .Svc}}
@@ -11,6 +11,10 @@
       <div class="small-text secondary-text">{{.Description}}</div>
     </div>
     {{template "svcstatus" .}}
+    <button class="transparent small" data-report="{{.ReportURL}}" title="Copia un resumen en Markdown (estado, checks, logs y compose, con los secretos censurados) para pegarlo en un agente de IA">
+      <i>content_copy</i>
+      <span class="m l">Copiar informe</span>
+    </button>
     {{if .URL}}
     <a class="button transparent small m l" href="{{.URL}}" target="_blank" rel="noopener">
       <span>Abrir</span>
@@ -21,6 +25,18 @@
 </header>
 
 {{template "live" .}}
+
+<dialog class="report-dialog small-round">
+  <h6>Informe para IA</h6>
+  <p class="small-text secondary-text">El navegador no dejó copiarlo solo (sin HTTPS no da el portapapeles). Está seleccionado: copialo con Ctrl+C o con el menú.</p>
+  <div class="field textarea border extra">
+    <textarea readonly aria-label="Informe"></textarea>
+  </div>
+  <nav class="right-align">
+    <a class="button border" data-raw target="_blank" rel="noopener">Abrir como texto</a>
+    <button type="button" data-close>Cerrar</button>
+  </nav>
+</dialog>
 
 {{if .ChecksURL}}{{template "checks" $}}{{end}}
 
