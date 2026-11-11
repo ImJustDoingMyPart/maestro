@@ -396,7 +396,7 @@ func TestBuild(t *testing.T) {
 			},
 		},
 		{
-			name: "hidden del archivo pasa al servicio, en compose y en propios",
+			name:       "hidden del archivo pasa al servicio, en compose y en propios",
 			containers: []Container{compose("a", "p", "a", nil)},
 			file:       map[string]FileService{"p/a": {Hidden: ptr(true)}, "router": {Hidden: ptr(false)}},
 			want: []Service{
