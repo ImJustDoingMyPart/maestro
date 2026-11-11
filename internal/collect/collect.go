@@ -482,4 +482,3 @@ func wholeDisks(sys string) []string {
 	}
 	return out
 }
-

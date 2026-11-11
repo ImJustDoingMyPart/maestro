@@ -45,7 +45,7 @@ func (s *server) loadPrefs(ctx context.Context) uiPrefs {
 func (s *server) currentGroups(ctx context.Context) []group {
 	p := s.loadPrefs(ctx)
 	snap := s.poller.Snapshot()
-	groups, _ := buildGroups(applyNames(snap.Services, p.Names), snap.Discovered, s.mon.Status, p)
+	groups, _ := buildGroups(applyNames(withShown(snap, p.Shown), p.Names), s.mon.Status, p)
 	return groups
 }
 

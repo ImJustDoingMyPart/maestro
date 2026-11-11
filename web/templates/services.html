@@ -118,6 +118,18 @@
     </nav>
   </article>
   {{end}}
+  {{if .FoundFailing}}
+  <a class="small-round no-elevate error-container host-problem found-failing" href="/discovered">
+    <nav>
+      <i>error</i>
+      <div class="max">
+        <div class="bold">{{if eq .FoundFailing 1}}Una unidad descubierta falla{{else}}{{.FoundFailing}} unidades descubiertas fallan{{end}}</div>
+        <div class="small-text">No están en la portada, pero avisan igual. Están primeras en Descubiertos.</div>
+      </div>
+      <i>chevron_right</i>
+    </nav>
+  </a>
+  {{end}}
 
   <nav class="wrap small-space">
     <span class="chip no-border surface-container"><span class="dot up"></span>{{.Summary.Up}} arriba</span>

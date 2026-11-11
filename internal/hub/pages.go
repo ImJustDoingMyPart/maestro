@@ -120,7 +120,8 @@ type pageData struct {
 	Summary      summary
 	HiddenCount  int         // cuántas tarjetas están ocultas
 	FoundPending int         // cuántos descubiertos quedan en la bandeja
-	Found        []foundRow  // página de Descubiertos
+	Found        []foundHost // página de Descubiertos, por host
+	FoundFailing int         // descubiertos caídos que no están en la portada
 	Export       string      // página de exportar: el YAML
 	Hidden       []hiddenRow // página de ocultos
 	HostProblems []HostStatus

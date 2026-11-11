@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ImJustDoingMyPart/maestro/internal/agent"
 	"github.com/ImJustDoingMyPart/maestro/internal/catalog"
 	"github.com/ImJustDoingMyPart/maestro/internal/checks"
 	"github.com/ImJustDoingMyPart/maestro/internal/status"
@@ -64,6 +65,7 @@ type Monitor struct {
 	mu         sync.Mutex
 	services   map[string]catalog.Service
 	hostOK     map[string]bool
+	systems    map[string]agent.System // última muestra de cada host (unidades, LXC)
 	checks     map[checks.Key]*checkState
 	containers map[string]*containerSeen // por ID de contenedor
 	current    map[string]status.Status  // último estado calculado
@@ -225,6 +227,7 @@ func (m *Monitor) Update(snap Snapshot) {
 	for _, h := range snap.Hosts {
 		m.hostOK[h.Name] = h.OK
 	}
+	m.systems = snap.Systems
 	for id := range m.current {
 		if _, ok := m.services[id]; !ok {
 			delete(m.current, id)
@@ -323,7 +326,7 @@ func (m *Monitor) onResult(r checks.Result) {
 // evento y avisa a quien esté mirando. Se llama con m.mu tomado.
 func (m *Monitor) evaluate(id string) {
 	svc := m.services[id]
-	in := buildInput(svc, m.hostOK[svc.Host],
+	in := buildInput(svc, m.hostOK[svc.Host], unitFor(svc, m.systems),
 		func(containerID string) *containerSeen { return m.containers[containerID] },
 		func(k checks.Key) *checkState { return m.checks[k] })
 
@@ -353,12 +356,14 @@ func (m *Monitor) evaluate(id string) {
 	}
 }
 
-// buildInput arma lo que status.Evaluate necesita de un servicio.
-// restarted y check pueden ser nil (sin reinicios vistos, sin resultados).
-func buildInput(svc catalog.Service, hostOK bool, restarted func(containerID string) *containerSeen, check func(checks.Key) *checkState) status.Input {
+// buildInput arma lo que status.Evaluate necesita de un servicio. unit es
+// su unidad o invitado (nil si no sale de uno). restarted y check pueden
+// ser nil (sin reinicios vistos, sin resultados).
+func buildInput(svc catalog.Service, hostOK bool, unit *status.Unit, restarted func(containerID string) *containerSeen, check func(checks.Key) *checkState) status.Input {
 	in := status.Input{
 		FromContainers: svc.Source == catalog.SourceCompose || svc.Source == catalog.SourceContainer,
 		HostOK:         hostOK,
+		Unit:           unit,
 	}
 	for _, c := range svc.Containers {
 		sc := status.Container{Name: c.Name, State: c.State, Health: c.Health, ExitCode: c.ExitCode}

@@ -145,7 +145,7 @@ func (s *server) exportYAML(ctx context.Context, now time.Time) ([]byte, error) 
 	}
 
 	if len(p.GroupOrder) > 0 && len(p.FileGroups) == 0 {
-		groups, _ := buildGroups(applyNames(snap.Services, p.Names), snap.Discovered, s.mon.Status, p)
+		groups, _ := buildGroups(applyNames(withShown(snap, p.Shown), p.Names), s.mon.Status, p)
 		for _, g := range groups {
 			if !g.Otros {
 				doc.Groups = append(doc.Groups, g.Name)

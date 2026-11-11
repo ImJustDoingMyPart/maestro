@@ -12,8 +12,15 @@ import (
 	"github.com/ImJustDoingMyPart/maestro/internal/status"
 )
 
-// Claves de lo que se puede ocultar: un servicio o un stack entero.
-func serviceKey(id string) string                { return "service:" + id }
+// Claves de lo que se puede ocultar: un servicio o un stack entero. Lo
+// descubierto que se muestra usa su propia clave ("found:…"), que es
+// también su ID.
+func serviceKey(id string) string {
+	if isFound(id) {
+		return id
+	}
+	return "service:" + id
+}
 func stackKey(host, project string) string       { return "stack:" + host + "/" + project }
 func stackHideLabel(host, project string) string { return project + " (" + host + ")" }
 
@@ -108,9 +115,8 @@ const otros = "Otros"
 // Los nombres de servicios de p.Names ya vienen aplicados (applyNames);
 // acá se usan los de los stacks.
 //
-// De found (la bandeja de Descubiertos) salen como tarjeta solo los de
-// p.Shown.
-func buildGroups(services []catalog.Service, found []Discovered, statusOf func(id string) status.Status, p uiPrefs) (groups []group, hiddenCount int) {
+// Lo descubierto que se muestra llega como un servicio más (ver found.go).
+func buildGroups(services []catalog.Service, statusOf func(id string) status.Status, p uiPrefs) (groups []group, hiddenCount int) {
 	// isHidden: fromFile es el hidden del archivo (nil si no lo declara),
 	// que gana al de la interfaz.
 	isHidden := func(key string, fromFile *bool) bool {
@@ -176,16 +182,6 @@ func buildGroups(services []catalog.Service, found []Discovered, statusOf func(i
 		}
 		c.HiddenLocked = fs.Hidden != nil
 		cards = append(cards, c)
-	}
-
-	for _, d := range found {
-		if p.Shown[d.Key()] {
-			c := foundCard(d)
-			if n := p.Names[c.Key]; n != "" {
-				c.Name = n
-			}
-			cards = append(cards, c)
-		}
 	}
 
 	byGroup := map[string]*group{}
@@ -256,7 +252,7 @@ func buildGroups(services []catalog.Service, found []Discovered, statusOf func(i
 }
 
 func singleCard(svc catalog.Service, st status.Status) serviceCard {
-	return serviceCard{
+	c := serviceCard{
 		Href:           servicePath(svc.ID),
 		Name:           svc.Name,
 		Description:    describe(svc),
@@ -272,6 +268,10 @@ func singleCard(svc catalog.Service, st status.Status) serviceCard {
 		EditHref:       editHref(svc),
 		HiddenLocked:   svc.Hidden != nil,
 	}
+	if _, kind, _, ok := parseFound(svc.ID); ok {
+		c.Found, c.Icon = true, kindIcon(kind)
+	}
+	return c
 }
 
 // editHref es la página de edición de un externo creado desde la interfaz.
@@ -387,16 +387,4 @@ func kindIcon(kind string) string {
 		return "computer"
 	}
 	return "settings"
-}
-
-// foundCard es la tarjeta de algo descubierto que se pasó a la portada.
-func foundCard(d Discovered) serviceCard {
-	return serviceCard{
-		Name:        d.Name,
-		Description: foundKindLabel(d.Kind) + " en " + d.Host,
-		Icon:        kindIcon(d.Kind),
-		State:       d.State,
-		Key:         d.Key(),
-		Found:       true,
-	}
 }

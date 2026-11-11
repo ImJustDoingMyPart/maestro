@@ -148,6 +148,12 @@ type statusError struct {
 
 func (e *statusError) Error() string { return e.msg }
 
+// IsStatus dice si err es una respuesta del agent con ese código.
+func IsStatus(err error, code int) bool {
+	se := (*statusError)(nil)
+	return errors.As(err, &se) && se.code == code
+}
+
 // StackFiles lee el compose y el .env de un proyecto.
 func (c *Client) StackFiles(ctx context.Context, project string) (StackFiles, error) {
 	var out StackFiles

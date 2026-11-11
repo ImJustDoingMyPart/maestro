@@ -18,6 +18,7 @@ type fakeAgent struct {
 	mu  sync.Mutex
 	cs  []agent.Container
 	err error
+	sys *agent.System
 }
 
 func (f *fakeAgent) Containers(context.Context) ([]agent.Container, error) {
@@ -44,6 +45,15 @@ func (f *fakeAgent) WriteStackFile(context.Context, string, string, string, stri
 
 func (f *fakeAgent) StackAction(context.Context, string, string) (iter.Seq2[agent.ActionEvent, error], error) {
 	return nil, errors.New("fakeAgent no tiene stacks")
+}
+
+func (f *fakeAgent) System(context.Context) (agent.System, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.sys == nil {
+		return agent.System{}, errors.New("fakeAgent sin colector")
+	}
+	return *f.sys, nil
 }
 
 func (f *fakeAgent) set(cs []agent.Container, err error) {

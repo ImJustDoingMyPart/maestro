@@ -39,6 +39,7 @@ const (
 	SourceContainer Source = "container" // contenedor suelto, sin compose
 	SourceSystemd   Source = "systemd"   // unidad declarada en maestro.yaml
 	SourceExternal  Source = "external"  // servicio externo declarado en maestro.yaml
+	SourceGuest     Source = "guest"     // LXC o VM de Proxmox (descubierta y mostrada)
 )
 
 // CheckKind es el tipo de check. Un servicio tiene como mucho uno de cada

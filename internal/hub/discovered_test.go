@@ -6,17 +6,24 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/ImJustDoingMyPart/maestro/internal/agent"
 )
 
 func TestBandejaDeDescubiertos(t *testing.T) {
+	now := time.Now()
 	snap := Snapshot{
-		At:    time.Now(),
-		Hosts: []HostStatus{{Name: "vm", OK: true}},
-		Discovered: []Discovered{
-			{Host: "adguard", Kind: "unit", Name: "AdGuardHome.service", State: StateUp, Detail: "activa"},
-			{Host: "pve", Kind: "lxc", Name: "102 adguard", State: StateUp},
-			{Host: "vm", Kind: "timer", Name: "restic-backup.timer", State: StateDown, Detail: "última corrida falló"},
+		At:    now,
+		Hosts: []HostStatus{{Name: "adguard", OK: true}, {Name: "pve", OK: true}, {Name: "vm", OK: true}},
+		Systems: map[string]agent.System{
+			"adguard": {Units: []agent.Unit{{Name: "AdGuardHome.service", Description: "AdGuard Home", Active: "active", Sub: "running"}}},
+			"pve":     {Units: []agent.Unit{}, Guests: []agent.Guest{{VMID: 102, Kind: "lxc", Name: "dns", Status: "running", CPUs: 1, MaxMem: 1 << 30}}},
+			"vm": {Units: []agent.Unit{{Name: "restic-backup.timer", Active: "active", Sub: "waiting", Result: "exit-code", ExitStatus: 1,
+				LastRun: now.Add(-3 * time.Hour), Triggers: "restic-backup.service"}}},
 		},
+	}
+	for _, h := range snap.Hosts {
+		snap.Discovered = append(snap.Discovered, discoveredFrom(h.Name, snap.Systems[h.Name], true, now)...)
 	}
 	srv := testServer(t, snap)
 	c := loggedIn(t, srv)
@@ -30,7 +37,8 @@ func TestBandejaDeDescubiertos(t *testing.T) {
 		t.Error("la portada tiene que mostrar el chip y ninguna tarjeta")
 	}
 	b := get("/discovered")
-	for _, want := range []string{"AdGuardHome.service", "unidad de systemd en adguard · activa", "LXC en pve", "timer de systemd en vm", `value="found:adguard/unit/AdGuardHome.service"`} {
+	for _, want := range []string{"AdGuardHome.service", "unidad de systemd · AdGuard Home", "dns", "LXC 102 · 1,0 GB de RAM · 1 núcleo",
+		"timer de systemd · última corrida falló (exit 1)", `value="found:adguard/unit/AdGuardHome.service"`, `value="found:pve/lxc/102"`, `<h6 class="small">vm <span`} {
 		if !strings.Contains(b, want) {
 			t.Errorf("la bandeja no tiene %q", want)
 		}
@@ -69,5 +77,22 @@ func TestBandejaDeDescubiertos(t *testing.T) {
 		if res.StatusCode != http.StatusBadRequest {
 			t.Errorf("clave %q = %d", key, res.StatusCode)
 		}
+	}
+}
+
+func TestPaginaDeUnDescubierto(t *testing.T) {
+	now := time.Now()
+	snap := Snapshot{
+		At:      now,
+		Hosts:   []HostStatus{{Name: "vm", OK: true}},
+		Systems: map[string]agent.System{"vm": {Units: []agent.Unit{{Name: "netbird.service", Active: "failed", Result: "signal"}}}},
+	}
+	snap.Discovered = discoveredFrom("vm", snap.Systems["vm"], true, now)
+	srv := testServer(t, snap)
+	c := loggedIn(t, srv)
+	res, _ := c.Get(srv.URL + "/services/found:vm/unit/netbird.service")
+	b := body(t, res)
+	if res.StatusCode != http.StatusOK || !strings.Contains(b, "netbird.service falló (signal)") || !strings.Contains(b, "systemd · netbird.service") {
+		t.Errorf("página = %d\n%.2000s", res.StatusCode, b)
 	}
 }

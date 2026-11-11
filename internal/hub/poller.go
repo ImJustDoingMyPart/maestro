@@ -7,6 +7,7 @@ import (
 	"iter"
 	"log/slog"
 	"maps"
+	"net/http"
 	"runtime/debug"
 	"slices"
 	"strings"
@@ -27,6 +28,7 @@ type agentClient interface {
 	CheckStackFile(ctx context.Context, project, name, content string) (agent.CheckResult, error)
 	WriteStackFile(ctx context.Context, project, name, content, hash string) (agent.WriteResult, error)
 	StackAction(ctx context.Context, project, action string) (iter.Seq2[agent.ActionEvent, error], error)
+	System(ctx context.Context) (agent.System, error)
 }
 
 // HostStatus es cómo le fue al último pedido a un agent.
@@ -44,9 +46,11 @@ type HostStatus struct {
 type Discovered struct {
 	Host   string
 	Kind   string // "unit", "timer", "lxc" o "vm"
-	Name   string // nombre de la unidad o del timer, o de la LXC o VM
-	State  State  // lo que reporta el agent; desde la etapa 7 lo calcula el monitor
-	Detail string // "activa", "última corrida hace 3 h, bien", …
+	Name   string // nombre de la unidad o del timer, o VMID de la LXC o VM
+	Label  string // lo que se muestra: el nombre de la unidad o de la LXC o VM
+	State  State  // con la misma regla que el monitor (status.Evaluate)
+	Reason string // motivo del estado; vacío si está arriba
+	Detail string // descripción de la unidad, "corrió hace 3 horas", …
 }
 
 // Key es la clave de la tarjeta: "found:<host>/<tipo>/<nombre>".
@@ -57,7 +61,11 @@ type Snapshot struct {
 	Services   []catalog.Service
 	Discovered []Discovered
 	Hosts      []HostStatus // ordenados por nombre
-	At         time.Time    // cero hasta la primera vuelta
+	// Systems es la última muestra de cada host que tiene colector (los
+	// agents de antes de la etapa 7 no tienen). No se modifica: cada foto
+	// trae un mapa nuevo.
+	Systems map[string]agent.System
+	At      time.Time // cero hasta la primera vuelta
 }
 
 // HostOK dice si el agent de host respondió en la última vuelta.
@@ -73,6 +81,7 @@ func (s Snapshot) HostOK(host string) bool {
 type hostState struct {
 	status     HostStatus
 	containers []agent.Container // los últimos que se conocen, aunque el agent haya dejado de responder
+	system     *agent.System     // la última muestra; nil si el agent no tiene colector
 }
 
 // Poller consulta a los agents cada intervalo y arma la lista de servicios.
@@ -80,6 +89,7 @@ type Poller struct {
 	agents map[string]agentClient
 	file   map[string]catalog.FileService
 	ui     map[string]catalog.FileService // externos de la interfaz; protegido por mu
+	shown  map[string]bool                // descubiertos que se muestran; protegido por mu
 	// layout es lo del archivo que solo usa la portada (stacks: y
 	// groups:). No cambia después de NewPoller.
 	layout   fileLayout
@@ -227,9 +237,11 @@ func (p *Poller) safePoll(ctx context.Context) {
 // poll pide los contenedores a todos los agents a la vez y rearma la foto.
 func (p *Poller) poll(ctx context.Context) {
 	type result struct {
-		host string
-		cs   []agent.Container
-		err  error
+		host   string
+		cs     []agent.Container
+		err    error
+		sys    *agent.System
+		sysErr error
 	}
 	results := make(chan result, len(p.agents))
 
@@ -253,6 +265,14 @@ func (p *Poller) poll(ctx context.Context) {
 			ctx, cancel := context.WithTimeout(ctx, p.timeout)
 			defer cancel()
 			res.cs, res.err = a.Containers(ctx)
+			if res.err != nil {
+				return
+			}
+			sys, err := a.System(ctx)
+			res.sysErr = err
+			if err == nil {
+				res.sys = &sys
+			}
 		}()
 	}
 
@@ -276,6 +296,14 @@ func (p *Poller) poll(ctx context.Context) {
 		}
 		h.status = HostStatus{Name: r.host, OK: true, LastOK: now}
 		h.containers = r.cs
+		switch {
+		case r.sys != nil:
+			h.system = r.sys
+		case isNotImplemented(r.sysErr):
+			h.system = nil // un agent viejo, sin /v1/system
+		default:
+			p.logger.Debug("muestra del host", "host", r.host, "err", r.sysErr)
+		}
 	}
 
 	p.rebuildLocked(now)
@@ -285,10 +313,16 @@ func (p *Poller) poll(ctx context.Context) {
 // sin pedirles nada a los agents. Se llama con mu tomado.
 func (p *Poller) rebuildLocked(at time.Time) {
 	var all []catalog.Container
+	var found []Discovered
 	hosts := make([]HostStatus, 0, len(p.hosts))
+	systems := map[string]agent.System{}
 	for _, name := range slices.Sorted(maps.Keys(p.hosts)) {
 		h := p.hosts[name]
 		hosts = append(hosts, h.status)
+		if h.system != nil {
+			systems[name] = *h.system
+			found = append(found, discoveredFrom(name, *h.system, h.status.OK, at)...)
+		}
 		for _, c := range h.containers {
 			all = append(all, catalog.Container{
 				Host: name, ID: c.ID, Name: c.Name, Image: c.Image,
@@ -313,7 +347,32 @@ func (p *Poller) rebuildLocked(at time.Time) {
 			}
 		}
 	}
-	p.snap = Snapshot{Services: p.catalog.Build(all, file), Hosts: hosts, At: at}
+	services := p.catalog.Build(all, file)
+	for _, d := range found {
+		if p.shown[d.Key()] {
+			services = append(services, foundService(d))
+		}
+	}
+	p.snap = Snapshot{Services: services, Discovered: found, Hosts: hosts, Systems: systems, At: at}
+}
+
+// SetShown cambia qué descubiertos se muestran (pasan a ser servicios) y
+// rearma la foto enseguida, como SetUIServices.
+func (p *Poller) SetShown(shown map[string]bool) {
+	p.mu.Lock()
+	p.shown = shown
+	p.rebuildLocked(p.snap.At)
+	snap := p.snap
+	p.mu.Unlock()
+	if p.onPoll != nil {
+		p.onPoll(snap)
+	}
+}
+
+// isNotImplemented dice si el agent contestó que no tiene la ruta (404 de
+// un agent viejo, 501 de uno sin colector).
+func isNotImplemented(err error) bool {
+	return agent.IsStatus(err, http.StatusNotFound) || agent.IsStatus(err, http.StatusNotImplemented)
 }
 
 // SetUIServices cambia los servicios externos creados desde la interfaz y

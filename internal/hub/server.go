@@ -62,6 +62,11 @@ func Serve(ctx context.Context, opts Options, logger *slog.Logger) error {
 	} else if len(ui) > 0 {
 		poller.SetUIServices(ui)
 	}
+	if shown, err := st.Shown(ctx); err != nil {
+		return fmt.Errorf("descubiertos mostrados: %w", err)
+	} else if len(shown) > 0 {
+		poller.SetShown(shown)
+	}
 	go poller.Run(ctx)
 
 	h, err := newHandler(poller, poller, poller, mon, st, auth.NewSessions(st, !opts.Dev, logger), cfg.APIToken, logger)
@@ -126,6 +131,7 @@ type server struct {
 	sessions *auth.Sessions
 	apiToken string          // vacío: la API solo con sesión
 	ui       uiServiceSetter // nil si el poller no recibe externos (tests con foto fija)
+	shown    shownSetter     // ídem, para lo descubierto que se muestra
 	fileKeys map[string]bool // claves de services: en el archivo
 	layout   fileLayout      // stacks: y groups: del archivo
 	pages    pages
@@ -140,6 +146,9 @@ func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon moni
 	s := &server{poller: poller, logs: logs, stacks: stacks, mon: mon, prefs: prefs, runs: newRunStore(), sessions: sessions, apiToken: apiToken, pages: p, logger: logger}
 	if u, ok := poller.(uiServiceSetter); ok {
 		s.ui = u
+	}
+	if u, ok := poller.(shownSetter); ok {
+		s.shown = u
 	}
 	if f, ok := poller.(interface{ FileKeys() map[string]bool }); ok {
 		s.fileKeys = f.FileKeys()
@@ -242,9 +251,10 @@ func (s *server) servicesData(ctx context.Context) pageData {
 	data := pageData{Live: true}
 
 	p := s.loadPrefs(ctx)
-	data.Groups, data.HiddenCount = buildGroups(applyNames(snap.Services, p.Names), snap.Discovered, s.mon.Status, p)
+	data.Groups, data.HiddenCount = buildGroups(applyNames(withShown(snap, p.Shown), p.Names), s.mon.Status, p)
 	data.Summary = summarize(data.Groups)
 	data.FoundPending = pending(snap.Discovered, p.Shown)
+	data.FoundFailing = failingHidden(snap.Discovered, p.Shown)
 
 	for _, h := range snap.Hosts {
 		if !h.OK {

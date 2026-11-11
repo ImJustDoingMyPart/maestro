@@ -84,7 +84,11 @@ func detail(svc catalog.Service, st status.Status) serviceDetail {
 		d.Source = "contenedor suelto"
 	case catalog.SourceSystemd:
 		d.Source = "systemd · " + svc.Unit
-		d.NoLogs = "Los logs de unidades systemd (el journal) llegan con los agents de otros hosts."
+		d.NoLogs = "Los logs de las unidades de systemd (el journal) todavía no se muestran. Abajo, sus cambios de estado."
+	case catalog.SourceGuest:
+		_, kind, vmid, _ := parseFound(svc.ID)
+		d.Source = foundKindLabel(kind) + " " + vmid
+		d.NoLogs = "Una LXC o VM de Proxmox no tiene logs acá: solo su estado. Abajo, sus cambios de estado."
 	case catalog.SourceExternal:
 		d.Source = "externo"
 		d.NoLogs = "Un servicio externo no tiene logs: solo checks. Abajo, sus cambios de estado."

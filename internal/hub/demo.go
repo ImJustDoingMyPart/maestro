@@ -44,12 +44,12 @@ var demoGroups = []group{
 
 // demoFound son descubiertos inventados para mirar la bandeja.
 var demoFound = []Discovered{
-	{Host: "adguard", Kind: "unit", Name: "AdGuardHome.service", State: StateUp, Detail: "activa"},
-	{Host: "adguard", Kind: "unit", Name: "systemd-resolved.service", State: StateUp, Detail: "activa"},
-	{Host: "pve", Kind: "lxc", Name: "102 adguard", State: StateUp, Detail: "encendida"},
-	{Host: "pve", Kind: "vm", Name: "100 debian-vm", State: StateUp, Detail: "encendida"},
-	{Host: "vm", Kind: "timer", Name: "restic-backup.timer", State: StateDown, Detail: "última corrida hace 3 h, falló (exit 1)"},
-	{Host: "vm", Kind: "unit", Name: "netbird.service", State: StateUp, Detail: "activa"},
+	{Host: "adguard", Kind: "unit", Name: "AdGuardHome.service", Label: "AdGuardHome.service", State: StateUp, Detail: "AdGuard Home: Network-level blocker"},
+	{Host: "adguard", Kind: "unit", Name: "systemd-resolved.service", Label: "systemd-resolved.service", State: StateUp, Detail: "Network Name Resolution"},
+	{Host: "pve", Kind: "lxc", Name: "102", Label: "dns", State: StateUp, Detail: "LXC 102 · 1,0 GB de RAM · 1 núcleo"},
+	{Host: "pve", Kind: "vm", Name: "100", Label: "Debian-Server", State: StateUp, Detail: "VM 100 · 12 GB de RAM · 8 núcleos"},
+	{Host: "vm", Kind: "timer", Name: "restic-backup.timer", Label: "restic-backup.timer", State: StateDown, Reason: "última corrida falló (exit 1)", Detail: "corrió hace 3 horas · próxima en 2 días"},
+	{Host: "vm", Kind: "unit", Name: "netbird.service", Label: "netbird.service", State: StateUp, Detail: "NetBird"},
 }
 
 // newDemoHandler arma las rutas del modo --demo: la portada con servicios
@@ -73,6 +73,7 @@ func newDemoHandler(logger *slog.Logger) (http.Handler, error) {
 			Groups:       demoGroups,
 			Summary:      summarize(demoGroups),
 			FoundPending: len(demoFound) - 1,
+			FoundFailing: 0,
 		})
 	})
 	mux.HandleFunc("GET /discovered", func(w http.ResponseWriter, r *http.Request) {

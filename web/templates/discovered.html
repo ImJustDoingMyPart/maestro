@@ -1,3 +1,5 @@
+{{define "scripts"}}<script src="/static/discovered.js" defer></script>{{end}}
+
 {{define "content"}}
 <header class="transparent">
   <nav>
@@ -7,28 +9,44 @@
 </header>
 <p class="secondary-text">Unidades y timers de systemd, LXC y VMs de Proxmox que encontraron los agents. No van a la portada hasta que se los muestra; una unidad que falla avisa igual.</p>
 {{if .Found}}
-<ul class="list border found-list">
-  {{range .Found}}
-  <li>
-    <i>{{.Icon}}</i>
-    <div class="max">
-      <div class="row-name"><span class="dot {{.State}}" title="{{.State.Label}}"></span>{{.Name}}</div>
-      <div class="small-text secondary-text">{{.KindLabel}} en {{.Host}}{{with .Detail}} · {{.}}{{end}}</div>
-    </div>
-    {{if .Shown}}
-    <form method="post" action="/discovered/unshow">
-      <input type="hidden" name="key" value="{{.Key}}">
-      <button class="small border" title="Sacarlo de la portada"{{if $.Demo}} disabled{{end}}><i>inbox</i><span>Volver a la bandeja</span></button>
-    </form>
-    {{else}}
-    <form method="post" action="/discovered/show">
-      <input type="hidden" name="key" value="{{.Key}}">
-      <button class="small"{{if $.Demo}} disabled{{end}}><i>visibility</i><span>Mostrar</span></button>
-    </form>
+<nav class="wrap small-space found-filter">
+  <div class="field small prefix border round max">
+    <i>search</i>
+    <input type="search" placeholder="Filtrar" aria-label="Filtrar descubiertos" data-found-filter>
+  </div>
+  <label class="checkbox">
+    <input type="checkbox" data-found-failing>
+    <span>Solo lo que falla</span>
+  </label>
+</nav>
+{{range .Found}}
+<section class="found-host" data-host="{{.Host}}">
+  <h6 class="small">{{.Host}}{{if .Failing}} <span class="chip small no-border error-container">{{.Failing}} con fallas</span>{{end}}</h6>
+  <ul class="list border found-list">
+    {{range .Rows}}
+    <li data-state="{{.State}}" data-text="{{.Label}} {{.Name}} {{.Sub}}">
+      <i>{{.Icon}}</i>
+      <a class="max" href="{{.Href}}">
+        <div class="row-name"><span class="dot {{.State}}" title="{{.State.Label}}"></span>{{.Label}}</div>
+        <div class="small-text secondary-text">{{.Sub}}</div>
+      </a>
+      {{if .Shown}}
+      <form method="post" action="/discovered/unshow">
+        <input type="hidden" name="key" value="{{.Key}}">
+        <button class="small border" title="Sacarlo de la portada"{{if $.Demo}} disabled{{end}}><i>inbox</i><span class="m l">Volver a la bandeja</span></button>
+      </form>
+      {{else}}
+      <form method="post" action="/discovered/show">
+        <input type="hidden" name="key" value="{{.Key}}">
+        <button class="small"{{if $.Demo}} disabled{{end}} title="Pasarlo a la portada"><i>visibility</i><span class="m l">Mostrar</span></button>
+      </form>
+      {{end}}
+    </li>
     {{end}}
-  </li>
-  {{end}}
-</ul>
+  </ul>
+</section>
+{{end}}
+<p class="small-text secondary-text center-align found-empty" hidden>Nada coincide con el filtro.</p>
 {{else}}
 <article class="small-round no-elevate surface-container-low center-align">
   <p>Todavía no hay nada descubierto. Las unidades de systemd y las LXC y VMs de Proxmox llegan con los agents de esos hosts.</p>

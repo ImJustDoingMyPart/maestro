@@ -17,7 +17,7 @@ func snapStatus(id string, snap Snapshot) status.Status {
 	if !ok {
 		return status.Status{State: status.Unknown}
 	}
-	return status.Evaluate(buildInput(svc, snap.HostOK(svc.Host), nil, nil), time.Now(), status.DefaultParams)
+	return status.Evaluate(buildInput(svc, snap.HostOK(svc.Host), unitFor(svc, snap.Systems), nil, nil), time.Now(), status.DefaultParams)
 }
 
 // fakeMonitor responde el estado a partir de la foto, y lo demás vacío o

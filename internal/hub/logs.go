@@ -520,10 +520,14 @@ func later(a, b time.Time) time.Time {
 // findService busca un servicio por ID en la foto del poller.
 func findService(snap Snapshot, id string) (catalog.Service, bool) {
 	i := slices.IndexFunc(snap.Services, func(s catalog.Service) bool { return s.ID == id })
-	if i < 0 {
-		return catalog.Service{}, false
+	if i >= 0 {
+		return snap.Services[i], true
 	}
-	return snap.Services[i], true
+	// Lo descubierto tiene página aunque no se muestre en la portada.
+	if j := slices.IndexFunc(snap.Discovered, func(d Discovered) bool { return d.Key() == id }); j >= 0 {
+		return foundService(snap.Discovered[j]), true
+	}
+	return catalog.Service{}, false
 }
 
 // sseWriter escribe en el formato de Server-Sent Events: campos "nombre:
