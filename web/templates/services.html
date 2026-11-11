@@ -1,4 +1,5 @@
-{{define "scripts"}}{{if .Live}}<script src="/static/services.js" defer></script>{{end}}{{end}}
+{{define "scripts"}}{{if .Live}}<script src="/static/sortable-1.15.7.min.js" defer></script>
+<script src="/static/services.js" defer></script>{{end}}{{end}}
 
 {{define "content"}}
 <header class="transparent">
@@ -21,6 +22,7 @@
      data-set-<campo> del botón llenan los campos del formulario y los
      elementos data-text="<campo>" del diálogo. Mientras hay uno abierto la
      grilla no se refresca. */}}
+<div id="layout-error" class="snackbar error" role="alert"></div>
 <dialog id="rename-dialog" class="small-round form-dialog">
   <h6>Cambiar nombre</h6>
   <form method="post" action="/names" hx-post="/names" hx-target="#services" hx-swap="outerHTML">
@@ -136,6 +138,7 @@
   {{range .Groups}}
   <section class="group{{if .Empty}} empty{{end}}{{if .Otros}} otros{{end}}" data-group="{{.Name}}">
     <nav class="group-head">
+      {{if and $.Live (not .Otros)}}<i class="edit-only group-handle" title="Arrastrar para ordenar los grupos" aria-hidden="true">drag_indicator</i>{{end}}
       <h6 class="group-title max">{{.Name}}</h6>
       {{if $.Live}}
       <button type="button" class="circle transparent small edit-only" data-dialog="group-rename-dialog" data-set-name="{{.Name}}" data-set-to="{{.Name}}"
@@ -150,8 +153,8 @@
         {{if .Members}}{{template "stackcard" .}}{{else}}{{template "servicecard" .}}{{end}}
       </div>
       {{end}}
+      {{if .Empty}}<p class="s12 small-text secondary-text empty-hint">Grupo vacío: arrastrá tarjetas acá.</p>{{end}}
     </div>
-    {{if .Empty}}<p class="small-text secondary-text empty-hint">Grupo vacío: mové tarjetas acá.</p>{{end}}
   </section>
   {{end}}
   </div>

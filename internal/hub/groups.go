@@ -28,6 +28,9 @@ func (s *server) loadPrefs(ctx context.Context) uiPrefs {
 	if p.GroupOrder, err = s.prefs.Groups(ctx); err != nil {
 		s.logger.Error("leer grupos", "err", err)
 	}
+	if p.CardOrder, err = s.prefs.CardOrder(ctx); err != nil {
+		s.logger.Error("leer orden", "err", err)
+	}
 	return p
 }
 
@@ -212,4 +215,85 @@ func (s *server) moveCard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.gridOrHome(w, r)
+}
+
+// maxLayoutKeys acota cuántas tarjetas o grupos trae un pedido de orden.
+const maxLayoutKeys = 500
+
+// orderCards atiende POST /layout/cards: las tarjetas "key" quedan en ese
+// orden en el grupo "group" ("Otros" o vacío es sin grupo). Las que venían
+// de otro grupo (se arrastraron de uno a otro) cambian de grupo, salvo que
+// el suyo venga del archivo: entonces no se guarda nada y responde 409.
+// Lo llama web/static/services.js con fetch; responde 204.
+func (s *server) orderCards(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "formulario inválido", http.StatusBadRequest)
+		return
+	}
+	keys := r.PostForm["key"]
+	if len(keys) == 0 || len(keys) > maxLayoutKeys {
+		http.Error(w, "faltan tarjetas", http.StatusBadRequest)
+		return
+	}
+	target := strings.TrimSpace(r.PostFormValue("group"))
+	if strings.EqualFold(target, otros) {
+		target = ""
+	}
+	groups := s.currentGroups(r.Context())
+	var moved []string
+	for _, key := range keys {
+		c, found := findCard(groups, key)
+		if !found {
+			continue // desapareció mientras se arrastraba: se ordena igual
+		}
+		if c.Group == target {
+			continue
+		}
+		if c.GroupLocked {
+			http.Error(w, c.Name+": el grupo viene de maestro.yaml", http.StatusConflict)
+			return
+		}
+		moved = append(moved, key)
+	}
+	now := time.Now()
+	for _, key := range moved {
+		if err := s.prefs.SetCardGroup(r.Context(), key, target, now); err != nil {
+			s.logger.Error("mover tarjeta", "key", key, "err", err)
+			http.Error(w, "no se pudo mover la tarjeta", http.StatusInternalServerError)
+			return
+		}
+	}
+	if err := s.prefs.SetCardOrder(r.Context(), keys); err != nil {
+		s.logger.Error("ordenar tarjetas", "err", err)
+		http.Error(w, "no se pudo guardar el orden", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// orderGroups atiende POST /layout/groups: los grupos "name" quedan en ese
+// orden. "Otros" va siempre al final y no se guarda. Responde 204.
+func (s *server) orderGroups(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "formulario inválido", http.StatusBadRequest)
+		return
+	}
+	var names []string
+	for _, n := range r.PostForm["name"] {
+		if n = strings.TrimSpace(n); n != "" && !strings.EqualFold(n, otros) && utf8.RuneCountInString(n) <= 80 {
+			names = append(names, n)
+		}
+	}
+	if len(names) == 0 || len(names) > maxLayoutKeys {
+		http.Error(w, "faltan grupos", http.StatusBadRequest)
+		return
+	}
+	if err := s.prefs.SetGroupOrder(r.Context(), names); err != nil {
+		s.logger.Error("ordenar grupos", "err", err)
+		http.Error(w, "no se pudo guardar el orden", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }

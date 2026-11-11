@@ -87,6 +87,8 @@ type prefStore interface {
 	RenameGroup(ctx context.Context, from, to string, keys []string, at time.Time) error
 	DeleteGroup(ctx context.Context, name string, keys []string, at time.Time) error
 	SetGroupOrder(ctx context.Context, names []string) error
+	CardOrder(ctx context.Context) (map[string]int, error)
+	SetCardOrder(ctx context.Context, keys []string) error
 }
 
 // monitorView es lo que los handlers necesitan del monitor. Lo cumple
@@ -144,6 +146,8 @@ func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon moni
 	private.HandleFunc("POST /groups/rename", s.renameGroup)
 	private.HandleFunc("POST /groups/delete", s.deleteGroup)
 	private.HandleFunc("POST /groups/move", s.moveCard)
+	private.HandleFunc("POST /layout/cards", s.orderCards)
+	private.HandleFunc("POST /layout/groups", s.orderGroups)
 	// El ID de un servicio de compose lleva "/" ("media-stack/jellyfin"),
 	// así que va al final de la ruta con {id...}, que toma el resto. Por
 	// eso la acción va antes del ID (/logs/<id>) y no después: con

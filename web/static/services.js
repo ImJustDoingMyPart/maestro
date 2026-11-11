@@ -106,15 +106,88 @@
     if (a) e.preventDefault();
   }, true);
 
+  // Arrastrar (SortableJS, que anda con el dedo: en pantallas táctiles hay
+  // que mantener apretado un momento, así el gesto de desplazar la página
+  // no arrastra). Las tarjetas se mueven dentro de su grupo y entre grupos;
+  // los grupos, por su manija. Cada cambio se guarda enseguida.
+  var sortables = [];
+  function stopSorting() {
+    sortables.forEach(function (s) { s.destroy(); });
+    sortables = [];
+  }
+  function startSorting() {
+    stopSorting();
+    if (!window.Sortable) return;
+    var common = { animation: 150, delay: 250, delayOnTouchOnly: true, ghostClass: "drag-ghost", chosenClass: "drag-chosen" };
+    document.querySelectorAll("#services .group .grid.cards").forEach(function (grid) {
+      sortables.push(Sortable.create(grid, Object.assign({}, common, {
+        group: "cards",
+        draggable: "[data-key]",
+        filter: ".card-menu, .card-actions",
+        preventOnFilter: false,
+        onEnd: function (e) {
+          if (e.from === e.to && e.oldIndex === e.newIndex) return;
+          var section = e.to.closest(".group");
+          section.classList.remove("empty");
+          var body = new URLSearchParams();
+          body.append("group", section.dataset.group);
+          e.to.querySelectorAll(":scope > [data-key]").forEach(function (el) { body.append("key", el.dataset.key); });
+          send("/layout/cards", body);
+        },
+      })));
+    });
+    var list = document.querySelector("#services .groups");
+    if (list) {
+      sortables.push(Sortable.create(list, Object.assign({}, common, {
+        draggable: ".group:not(.otros)",
+        handle: ".group-handle",
+        onEnd: function (e) {
+          if (e.oldIndex === e.newIndex) return;
+          var body = new URLSearchParams();
+          list.querySelectorAll(":scope > .group:not(.otros)").forEach(function (el) { body.append("name", el.dataset.group); });
+          send("/layout/groups", body);
+        },
+      })));
+    }
+  }
+  document.addEventListener("maestro:editing", function (e) {
+    if (e.detail) startSorting(); else stopSorting();
+  });
+
+  // send guarda un cambio de orden. Si falla (por ejemplo, una tarjeta
+  // con el grupo del archivo), avisa y vuelve a pedir la grilla, que
+  // deshace lo arrastrado.
+  var forceRefresh = false;
+  function send(url, body) {
+    fetch(url, { method: "POST", body: body, credentials: "same-origin" }).then(function (res) {
+      if (res.ok) return;
+      return res.text().then(function (t) { fail(t.trim() || "No se pudo guardar el orden."); });
+    }).catch(function () { fail("No se pudo guardar el orden: sin conexión."); });
+  }
+  function fail(msg) {
+    var bar = document.getElementById("layout-error");
+    if (bar) {
+      bar.textContent = msg;
+      bar.classList.add("active");
+      setTimeout(function () { bar.classList.remove("active"); }, 5000);
+    }
+    forceRefresh = true;
+    if (window.htmx) htmx.trigger("#services", "refresh");
+  }
+
   // Mientras hay un menú o un diálogo abiertos, o se está editando, el
   // refresco de la grilla espera: si no, se cierran en la mano. Los cambios
   // hechos desde un diálogo (hx-post) sí pasan.
   document.addEventListener("htmx:beforeRequest", function (e) {
     var cfg = e.detail.requestConfig;
     if (!cfg || cfg.verb !== "get" || e.detail.elt.id !== "services") return;
+    if (forceRefresh) { forceRefresh = false; return; }
     if (editing() || document.querySelector("details.card-menu[open], dialog.form-dialog[open]")) e.preventDefault();
   });
 
   document.addEventListener("DOMContentLoaded", function () { restore(document); });
-  document.addEventListener("htmx:afterSettle", function (e) { restore(e.target); });
+  document.addEventListener("htmx:afterSettle", function (e) {
+    restore(e.target);
+    if (editing()) startSorting(); // la grilla es otra: los Sortable viejos quedaron sueltos
+  });
 })();

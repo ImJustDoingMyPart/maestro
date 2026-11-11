@@ -52,6 +52,9 @@ type uiPrefs struct {
 	// GroupOrder son los grupos que conoce la interfaz, en orden. Pueden
 	// estar vacíos.
 	GroupOrder []string
+	// CardOrder es la posición de las tarjetas ordenadas a mano dentro de
+	// su grupo.
+	CardOrder map[string]int
 }
 
 // otros es el grupo de las tarjetas sin grupo.
@@ -70,8 +73,8 @@ const otros = "Otros"
 // del archivo. Los grupos van primero en el orden de p.GroupOrder, después
 // los demás en orden alfabético y "Otros" (sin grupo) al final; los de
 // p.GroupOrder sin tarjetas salen vacíos (Empty), para el modo edición. Las
-// tarjetas van por nombre. Los órdenes alfabéticos no distinguen
-// mayúsculas.
+// tarjetas van primero en el orden de p.CardOrder y después por nombre.
+// Los órdenes alfabéticos no distinguen mayúsculas.
 //
 // Los nombres de servicios de p.Names ya vienen aplicados (applyNames);
 // acá se usan los de los stacks.
@@ -153,6 +156,16 @@ func buildGroups(services []catalog.Service, statusOf func(id string) status.Sta
 	}
 	for _, g := range byGroup {
 		slices.SortFunc(g.Services, func(a, b serviceCard) int {
+			pa, oka := p.CardOrder[a.Key]
+			pb, okb := p.CardOrder[b.Key]
+			switch {
+			case oka && okb && pa != pb:
+				return cmp.Compare(pa, pb)
+			case oka && !okb:
+				return -1
+			case okb && !oka:
+				return 1
+			}
 			return cmp.Or(cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)), cmp.Compare(a.Key, b.Key))
 		})
 		groups = append(groups, *g)

@@ -3,3 +3,4 @@ beercss-5.0.3/                      beercss@5.0.3 dist/cdn (solo .min.*, sin var
 beercss-5.0.3/material-dynamic-colors.min.js   material-dynamic-colors@1.2.0 dist/cdn
 htmx-2.0.11.min.js                  htmx.org@2.0.11 dist/htmx.min.js
 htmx-ext-sse-2.2.4.min.js           htmx-ext-sse@2.2.4 dist/sse.min.js
+sortable-1.15.7.min.js              sortablejs@1.15.7 Sortable.min.js

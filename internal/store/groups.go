@@ -183,3 +183,40 @@ func (s *Store) SetGroupOrder(ctx context.Context, names []string) error {
 		return nil
 	})
 }
+
+// CardOrder da la posición de cada tarjeta ordenada a mano, por clave. Las
+// posiciones solo se comparan dentro de un grupo.
+func (s *Store) CardOrder(ctx context.Context) (map[string]int, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT key, position FROM card_order`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]int{}
+	for rows.Next() {
+		var (
+			key string
+			pos int
+		)
+		if err := rows.Scan(&key, &pos); err != nil {
+			return nil, err
+		}
+		out[key] = pos
+	}
+	return out, rows.Err()
+}
+
+// SetCardOrder guarda el orden de las tarjetas de un grupo: keys, de la
+// primera a la última.
+func (s *Store) SetCardOrder(ctx context.Context, keys []string) error {
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		for i, key := range keys {
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO card_order (key, position) VALUES (?, ?)
+				ON CONFLICT (key) DO UPDATE SET position = excluded.position`, key, i); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}

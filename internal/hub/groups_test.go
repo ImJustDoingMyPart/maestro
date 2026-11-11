@@ -171,3 +171,67 @@ func TestGruposDesdeLaInterfaz(t *testing.T) {
 		t.Fatalf("grupo original = %d", code)
 	}
 }
+
+func TestOrdenarArrastrando(t *testing.T) {
+	fromFile := compSvc("cfg", "app", "Fijo", "")
+	fromFile.GroupFromFile = true
+	snap := Snapshot{
+		At:    time.Now(),
+		Hosts: []HostStatus{{Name: "vm", OK: true}},
+		Services: []catalog.Service{
+			compSvc("a", "uno", "Web", ""),
+			compSvc("b", "dos", "Web", ""),
+			compSvc("c", "tres", "Web", ""),
+			compSvc("d", "cuatro", "Red", ""),
+			fromFile,
+		},
+	}
+	srv := testServer(t, snap)
+	c := loggedIn(t, srv)
+	post := func(path string, form url.Values) int {
+		t.Helper()
+		res := postForm(t, c, srv.URL+path, form, srv.URL)
+		res.Body.Close()
+		return res.StatusCode
+	}
+
+	// Dentro de un grupo.
+	if code := post("/layout/cards", url.Values{"group": {"Web"}, "key": {"service:c/tres", "service:a/uno", "service:b/dos"}}); code != http.StatusNoContent {
+		t.Fatalf("ordenar = %d", code)
+	}
+	// De Red a Web: cambia de grupo.
+	if code := post("/layout/cards", url.Values{"group": {"Web"}, "key": {"service:d/cuatro", "service:c/tres", "service:a/uno", "service:b/dos"}}); code != http.StatusNoContent {
+		t.Fatalf("mover entre grupos = %d", code)
+	}
+	// Una con el grupo del archivo no se mueve.
+	if code := post("/layout/cards", url.Values{"group": {"Web"}, "key": {"service:cfg/app"}}); code != http.StatusConflict {
+		t.Errorf("arrastrar una tarjeta con grupo del archivo = %d", code)
+	}
+	if code := post("/layout/cards", url.Values{"group": {"Web"}}); code != http.StatusBadRequest {
+		t.Errorf("sin tarjetas = %d", code)
+	}
+	// Grupos: Otros no cuenta.
+	if code := post("/layout/groups", url.Values{"name": {"Web", "Otros", "Fijo"}}); code != http.StatusNoContent {
+		t.Fatalf("ordenar grupos = %d", code)
+	}
+	if code := post("/layout/groups", url.Values{"name": {"Otros"}}); code != http.StatusBadRequest {
+		t.Errorf("solo Otros = %d", code)
+	}
+
+	res, _ := c.Get(srv.URL + "/")
+	b := body(t, res)
+	var keys, groups []string
+	for _, part := range strings.Split(b, `<section class="group`)[1:] {
+		i := strings.Index(part, `data-group="`) + len(`data-group="`)
+		groups = append(groups, part[i:i+strings.Index(part[i:], `"`)])
+	}
+	for _, part := range strings.Split(b, `class="s12 m6 l4" data-key="`)[1:] {
+		keys = append(keys, part[:strings.Index(part, `"`)])
+	}
+	if got, want := strings.Join(groups, " "), "Web Fijo"; got != want {
+		t.Errorf("grupos = %s, quería %s", got, want)
+	}
+	if got, want := strings.Join(keys, " "), "service:d/cuatro service:c/tres service:a/uno service:b/dos service:cfg/app"; got != want {
+		t.Errorf("tarjetas = %s\nquería    %s", got, want)
+	}
+}

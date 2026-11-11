@@ -26,6 +26,27 @@ body.editing .view-only,
 body:not(.editing) .group.empty {
   display: none;
 }
+/* Arrastrar: la tarjeta que se mueve, el lugar donde caería y la manija
+   de los grupos. */
+body.editing #services .grid.cards {
+  min-block-size: 4rem;
+}
+body.editing #services [data-key] > .service {
+  cursor: grab;
+  outline: 1px dashed var(--outline-variant);
+  outline-offset: 2px;
+}
+.drag-ghost > .service {
+  opacity: 0.4;
+}
+.drag-chosen > .service {
+  box-shadow: var(--elevate2);
+}
+.group-handle {
+  cursor: grab;
+  color: var(--on-surface-variant);
+  touch-action: none;
+}
 .group.empty .empty-hint {
   padding: 1rem;
   border: 1px dashed var(--outline-variant);

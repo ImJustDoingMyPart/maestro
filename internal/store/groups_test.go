@@ -98,3 +98,21 @@ func TestGrupos(t *testing.T) {
 		t.Error("ResetCardGroup no borró la fila")
 	}
 }
+
+func TestOrdenDeTarjetas(t *testing.T) {
+	s, _ := openTest(t)
+	ctx := context.Background()
+	if err := s.SetCardOrder(ctx, []string{"service:b", "stack:vm/a"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetCardOrder(ctx, []string{"stack:vm/a", "service:b", "service:c"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.CardOrder(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := map[string]int{"stack:vm/a": 0, "service:b": 1, "service:c": 2}; !reflect.DeepEqual(got, want) {
+		t.Errorf("orden = %v", got)
+	}
+}
