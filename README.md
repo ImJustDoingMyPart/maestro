@@ -7,7 +7,7 @@ Es un solo binario de Go con dos modos:
 - `maestro serve`: el **hub**. Web, login y base SQLite. No toca el socket de Docker: le pide los datos a los agents.
 - `maestro agent`: uno por **host**. Lee Docker, edita y levanta los stacks de compose, y responde solo al hub, con un token.
 
-Estado: etapa 4 (checks y estado). Hay portada con login y lista de servicios desde Docker; el semáforo combina el estado de los contenedores con checks HTTP, TCP y push que corren en el hub, y cada cambio de estado queda guardado. Cada servicio tiene su página con el historial de sus checks, la línea de tiempo (logs en vivo con los cambios de estado intercalados) y, si es de compose, la pestaña Compose para editar el `compose.yml` y el `.env` y correr `up`, `down`, `restart` y `pull`.
+Estado: etapa 5 (informe para IA). Hay portada con login y lista de servicios desde Docker; el semáforo combina el estado de los contenedores con checks HTTP, TCP y push que corren en el hub, y cada cambio de estado queda guardado. Cada servicio tiene su página con el historial de sus checks, la línea de tiempo (logs en vivo con los cambios de estado intercalados) y, si es de compose, la pestaña Compose para editar el `compose.yml` y el `.env` y correr `up`, `down`, `restart` y `pull`. Cada servicio da además un informe en Markdown, con los secretos censurados, para pegarlo en un agente de IA.
 
 ## Desarrollo
 
@@ -128,6 +128,25 @@ En la página del servicio, cada check muestra su último resultado, la latencia
 - Una acción no se corta si se cierra la página: un `up` a medias deja el stack roto. El hub sigue leyendo la salida y la guarda una hora; al volver a la página en los 10 minutos siguientes, se ve.
 - `docker compose` corre con el entorno del agent menos las variables `MAESTRO_*` (el token no queda al alcance de la interpolación).
 
+## Informe para IA
+
+Un resumen en Markdown de un servicio, para pegarlo en un agente de IA o para que un agente lo pida solo: qué es y dónde vive, el estado con sus motivos, cada contenedor (imagen, estado, health, exit code, arranque y reinicios), los checks de las últimas 24 horas (último resultado, disponibilidad, vencimiento del certificado y las últimas 10 fallas), los cambios de estado, las últimas 200 líneas de log de cada contenedor con los errores (`E`) y los avisos (`W`) marcados, y el `compose.yml` y el `.env`.
+
+- En la página del servicio, el botón **Copiar informe** lo copia al portapapeles. Si el navegador no lo deja (sin HTTPS no da el portapapeles), lo muestra en un diálogo para copiarlo a mano.
+- `GET /api/services/<id>/report` da el mismo texto. Pide sesión o el token de la API (`api_token` en `maestro.yaml`, de al menos 32 caracteres, en una variable); sin ninguno de los dos responde 401:
+
+```sh
+curl -H "Authorization: Bearer $MAESTRO_API_TOKEN" https://<maestro>/api/services/media-stack/jellyfin/report
+```
+
+**Los secretos se censuran siempre** (no hay modo sin censura: el informe está hecho para salir del servidor; el valor real se ve en la pestaña Compose, con sesión). Se reemplazan por `[censurado]`:
+
+- en el `.env`, el valor de toda variable cuyo nombre parece de secreto: contiene `password`, `passwd`, `passphrase`, `secret`, `token`, `credential`, `private` o `apikey`, o tiene una palabra `pass`, `pwd`, `key`, `auth` o `salt` (`DB_PASS`, `homepage.widget.key`, `apiKey`). Los que terminan en `_FILE` son rutas y quedan. `true`, `false`, `yes`, `no`, `0` y `1` también quedan (`WEBUI_AUTH=true` no esconde nada);
+- en el compose, lo mismo en `KEY: valor` y `- KEY=valor` (un bloque `|` entero), salvo que el valor sea solo una referencia (`${VAR}`, `${VAR:?mensaje}`), que no dice nada; y el valor por defecto de `${VAR:-defecto}` si la variable parece secreta o está censurada en el `.env`;
+- en todo el informe (compose, logs, motivos, URLs de los checks): cada valor censurado del `.env` (de 4 caracteres o más) aparezca donde aparezca, la clave de `esquema://usuario:clave@` y el usuario de `esquema://token@`, los parámetros de query con nombre de secreto, los tokens de `Bearer` y `Basic` y las asignaciones `password=…`, `"token":"…"`.
+
+La censura se equivoca a favor de tapar: `cache key: users:42` o `10-vnc-password.sh: executing` también quedan censurados. Se probó con los compose, los `.env` y las últimas 200 líneas de log de todos los stacks de un server real, sin que se escapara ningún valor.
+
 ## Configuración
 
 Lo que se puede descubrir no se configura: todo contenedor aparece solo. Un servicio se ajusta con labels en su `compose.yml` o con el archivo `maestro.yaml` del hub. Prioridad, de mayor a menor: `maestro.yaml`, labels `maestro.*`, labels `homepage.*` y nombres de compose. Los labels de Homepage ya existentes se aprovechan sin migrar nada.
@@ -159,8 +178,9 @@ Una clave `maestro.*` desconocida o un valor inválido se ignora y queda en el l
 
 ### `maestro.yaml`
 
-Ver [`maestro.example.yaml`](maestro.example.yaml). Tiene dos secciones:
+Ver [`maestro.example.yaml`](maestro.example.yaml). Tiene dos secciones y una clave suelta:
 
+- `api_token`: opcional, el token para pedir la API sin sesión (ver "Informe para IA").
 - `hosts`: cada host con agent, con `agent` (URL) y `token`.
 - `services`: con clave `<proyecto>/<servicio>` pisa valores de un servicio descubierto; con una clave sin `/` declara uno propio, que es una unidad systemd si tiene `unit` (y entonces necesita `host`) o un servicio externo si no.
 
@@ -198,5 +218,6 @@ docker compose run --rm hub passwd --db /data/maestro.db --user <usuario>
 - Montar el socket con `:ro` no hace que la API de Docker sea de solo lectura. El agent levanta y baja stacks y edita sus compose: quien controle el agent (o el hub, que le habla con el token) tiene el equivalente a root en ese host. Por eso el login, el agent sin publicar y el acceso solo detrás del proxy.
 - El agent solo lee y escribe el `compose.yml` y el `.env` de un proyecto, y solo dentro de `--stacks-dir`: una ruta que, resueltos los symlinks, cae afuera se rechaza.
 - El `.env` viaja del agent al navegador para editarlo: lleva secretos, y por eso esa página solo existe con sesión iniciada.
+- El informe para IA sale censurado siempre. Con el token de la API se puede pedir sin sesión: el token se compara en tiempo constante y uno equivocado queda en el log con la IP.
 - Las líneas de log se insertan como texto, nunca como HTML: un contenedor no puede meter marcado en la página.
 - `/push/<token>` no pide login: el token es la credencial. Se compara en tiempo constante contra todos los tokens, sin cortar en el primero, y la respuesta es la misma exista o no. El token viaja en la URL, así que queda en el log de acceso del proxy si está activado.
