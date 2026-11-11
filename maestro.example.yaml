@@ -26,7 +26,7 @@ services:
   adguard:
     name: AdGuard Home
     group: Red
-    icon: shield
+    icon: adguard-home # logo de dashboard-icons; sin icon, el hub lo adivina
     url: https://adguard.example.org
     host: adguard
     unit: AdGuardHome.service

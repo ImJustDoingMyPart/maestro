@@ -165,7 +165,7 @@ func TestRecorridoDeLogin(t *testing.T) {
 	b := body(t, res)
 	for _, want := range []string{
 		"Jellyfin", "Media", "jellyfin/jellyfin", "https://jellyfin.example.org",
-		"Otros", "suelto", "1 arriba", "1 caídos",
+		"Otros", "suelto", "1 arriba", "1 caído",
 		"El agent de lxc no responde", "connection refused",
 		`hx-get="/fragments/services"`, "Actualizado",
 	} {

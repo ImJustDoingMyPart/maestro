@@ -269,6 +269,13 @@ func singleCard(svc catalog.Service, st status.Status) serviceCard {
 		SeparateLocked: svc.SeparateFromFile,
 		EditHref:       editHref(svc),
 		HiddenLocked:   svc.Hidden != nil,
+		icon:           serviceHint(svc),
+	}
+	if len(svc.Containers) > 0 {
+		c.MetricsHref = metricsPath(svc.ID)
+	}
+	if svc.Source == catalog.SourceCompose && svc.Project != "" && svc.Host != "" {
+		c.StackHref = stackPath(svc.Host, svc.Project)
 	}
 	if _, kind, _, ok := parseFound(svc.ID); ok {
 		c.Found, c.Icon = true, kindIcon(kind)
@@ -321,6 +328,7 @@ func stackCard(host, project string, members []catalog.Service, statusOf func(st
 		Key:         stackKey(host, project),
 		StackHref:   stackPath(host, project),
 		State:       StateUp,
+		icon:        iconHint{hints: []string{project}},
 	}
 	c.Group, c.GroupLocked = stackGroup(project, members)
 	var main *catalog.Service
@@ -336,6 +344,10 @@ func stackCard(host, project string, members []catalog.Service, statusOf func(st
 	}
 	if main != nil {
 		c.Name, c.URL, c.Group, c.GroupLocked = main.Name, main.URL, main.Group, main.GroupFromFile
+		c.icon = serviceHint(*main)
+		if len(main.Containers) > 0 {
+			c.MetricsHref = metricsPath(main.ID)
+		}
 		if main.Description != "" {
 			c.Description = fmt.Sprintf("%s · %d servicios", main.Description, len(members))
 		}

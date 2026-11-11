@@ -54,7 +54,7 @@ func portadaDe(t *testing.T, srv *httptest.Server, c *http.Client) string {
 		i := strings.Index(sec, `data-group="`) + len(`data-group="`)
 		name := sec[i : i+strings.Index(sec[i:], `"`)]
 		var cards []string
-		for _, part := range strings.Split(sec, `class="s12 m6 l4" data-key="`)[1:] {
+		for _, part := range strings.Split(sec, `class="card-slot" data-key="`)[1:] {
 			key := part[:strings.Index(part, `"`)]
 			j := strings.Index(part, `title="`) + len(`title="`)
 			cards = append(cards, key+"="+part[j:j+strings.Index(part[j:], `"`)])

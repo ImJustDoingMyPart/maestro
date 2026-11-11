@@ -1,29 +1,28 @@
 {{define "content"}}
-<header class="transparent">
-  <nav>
-    <a class="button circle transparent" href="/" title="Volver" aria-label="Volver a Servicios"><i>arrow_back</i></a>
-    <h5 class="max">Ocultos</h5>
-  </nav>
+<header class="page-head">
+  <a class="icon-btn" href="/" title="Volver" aria-label="Volver a Servicios"><i>arrow_back</i></a>
+  <h1 class="page-title">Ocultos</h1>
 </header>
-<p class="secondary-text">No se muestran en la portada, pero se siguen vigilando y su página sigue existiendo.</p>
+<p class="page-lead">No se muestran en la portada, pero se siguen vigilando y su página sigue existiendo.</p>
 {{if .Hidden}}
-<ul class="list border hidden-list">
+<ul class="rows">
   {{range .Hidden}}
-  <li>
-    <i>visibility_off</i>
-    <div class="max">
-      <div>{{.Name}}</div>
-      <div class="small-text secondary-text">{{.Detail}} · {{if .Locked}}lo oculta maestro.yaml{{else}}oculto el {{localTime .At "datetime"}}{{end}}</div>
+  <li class="row-item">
+    <span class="svc-icon"><i>visibility_off</i></span>
+    <div class="row-main">
+      <span class="row-title">{{.Name}}</span>
+      <span class="row-sub">{{.Detail}} · {{if .Locked}}lo oculta maestro.yaml{{else}}oculto el {{localTime .At "datetime"}}{{end}}</span>
     </div>
     <form method="post" action="/hidden/show">
       <input type="hidden" name="key" value="{{.Key}}">
-      <button class="small"{{if .Locked}} disabled title="Se muestra sacando hidden: true de maestro.yaml"{{end}}><i>visibility</i><span>Mostrar</span></button>
+      <button class="btn tonal"{{if .Locked}} disabled title="Se muestra sacando hidden: true de maestro.yaml"{{end}}><i>visibility</i><span>Mostrar</span></button>
     </form>
   </li>
   {{end}}
 </ul>
 {{else}}
-<article class="small-round no-elevate surface-container-low center-align">
+<article class="empty-state">
+  <i>visibility</i>
   <p>No hay nada oculto.</p>
 </article>
 {{end}}

@@ -4,8 +4,12 @@ import (
 	"context"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
+	"slices"
 
 	"github.com/ImJustDoingMyPart/maestro/internal/httpserver"
+	"github.com/ImJustDoingMyPart/maestro/internal/icons"
 	"github.com/ImJustDoingMyPart/maestro/web"
 )
 
@@ -54,7 +58,7 @@ var demoFound = []Discovered{
 
 // newDemoHandler arma las rutas del modo --demo: la portada con servicios
 // falsos, Hardware vacío y los estáticos. Sin login ni agents.
-func newDemoHandler(logger *slog.Logger) (http.Handler, error) {
+func newDemoHandler(logger *slog.Logger, ic *icons.Resolver) (http.Handler, error) {
 	p, err := parsePages(web.Templates, "services", "hardware", "discovered")
 	if err != nil {
 		return nil, err
@@ -62,24 +66,32 @@ func newDemoHandler(logger *slog.Logger) (http.Handler, error) {
 
 	mux := http.NewServeMux()
 	mux.Handle("GET /static/", http.StripPrefix("/static/", staticHandler()))
+	mux.Handle("GET /icons/", http.StripPrefix("/icons", ic))
 
 	// "GET /{$}" solo coincide con "/" exacto; sin {$}, "/" atrapa todo.
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+		groups := slices.Clone(demoGroups)
+		for i := range groups {
+			groups[i].Services = slices.Clone(groups[i].Services)
+		}
+		decorateGroups(ic, groups)
 		p.render(w, logger, "services", pageData{
 			Title:        "Servicios",
 			Active:       "services",
 			ShowNav:      true,
 			Demo:         true,
-			Groups:       demoGroups,
-			Summary:      summarize(demoGroups),
+			Groups:       groups,
+			Summary:      summarize(groups),
 			FoundPending: len(demoFound) - 1,
 			FoundFailing: 0,
 		})
 	})
 	mux.HandleFunc("GET /discovered", func(w http.ResponseWriter, r *http.Request) {
+		found := foundRows(demoFound, map[string]bool{demoFound[4].Key(): true})
+		decorateFound(ic, found)
 		p.render(w, logger, "discovered", pageData{
 			Title: "Descubiertos", Active: "services", ShowNav: true, Demo: true,
-			Found: foundRows(demoFound, map[string]bool{demoFound[4].Key(): true}),
+			Found: found,
 		})
 	})
 	mux.HandleFunc("GET /hardware", func(w http.ResponseWriter, r *http.Request) {
@@ -101,7 +113,14 @@ func staticHandler() http.Handler {
 
 // ServeDemo sirve el modo --demo en addr hasta que se cancele ctx.
 func ServeDemo(ctx context.Context, addr string, logger *slog.Logger) error {
-	h, err := newDemoHandler(logger)
+	// El demo no tiene base: los logos van a la caché del usuario.
+	dir, err := os.UserCacheDir()
+	if err != nil {
+		dir = os.TempDir()
+	}
+	ic := icons.New(filepath.Join(dir, "maestro", "icons"), logger)
+	go ic.Run(ctx)
+	h, err := newDemoHandler(logger, ic)
 	if err != nil {
 		return err
 	}

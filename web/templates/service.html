@@ -5,20 +5,20 @@
 <header class="transparent service-header">
   <nav>
     <a class="button circle transparent" href="/" title="Volver" aria-label="Volver a Servicios"><i>arrow_back</i></a>
-    <span class="icon-badge secondary-container m l"><i class="large">{{.Icon}}</i></span>
+    <span class="m l">{{template "svcicon" .}}</span>
     <div class="max">
       <h5 class="small">{{.Name}}</h5>
       <div class="small-text secondary-text">{{.Description}}</div>
     </div>
     {{template "svcstatus" .}}
-    <button class="transparent small" data-report="{{.ReportURL}}" title="Copia un resumen en Markdown (estado, checks, logs y compose, con los secretos censurados) para pegarlo en un agente de IA">
+    <button class="btn outlined" data-report="{{.ReportURL}}" title="Copia un resumen en Markdown (estado, checks, logs y compose, con los secretos censurados) para pegarlo en un agente de IA">
       <i>content_copy</i>
       <span class="m l">Copiar informe</span>
     </button>
     {{if .URL}}
-    <a class="button transparent small m l" href="{{.URL}}" target="_blank" rel="noopener">
-      <span>Abrir</span>
+    <a class="btn tonal m l" href="{{.URL}}" target="_blank" rel="noopener">
       <i>open_in_new</i>
+      <span>Abrir</span>
     </a>
     {{end}}
   </nav>

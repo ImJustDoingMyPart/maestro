@@ -7,10 +7,12 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/ImJustDoingMyPart/maestro/internal/icons"
 )
 
 func TestDemoRoutes(t *testing.T) {
-	h, err := newDemoHandler(slog.New(slog.DiscardHandler))
+	h, err := newDemoHandler(slog.New(slog.DiscardHandler), icons.New(t.TempDir(), slog.New(slog.DiscardHandler)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -25,7 +27,7 @@ func TestDemoRoutes(t *testing.T) {
 		{"/discovered", http.StatusOK, []string{"AdGuardHome.service", "Volver a la bandeja", "disabled"}},
 		{"/static/beercss-5.0.3/beer.min.css", http.StatusOK, nil},
 		{"/static/htmx-2.0.11.min.js", http.StatusOK, nil},
-		{"/static/maestro.css", http.StatusOK, []string{".dot.up"}},
+		{"/static/maestro.css", http.StatusOK, []string{".state-pill"}},
 		{"/no-existe", http.StatusNotFound, nil},
 	}
 	for _, tt := range tests {

@@ -44,16 +44,65 @@ const FORMAT = {
   plain: (v) => (v == null ? "–" : n2.format(v)),
 };
 
-// Colores de la paleta de Beer CSS (Material 3), leídos de las variables
-// del documento: siguen al tema claro u oscuro.
+// Paleta categórica de ocho colores, en orden fijo (la serie 1 siempre es
+// la misma), validada para daltonismo contra superficies clara y oscura: el
+// tema oscuro tiene sus propios tonos, no una inversión. Una serie nunca
+// toma un color generado: los gráficos tienen como mucho ocho.
+const SERIES = {
+  light: ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"],
+  dark: ["#3987e5", "#d95926", "#199e70", "#c98500", "#d55181", "#008300", "#9085e9", "#e66767"],
+};
+
+function isDark() {
+  if (document.body.classList.contains("dark")) return true;
+  if (document.body.classList.contains("light")) return false;
+  return matchMedia("(prefers-color-scheme: dark)").matches;
+}
+
+// Ejes y grilla con los colores del tema (variables de Beer CSS).
 function palette() {
   const cs = getComputedStyle(document.body);
   const v = (name) => cs.getPropertyValue(name).trim();
   return {
-    series: [v("--primary"), v("--tertiary"), v("--secondary"), v("--error"), "#8e7cc3", "#e69138", "#6aa84f", "#3d85c6"],
+    series: isDark() ? SERIES.dark : SERIES.light,
     axis: v("--on-surface-variant"),
-    grid: v("--outline-variant"),
+    grid: v("--surface-container-highest"),
+    font: '500 11px "Google Sans Flex", system-ui, sans-serif',
   };
+}
+
+function alpha(hex, a) {
+  const h = hex.replace("#", "");
+  const n = parseInt(h.length === 3 ? h.replace(/./g, "$&$&") : h, 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`;
+}
+
+// Horas del eje x según el rango: horas y minutos hasta dos días, día y mes
+// hasta un par de meses, y si no, el mes.
+function timeFormatter(span) {
+  const opts =
+    span <= 2 * 86400
+      ? { hour: "2-digit", minute: "2-digit", hour12: false }
+      : span <= 62 * 86400
+        ? { day: "numeric", month: "short" }
+        : { month: "short", year: "2-digit" };
+  const f = new Intl.DateTimeFormat("es-AR", opts);
+  return (t) => f.format(new Date(t * 1000));
+}
+const cursorTime = new Intl.DateTimeFormat("es-AR", { dateStyle: "short", timeStyle: "short", hour12: false });
+
+// Ancho del eje y según la etiqueta más larga (ejemplo "axis autosize" de
+// uPlot): "97,7 KB/s" no se corta.
+function axisSize(self, values, axisIdx, cycleNum) {
+  const axis = self.axes[axisIdx];
+  if (cycleNum > 1) return axis._size;
+  let size = axis.ticks.size + axis.gap;
+  const longest = (values ?? []).reduce((acc, v) => (String(v).length > acc.length ? String(v) : acc), "");
+  if (longest !== "") {
+    self.ctx.font = axis.font[0];
+    size += self.ctx.measureText(longest).width / devicePixelRatio;
+  }
+  return Math.ceil(size);
 }
 
 function seriesSpec(el) {
@@ -82,6 +131,36 @@ async function load(el) {
   draw(el, spec, data);
 }
 
+function lastValue(col) {
+  for (let i = col.length - 1; i >= 0; i--) if (col[i] != null) return col[i];
+  return null;
+}
+
+// Leyenda propia, en HTML: un punto del color, el nombre y el valor. Sin
+// el cursor encima muestra el último valor; con el cursor, el de ese
+// momento (y la hora va arriba a la derecha).
+function buildLegend(el, spec, colors) {
+  const box = el.querySelector("[data-chart-legend]");
+  box.replaceChildren();
+  box.classList.toggle("single", spec.length === 1);
+  return spec.map((s, i) => {
+    const item = document.createElement("span");
+    item.className = "lg-item";
+    const sw = document.createElement("span");
+    sw.className = "lg-swatch";
+    sw.style.background = colors[i];
+    const label = document.createElement("span");
+    label.className = "lg-label";
+    label.textContent = s.label;
+    label.title = s.label;
+    const val = document.createElement("span");
+    val.className = "lg-value";
+    item.append(sw, label, val);
+    box.append(item);
+    return val;
+  });
+}
+
 function draw(el, spec, data) {
   const fmt = FORMAT[el.dataset.unit] || FORMAT.plain;
   const stacked = "stack" in el.dataset;
@@ -92,14 +171,23 @@ function draw(el, spec, data) {
 
   const box = el.querySelector(".chart-plot");
   box.replaceChildren();
-  if (!hasData) return;
+  el._plot?.destroy();
+  el._plot = null;
+  const legendBox = el.querySelector("[data-chart-legend]");
+  const now = el.querySelector("[data-chart-now]");
+  if (!hasData) {
+    legendBox?.replaceChildren();
+    if (now) now.textContent = "";
+    return;
+  }
 
-  let values = data.series.map((s) => s.avg);
+  const raw = data.series.map((s) => s.avg);
+  let values = raw;
   if (stacked) {
-    // Apilado: cada serie es la suma de ella y las anteriores. El valor
-    // propio se muestra en la leyenda con el valor sin sumar.
+    // Apilado: cada serie es la suma de ella y las anteriores. La leyenda
+    // muestra el valor propio, sin sumar.
     const acc = new Array(data.t.length).fill(0);
-    values = values.map((col) =>
+    values = raw.map((col) =>
       col.map((v, i) => {
         if (v == null) return null;
         acc[i] += v;
@@ -109,32 +197,74 @@ function draw(el, spec, data) {
   }
 
   const pal = palette();
-  const raw = data.series.map((s) => s.avg);
+  const colors = spec.map((_, i) => pal.series[i % pal.series.length]);
+  const legendValues = buildLegend(el, spec, colors);
+  const showLatest = () => {
+    raw.forEach((col, i) => (legendValues[i].textContent = fmt(lastValue(col))));
+    if (now) now.textContent = "";
+  };
+  showLatest();
+
+  const span = data.t[data.t.length - 1] - data.t[0];
+  const fmtTime = timeFormatter(span);
+  const single = spec.length === 1;
+  const axisCommon = {
+    stroke: pal.axis,
+    font: pal.font,
+    grid: { stroke: pal.grid, width: 1 },
+    ticks: { show: false },
+    gap: 6,
+  };
   const opts = {
     width: Math.max(box.clientWidth, 200),
-    height: 180,
-    cursor: { drag: { x: false, y: false } },
-    legend: { live: true },
-    scales: { x: { time: true }, y: { range: (u, min, max) => [0, Math.max(max, el.dataset.unit === "pct" ? 100 : max * 1.1 || 1)] } },
+    height: 190,
+    padding: [8, 4, 0, 0],
+    cursor: {
+      drag: { x: false, y: false },
+      points: { size: 8, width: 2, stroke: (u, si) => colors[si - 1], fill: getComputedStyle(document.body).getPropertyValue("--surface-container-low").trim() },
+    },
+    legend: { show: false },
+    scales: {
+      x: { time: true },
+      y: { range: (u, min, max) => [0, Math.max(max, el.dataset.unit === "pct" ? 100 : max * 1.15 || 1)] },
+    },
     axes: [
-      { stroke: pal.axis, grid: { stroke: pal.grid, width: 1 }, ticks: { stroke: pal.grid } },
-      { stroke: pal.axis, grid: { stroke: pal.grid, width: 1 }, ticks: { stroke: pal.grid }, size: 70, values: (u, ticks) => ticks.map(fmt) },
+      { ...axisCommon, values: (u, ticks) => ticks.map(fmtTime), space: 70 },
+      { ...axisCommon, size: axisSize, values: (u, ticks) => ticks.map(fmt), space: 36 },
     ],
     series: [
-      { value: (u, v) => (v == null ? "–" : new Date(v * 1000).toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short" })) },
+      {},
       ...spec.map((s, i) => ({
         label: s.label,
-        stroke: pal.series[i % pal.series.length],
-        width: 1.5,
-        fill: stacked ? pal.series[i % pal.series.length] + "33" : undefined,
+        stroke: colors[i],
+        width: 2,
+        // Una sola serie: área con degradé. Apiladas: relleno plano suave.
+        fill: stacked
+          ? alpha(colors[i], 0.18)
+          : single
+            ? (u) => {
+                const g = u.ctx.createLinearGradient(0, u.bbox.top, 0, u.bbox.top + u.bbox.height);
+                g.addColorStop(0, alpha(colors[i], 0.28));
+                g.addColorStop(1, alpha(colors[i], 0));
+                return g;
+              }
+            : undefined,
         points: { show: false },
         spanGaps: false,
-        value: (u, v, si, idx) => fmt(idx == null ? null : raw[si - 1][idx]),
       })),
     ],
+    hooks: {
+      setCursor: [
+        (u) => {
+          const idx = u.cursor.idx;
+          if (idx == null) return showLatest();
+          raw.forEach((col, i) => (legendValues[i].textContent = fmt(col[idx])));
+          if (now) now.textContent = cursorTime.format(new Date(data.t[idx] * 1000));
+        },
+      ],
+    },
   };
-  const plot = new uPlot(opts, [data.t, ...values], box);
-  el._plot = plot;
+  el._plot = new uPlot(opts, [data.t, ...values], box);
 }
 
 function loadAll() {
@@ -166,14 +296,15 @@ function setupRanges() {
 const resize = new ResizeObserver((entries) => {
   for (const e of entries) {
     const el = e.target.closest("[data-chart]");
-    if (el?._plot) el._plot.setSize({ width: Math.max(e.contentRect.width, 200), height: 180 });
+    if (el?._plot) el._plot.setSize({ width: Math.max(e.contentRect.width, 200), height: 190 });
   }
 });
 
 function init() {
   setupRanges();
   for (const el of document.querySelectorAll("[data-chart] .chart-plot")) resize.observe(el);
-  loadAll();
+  // Los ejes se miden con la fuente de la página: se espera a que cargue.
+  (document.fonts?.ready ?? Promise.resolve()).then(loadAll);
   setInterval(() => {
     if (!document.hidden) loadAll();
   }, REFRESH_MS);

@@ -7,12 +7,14 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/ImJustDoingMyPart/maestro/internal/auth"
 	"github.com/ImJustDoingMyPart/maestro/internal/config"
 	"github.com/ImJustDoingMyPart/maestro/internal/httpserver"
+	"github.com/ImJustDoingMyPart/maestro/internal/icons"
 	"github.com/ImJustDoingMyPart/maestro/internal/status"
 	"github.com/ImJustDoingMyPart/maestro/internal/store"
 	"github.com/ImJustDoingMyPart/maestro/web"
@@ -75,7 +77,12 @@ func Serve(ctx context.Context, opts Options, logger *slog.Logger) error {
 	}
 	go poller.Run(ctx)
 
-	h, err := newHandler(poller, poller, poller, mon, st, auth.NewSessions(st, !opts.Dev, logger), cfg.APIToken, logger)
+	// Los logos se guardan al lado de la base (en el server, ./data, que
+	// respalda Restic: no hace falta bajarlos de nuevo al restaurar).
+	ic := icons.New(filepath.Join(filepath.Dir(opts.DBPath), "icons"), logger)
+	go ic.Run(ctx)
+
+	h, err := newHandler(poller, poller, poller, mon, st, auth.NewSessions(st, !opts.Dev, logger), cfg.APIToken, logger, withIcons(ic))
 	if err != nil {
 		return err
 	}
@@ -142,15 +149,27 @@ type server struct {
 	fileKeys map[string]bool // claves de services: en el archivo
 	layout   fileLayout      // stacks: y groups: del archivo
 	pages    pages
+	icons    *icons.Resolver // nil: sin logos (tests)
 	logger   *slog.Logger
 }
 
-func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon monitorView, prefs prefStore, sessions *auth.Sessions, apiToken string, logger *slog.Logger) (http.Handler, error) {
+// handlerOption agrega a newHandler lo que los tests no necesitan.
+type handlerOption func(*server)
+
+// withIcons sirve /icons/ y pone los logos de los servicios.
+func withIcons(r *icons.Resolver) handlerOption {
+	return func(s *server) { s.icons = r }
+}
+
+func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon monitorView, prefs prefStore, sessions *auth.Sessions, apiToken string, logger *slog.Logger, opts ...handlerOption) (http.Handler, error) {
 	p, err := parsePages(web.Templates, "services", "service", "stack", "hardware", "login", "hidden", "external", "discovered", "export")
 	if err != nil {
 		return nil, err
 	}
 	s := &server{poller: poller, logs: logs, stacks: stacks, mon: mon, prefs: prefs, runs: newRunStore(), sessions: sessions, apiToken: apiToken, pages: p, logger: logger}
+	for _, o := range opts {
+		o(s)
+	}
 	if u, ok := poller.(uiServiceSetter); ok {
 		s.ui = u
 	}
@@ -184,6 +203,9 @@ func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon moni
 	private.HandleFunc("GET /{$}", s.servicesPage)
 	private.HandleFunc("GET /fragments/services", s.servicesFragment)
 	private.HandleFunc("GET /hardware", s.hardwarePage)
+	if s.icons != nil {
+		private.Handle("GET /icons/", http.StripPrefix("/icons", s.icons))
+	}
 	private.HandleFunc("GET /data/metrics", s.metricsHandler)
 	private.HandleFunc("GET /hidden", s.hiddenPage)
 	private.HandleFunc("POST /hidden", s.hide)
@@ -260,6 +282,7 @@ func (s *server) servicesData(ctx context.Context) pageData {
 
 	p := s.loadPrefs(ctx)
 	data.Groups, data.HiddenCount = buildGroups(applyNames(withShown(snap, p.Shown), p.Names), s.mon.Status, p)
+	decorateGroups(s.icons, data.Groups)
 	data.Summary = summarize(data.Groups)
 	data.FoundPending = pending(snap.Discovered, p.Shown)
 	data.FoundFailing = failingHidden(snap.Discovered, p.Shown)

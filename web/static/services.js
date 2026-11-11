@@ -9,14 +9,33 @@
     try { sessionStorage.setItem(KEY, JSON.stringify(list)); } catch (e) { /* sin almacenamiento: se cierran al refrescar */ }
   }
 
-  // htmx reemplaza la grilla cada 15 s y un <details> nuevo viene cerrado:
+  // htmx reemplaza la grilla cada 15 s y una tarjeta nueva viene cerrada:
   // se vuelven a abrir los stacks que estaban desplegados.
+  function setOpen(card, on) {
+    card.classList.toggle("open", on);
+    var btn = card.querySelector("[data-stack-toggle]");
+    if (btn) btn.setAttribute("aria-expanded", on ? "true" : "false");
+  }
   function restore(root) {
     var open = load();
-    root.querySelectorAll("details.stack-details[data-key]").forEach(function (d) {
-      if (open.indexOf(d.dataset.key) >= 0) d.open = true;
+    root.querySelectorAll(".svc-card[data-stack]").forEach(function (card) {
+      if (open.indexOf(card.dataset.stack) >= 0) setOpen(card, true);
     });
   }
+
+  // Una tarjeta de stack se despliega con su botón o tocándola en
+  // cualquier lugar que no sea un link, un botón o el menú.
+  document.addEventListener("click", function (e) {
+    var card = e.target.closest(".svc-card[data-stack]");
+    if (!card || editing()) return;
+    var onToggle = e.target.closest("[data-stack-toggle]");
+    if (!onToggle && e.target.closest("a, button, details, .stack-members")) return;
+    var on = !card.classList.contains("open");
+    setOpen(card, on);
+    var open = load().filter(function (k) { return k !== card.dataset.stack; });
+    if (on) open.push(card.dataset.stack);
+    save(open);
+  });
 
   function closeMenus(except) {
     document.querySelectorAll("details.card-menu[open]").forEach(function (d) {
@@ -27,15 +46,7 @@
   // toggle no burbujea: se escucha en captura.
   document.addEventListener("toggle", function (e) {
     var d = e.target;
-    if (!(d instanceof HTMLDetailsElement)) return;
-    if (d.classList.contains("card-menu")) {
-      if (d.open) closeMenus(d); // uno abierto a la vez
-      return;
-    }
-    if (!d.dataset.key) return;
-    var open = load().filter(function (k) { return k !== d.dataset.key; });
-    if (d.open) open.push(d.dataset.key);
-    save(open);
+    if (d instanceof HTMLDetailsElement && d.classList.contains("card-menu") && d.open) closeMenus(d); // uno abierto a la vez
   }, true);
 
   // Tocar afuera cierra el menú.
@@ -121,11 +132,11 @@
     stopSorting();
     if (!window.Sortable) return;
     var common = { animation: 150, delay: 250, delayOnTouchOnly: true, forceFallback: true, fallbackTolerance: 4, ghostClass: "drag-ghost", chosenClass: "drag-chosen" };
-    document.querySelectorAll("#services .group .grid.cards").forEach(function (grid) {
+    document.querySelectorAll("#services .group .cards").forEach(function (grid) {
       sortables.push(Sortable.create(grid, Object.assign({}, common, {
         group: "cards",
         draggable: "[data-key]",
-        filter: ".card-menu, .card-actions",
+        filter: ".card-menu, .svc-actions",
         preventOnFilter: false,
         onEnd: function (e) {
           if (e.from === e.to && e.oldIndex === e.newIndex) return;

@@ -34,15 +34,31 @@ func newChart(title, unit string, lines ...chartLine) chartSpec {
 
 // tile es un valor grande arriba de cada host.
 type tile struct {
-	Label, Value, Sub string
-	Pct               float64 // para la barra; -1 sin barra
-	Warn              bool    // pasa del 90 %
+	Label, Icon string
+	Value, Unit string // "129" y "MB": el número va grande y la unidad chica
+	Sub         string
+	Pct         float64 // para la barra, de 0 a 100
+	Warn        bool    // pasa del 90 % (o 80 °C)
+}
+
+// splitUnit separa "129 MB" en "129" y "MB".
+func splitUnit(s string) (value, unit string) {
+	if i := strings.LastIndex(s, " "); i > 0 {
+		return s[:i], s[i+1:]
+	}
+	return s, ""
+}
+
+func newTile(label, icon, value, sub string, p float64, warn bool) tile {
+	v, u := splitUnit(value)
+	return tile{Label: label, Icon: icon, Value: v, Unit: u, Sub: sub, Pct: p, Warn: warn}
 }
 
 type fsRow struct {
 	Mount, Device, FSType string
 	Used, Total           string
 	Pct                   float64
+	PctText               string
 	Warn                  bool
 }
 
@@ -57,6 +73,7 @@ type smartRow struct {
 
 type guestRow struct {
 	Kind, Name, Status string
+	Icon               string
 	VMID               int
 	Href               string // su página (descubierto)
 	State              State
@@ -65,10 +82,10 @@ type guestRow struct {
 }
 
 type containerUse struct {
-	Name, Href string
-	CPU, Mem   string
-	Net        string
-	cpu, mem   float64
+	Name, Href   string
+	CPU, Mem     string
+	NetRx, NetTx string
+	cpu, mem     float64
 }
 
 // hostHardware es un host en la página de Hardware.
@@ -92,14 +109,25 @@ type hostHardware struct {
 	MoreCount   int            // cuántos contenedores más corren
 }
 
+// maxLines es cuántas líneas tiene como mucho un gráfico: los colores de
+// la paleta de web/src/charts.js.
+const maxLines = 8
+
 // maxContainerRows es cuántos contenedores se listan por host.
 const maxContainerRows = 10
 
+// hardwarePage muestra un host por vez (?host=), con pestañas para pasar a
+// los demás. Sin host o con uno que no existe, el primero.
 func (s *server) hardwarePage(w http.ResponseWriter, r *http.Request) {
 	snap := s.poller.Snapshot()
+	hw := buildHardware(snap, time.Now())
+	sel := r.URL.Query().Get("host")
+	if !slices.ContainsFunc(hw, func(h hostHardware) bool { return h.Name == sel }) && len(hw) > 0 {
+		sel = hw[0].Name
+	}
 	s.pages.render(w, s.logger, "hardware", pageData{
 		Title: "Hardware", Active: "hardware", ShowNav: true,
-		Hardware: buildHardware(snap, time.Now()),
+		Hardware: hw, HWHost: sel,
 	})
 }
 
@@ -163,20 +191,26 @@ func hostTiles(sys agent.System, m *agent.HostMetrics) []tile {
 	if sys.Host.Threads > 0 {
 		cores = plural(sys.Host.Threads, "hilo", "hilos")
 	}
+	memPct := pct(float64(m.MemUsed), float64(m.MemTotal))
 	ts := []tile{
-		{Label: "CPU", Value: fmtPct(m.CPU), Sub: cores, Pct: m.CPU, Warn: m.CPU >= 90},
-		{Label: "RAM", Value: humanBytes(float64(m.MemUsed)), Sub: "de " + humanBytes(float64(m.MemTotal)),
-			Pct: pct(float64(m.MemUsed), float64(m.MemTotal)), Warn: pct(float64(m.MemUsed), float64(m.MemTotal)) >= 90},
+		newTile("CPU", "speed", fmtPct(m.CPU), cores, m.CPU, m.CPU >= 90),
+		newTile("RAM", "memory_alt", humanBytes(float64(m.MemUsed)), "de "+humanBytes(float64(m.MemTotal)), memPct, memPct >= 90),
 	}
 	if m.SwapTotal > 0 {
 		p := pct(float64(m.SwapUsed), float64(m.SwapTotal))
-		ts = append(ts, tile{Label: "Swap", Value: humanBytes(float64(m.SwapUsed)), Sub: "de " + humanBytes(float64(m.SwapTotal)), Pct: p, Warn: p >= 90})
+		ts = append(ts, newTile("Swap", "swap_horiz", humanBytes(float64(m.SwapUsed)), "de "+humanBytes(float64(m.SwapTotal)), p, p >= 90))
 	}
+	// La barra de la carga es la carga de 1 minuto sobre los hilos: 100 %
+	// es tener todos ocupados.
 	load := strings.ReplaceAll(fmt.Sprintf("%.2f · %.2f · %.2f", m.Load[0], m.Load[1], m.Load[2]), ".", ",")
-	ts = append(ts, tile{Label: "Carga", Value: strings.Replace(fmt.Sprintf("%.2f", m.Load[0]), ".", ",", 1), Sub: load + " (1, 5, 15 min)", Pct: -1})
+	var loadPct float64
+	if sys.Host.Threads > 0 {
+		loadPct = pct(m.Load[0], float64(sys.Host.Threads))
+	}
+	ts = append(ts, newTile("Carga", "monitor_heart", strings.Replace(fmt.Sprintf("%.2f", m.Load[0]), ".", ",", 1), load+" en 1, 5 y 15 min", loadPct, loadPct >= 90))
 	if len(m.Temps) > 0 {
 		hot := slices.MaxFunc(m.Temps, func(a, b agent.TempValue) int { return cmp.Compare(a.Celsius, b.Celsius) })
-		ts = append(ts, tile{Label: "Temperatura", Value: fmt.Sprintf("%.0f °C", hot.Celsius), Sub: hot.Chip + " · " + hot.Label, Pct: -1, Warn: hot.Celsius >= 80})
+		ts = append(ts, newTile("Temperatura", "thermostat", fmt.Sprintf("%.0f °C", hot.Celsius), "la más alta: "+hot.Chip+" · "+hot.Label, math.Min(100, math.Max(0, hot.Celsius)), hot.Celsius >= 80))
 	}
 	return ts
 }
@@ -191,25 +225,34 @@ func hostCharts(host string, m *agent.HostMetrics) []chartSpec {
 	}
 	charts = append(charts, newChart("Memoria", "bytes", mem...))
 	var net []chartLine
-	for _, n := range m.Net {
-		net = append(net, chartLine{hostKey(host, "net/"+n.Name+"/rx"), n.Name + " ↓"}, chartLine{hostKey(host, "net/"+n.Name+"/tx"), n.Name + " ↑"})
+	for _, n := range m.Net[:min(len(m.Net), maxLines/2)] {
+		net = append(net, chartLine{hostKey(host, "net/"+n.Name+"/rx"), n.Name + " recibe"}, chartLine{hostKey(host, "net/"+n.Name+"/tx"), n.Name + " envía"})
 	}
 	if len(net) > 0 {
 		charts = append(charts, newChart("Red", "rate", net...))
 	}
 	var disk []chartLine
-	for _, d := range m.Disks {
+	for _, d := range m.Disks[:min(len(m.Disks), maxLines/2)] {
 		disk = append(disk, chartLine{hostKey(host, "disk/"+d.Name+"/r"), d.Name + " lee"}, chartLine{hostKey(host, "disk/"+d.Name+"/w"), d.Name + " escribe"})
 	}
 	if len(disk) > 0 {
 		charts = append(charts, newChart("Discos", "rate", disk...))
 	}
+	// Un gráfico tiene como mucho maxLines líneas, una por color de la
+	// paleta: de las temperaturas van las más altas.
+	hot := slices.Clone(m.Temps)
+	slices.SortStableFunc(hot, func(a, b agent.TempValue) int { return cmp.Compare(b.Celsius, a.Celsius) })
+	title := "Temperaturas"
+	if len(hot) > maxLines {
+		hot = hot[:maxLines]
+		title = fmt.Sprintf("Temperaturas (las %d más altas de %d)", maxLines, len(m.Temps))
+	}
 	var temps []chartLine
-	for _, t := range m.Temps {
+	for _, t := range hot {
 		temps = append(temps, chartLine{hostKey(host, "temp/"+t.Chip+"/"+t.Label), t.Chip + " · " + t.Label})
 	}
 	if len(temps) > 0 {
-		charts = append(charts, newChart("Temperaturas", "temp", temps...))
+		charts = append(charts, newChart(title, "temp", temps...))
 	}
 	return charts
 }
@@ -220,7 +263,7 @@ func fsRows(host string, fs []agent.FSUsage) ([]fsRow, *chartSpec) {
 	for _, f := range fs {
 		p := pct(float64(f.Used), float64(f.Total))
 		rows = append(rows, fsRow{Mount: f.Mount, Device: f.Device, FSType: f.FSType,
-			Used: humanBytes(float64(f.Used)), Total: humanBytes(float64(f.Total)), Pct: p, Warn: p >= 90})
+			Used: humanBytes(float64(f.Used)), Total: humanBytes(float64(f.Total)), Pct: p, PctText: fmtPct(p), Warn: p >= 90})
 		lines = append(lines, chartLine{hostKey(host, "fs/"+f.Mount), f.Mount})
 	}
 	if len(lines) == 0 {
@@ -274,15 +317,15 @@ func guestRows(host string, guests []agent.Guest, shown map[string]bool) ([]gues
 	var cpu, mem []chartLine
 	for _, g := range guests {
 		d := Discovered{Host: host, Kind: g.Kind, Name: fmt.Sprint(g.VMID)}
-		r := guestRow{Kind: foundKindLabel(g.Kind), Name: g.Name, VMID: g.VMID, Status: g.Status, Href: servicePath(d.Key())}
+		r := guestRow{Kind: foundKindLabel(g.Kind), Name: g.Name, VMID: g.VMID, Status: g.Status, Icon: kindIcon(g.Kind), Href: servicePath(d.Key())}
 		switch g.Status {
 		case "running":
-			r.State = StateUp
+			r.State, r.Status = StateUp, "encendida"
 			r.CPU = fmtPct(g.CPU)
 			r.Mem = humanBytes(float64(g.Mem)) + " de " + humanBytes(float64(g.MaxMem))
 			r.MemPct = pct(float64(g.Mem), float64(g.MaxMem))
 		case "stopped":
-			r.State = StateDown
+			r.State, r.Status = StateDown, "apagada"
 		default:
 			r.State = StateDegraded
 		}
@@ -306,7 +349,7 @@ func topContainers(cs []agent.ContainerStats, href map[string]string) ([]contain
 		rows = append(rows, containerUse{
 			Name: c.Name, Href: href[c.ID], cpu: c.CPU, mem: float64(c.Mem),
 			CPU: fmtPct(c.CPU), Mem: humanBytes(float64(c.Mem)),
-			Net: "↓ " + fmtRate(c.NetRx) + " · ↑ " + fmtRate(c.NetTx),
+			NetRx: fmtRate(c.NetRx), NetTx: fmtRate(c.NetTx),
 		})
 	}
 	slices.SortFunc(rows, func(a, b containerUse) int { return cmp.Or(cmp.Compare(b.mem, a.mem), cmp.Compare(a.Name, b.Name)) })
@@ -329,7 +372,7 @@ func serviceCharts(svc catalog.Service) []chartSpec {
 		}
 		return ls
 	}
-	net := append(lines("rx", " ↓"), lines("tx", " ↑")...)
+	net := append(lines("rx", " recibe"), lines("tx", " envía")...)
 	disk := append(lines("r", " lee"), lines("w", " escribe")...)
 	return []chartSpec{
 		newChart("CPU (100 % es un núcleo)", "cores", lines("cpu", "")...),

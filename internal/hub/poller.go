@@ -431,8 +431,8 @@ func shortImage(image string) string {
 	return image
 }
 
-// sourceIcon es el ícono genérico de cada fuente. Los íconos propios de cada
-// servicio (labels homepage.icon y maestro.icon) quedan para más adelante.
+// sourceIcon es el ícono genérico de cada fuente, para cuando no hay logo
+// (ver logos.go).
 func sourceIcon(src catalog.Source) string {
 	switch src {
 	case catalog.SourceSystemd:

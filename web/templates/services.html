@@ -2,18 +2,18 @@
 <script src="/static/services.js" defer></script>{{end}}{{end}}
 
 {{define "content"}}
-<header class="transparent">
-  <nav>
-    <h5 class="max">Servicios</h5>
-    {{if .Demo}}<span class="chip small tertiary-container no-border">demo</span>{{end}}
+<header class="page-head">
+  <h1 class="page-title">Servicios</h1>
+  {{if .Demo}}<span class="chip small tertiary-container no-border">demo</span>{{end}}
+  <div class="page-actions">
     {{if .Live}}
-    <button type="button" class="transparent edit-toggle" data-edit-toggle aria-pressed="false">
+    <button type="button" class="btn outlined edit-toggle" data-edit-toggle aria-pressed="false">
       <i class="view-only">edit</i><span class="view-only">Editar</span>
       <i class="edit-only">check</i><span class="edit-only">Listo</span>
     </button>
     {{end}}
     {{if not .Demo}}<div class="s">{{template "logout" .}}</div>{{end}}
-  </nav>
+  </div>
 </header>
 {{template "grid" .}}
 {{if .Live}}
@@ -108,42 +108,43 @@
 {{define "grid"}}
 <div id="services"{{if .Live}} hx-get="/fragments/services" hx-trigger="every 15s, refresh" hx-swap="outerHTML"{{end}}>
   {{range .HostProblems}}
-  <article class="small-round no-elevate error-container host-problem">
-    <nav>
-      <i>cloud_off</i>
-      <div class="max">
-        <div class="bold">El agent de {{.Name}} no responde</div>
-        <div class="small-text">{{if .LastOK.IsZero}}Nunca respondió{{else}}Último dato: {{localTime .LastOK "time"}}{{end}}. Sus servicios figuran sin datos. {{.Err}}</div>
-      </div>
-    </nav>
+  <article class="banner error">
+    <i>cloud_off</i>
+    <div class="banner-text">
+      <div class="banner-title">El agent de {{.Name}} no responde</div>
+      <div class="banner-sub">{{if .LastOK.IsZero}}Nunca respondió{{else}}Último dato: {{localTime .LastOK "time"}}{{end}}. Sus servicios figuran sin datos. {{.Err}}</div>
+    </div>
   </article>
   {{end}}
   {{if .FoundFailing}}
-  <a class="small-round no-elevate error-container host-problem found-failing" href="/discovered">
-    <nav>
-      <i>error</i>
-      <div class="max">
-        <div class="bold">{{if eq .FoundFailing 1}}Una unidad descubierta falla{{else}}{{.FoundFailing}} unidades descubiertas fallan{{end}}</div>
-        <div class="small-text">No están en la portada, pero avisan igual. Están primeras en Descubiertos.</div>
-      </div>
-      <i>chevron_right</i>
-    </nav>
+  <a class="banner error" href="/discovered">
+    <i>error</i>
+    <div class="banner-text">
+      <div class="banner-title">{{if eq .FoundFailing 1}}Una unidad descubierta falla{{else}}{{.FoundFailing}} unidades descubiertas fallan{{end}}</div>
+      <div class="banner-sub">No están en la portada, pero avisan igual. Están primeras en Descubiertos.</div>
+    </div>
+    <i>chevron_right</i>
   </a>
   {{end}}
 
-  <nav class="wrap small-space">
-    <span class="chip no-border surface-container"><span class="dot up"></span>{{.Summary.Up}} arriba</span>
-    {{if .Summary.Degraded}}<span class="chip no-border surface-container"><span class="dot degraded"></span>{{.Summary.Degraded}} degradados</span>{{end}}
-    <span class="chip no-border surface-container"><span class="dot down"></span>{{.Summary.Down}} caídos</span>
-    <span class="chip no-border surface-container"><span class="dot unknown"></span>{{.Summary.Unknown}} sin datos</span>
-    {{if .Summary.Stopped}}<span class="chip no-border surface-container"><span class="dot stopped"></span>{{.Summary.Stopped}} detenidos</span>{{end}}
-    {{if not .Updated.IsZero}}<span class="small-text secondary-text updated">Actualizado {{localTime .Updated "time"}}</span>{{end}}
-    {{if .FoundPending}}<a class="chip no-border surface-container" href="/discovered"><i>travel_explore</i><span>{{.FoundPending}} {{if eq .FoundPending 1}}descubierto{{else}}descubiertos{{end}}</span></a>{{end}}
-    {{if .HiddenCount}}<a class="chip no-border surface-container" href="/hidden"><i>visibility_off</i><span>{{.HiddenCount}} {{if eq .HiddenCount 1}}oculto{{else}}ocultos{{end}}</span></a>{{end}}
-  </nav>
+  <div class="summary">
+    <div class="summary-states">
+      <span class="stat up"><span class="dot up"></span>{{.Summary.Up}} arriba</span>
+      {{if .Summary.Degraded}}<span class="stat degraded"><span class="dot degraded"></span>{{.Summary.Degraded}} {{if eq .Summary.Degraded 1}}degradado{{else}}degradados{{end}}</span>{{end}}
+      <span class="stat down{{if not .Summary.Down}} zero{{end}}"><span class="dot down"></span>{{.Summary.Down}} {{if eq .Summary.Down 1}}caído{{else}}caídos{{end}}</span>
+      {{if .Summary.Unknown}}<span class="stat unknown"><span class="dot unknown"></span>{{.Summary.Unknown}} sin datos</span>{{end}}
+      {{if .Summary.Stopped}}<span class="stat stopped"><span class="dot stopped"></span>{{.Summary.Stopped}} {{if eq .Summary.Stopped 1}}detenido{{else}}detenidos{{end}}</span>{{end}}
+    </div>
+    <div class="summary-links">
+      {{if .FoundPending}}<a class="stat link" href="/discovered" title="Unidades, timers, LXC y VMs que encontraron los agents y no están en la portada"><i>travel_explore</i>{{.FoundPending}} {{if eq .FoundPending 1}}descubierto{{else}}descubiertos{{end}}</a>{{end}}
+      {{if .HiddenCount}}<a class="stat link" href="/hidden" title="Tarjetas ocultas"><i>visibility_off</i>{{.HiddenCount}} {{if eq .HiddenCount 1}}oculto{{else}}ocultos{{end}}</a>{{end}}
+      {{if not .Updated.IsZero}}<span class="updated" title="Se actualiza cada 15 segundos">Actualizado {{localTime .Updated "time"}}</span>{{end}}
+    </div>
+  </div>
 
   {{if not .Groups}}
-  <article class="small-round no-elevate surface-container-low center-align">
+  <article class="empty-state">
+    <i>hourglass_empty</i>
     <p>{{if .Live}}Todavía no hay servicios: esperando a los agents.{{else}}No hay servicios.{{end}}</p>
   </article>
   {{end}}
@@ -151,53 +152,105 @@
   <div class="groups">
   {{range .Groups}}
   <section class="group{{if .Empty}} empty{{end}}{{if .Otros}} otros{{end}}" data-group="{{.Name}}">
-    <nav class="group-head">
+    <div class="group-head">
       {{if and $.Live (not .Otros) (not .OrderLocked)}}<i class="edit-only group-handle" title="Arrastrar para ordenar los grupos" aria-hidden="true">drag_indicator</i>{{end}}
-      <h6 class="group-title max">{{.Name}}</h6>
+      <h2 class="group-title">{{.Name}}</h2>
+      {{if not .Empty}}<span class="group-count">{{len .Services}}</span>{{end}}
+      <div class="max"></div>
       {{if $.Live}}
-      <button type="button" class="circle transparent small edit-only" data-dialog="group-rename-dialog" data-set-name="{{.Name}}" data-set-to="{{.Name}}"
+      <button type="button" class="icon-btn edit-only" data-dialog="group-rename-dialog" data-set-name="{{.Name}}" data-set-to="{{.Name}}"
         {{if .Otros}}disabled title="Otros es el grupo de las tarjetas sin grupo"{{else if .Locked}}disabled title="El grupo viene de maestro.yaml"{{else}}title="Cambiar nombre"{{end}} aria-label="Cambiar nombre del grupo {{.Name}}"><i>edit</i></button>
-      <button type="button" class="circle transparent small edit-only" data-dialog="group-delete-dialog" data-set-name="{{.Name}}"
+      <button type="button" class="icon-btn edit-only" data-dialog="group-delete-dialog" data-set-name="{{.Name}}"
         {{if .Otros}}disabled title="Otros es el grupo de las tarjetas sin grupo"{{else if .Locked}}disabled title="El grupo viene de maestro.yaml"{{else}}title="Borrar"{{end}} aria-label="Borrar el grupo {{.Name}}"><i>delete</i></button>
       {{end}}
-    </nav>
-    <div class="grid small-space cards">
+    </div>
+    <div class="cards">
       {{range .Services}}
-      <div class="s12 m6 l4" data-key="{{.Key}}">
-        {{if .Members}}{{template "stackcard" .}}{{else}}{{template "servicecard" .}}{{end}}
-      </div>
+      <div class="card-slot" data-key="{{.Key}}">{{template "card" .}}</div>
       {{end}}
-      {{if .Empty}}<p class="s12 small-text secondary-text empty-hint">Grupo vacío: arrastrá tarjetas acá.</p>{{end}}
+      {{if .Empty}}<p class="empty-hint">Grupo vacío: arrastrá tarjetas acá.</p>{{end}}
     </div>
   </section>
   {{end}}
   </div>
   {{if .Live}}
-  <nav class="edit-only edit-bar wrap">
-    <button type="button" class="border" data-dialog="group-new-dialog"><i>add</i><span>Nuevo grupo</span></button>
-    <a class="button border" href="/externals/new"><i>public</i><span>Agregar servicio externo</span></a>
-    <a class="button border" href="/discovered"><i>travel_explore</i><span>Descubiertos</span></a>
-    <a class="button border" href="/hidden"><i>visibility_off</i><span>Ocultos</span></a>
-    <a class="button border" href="/export"><i>output</i><span>Exportar a maestro.yaml</span></a>
+  <nav class="edit-only edit-bar">
+    <button type="button" class="btn tonal" data-dialog="group-new-dialog"><i>add</i><span>Nuevo grupo</span></button>
+    <a class="btn outlined" href="/externals/new"><i>public</i><span>Agregar servicio externo</span></a>
+    <a class="btn outlined" href="/discovered"><i>travel_explore</i><span>Descubiertos</span></a>
+    <a class="btn outlined" href="/hidden"><i>visibility_off</i><span>Ocultos</span></a>
+    <a class="btn outlined" href="/export"><i>output</i><span>Exportar a maestro.yaml</span></a>
   </nav>
   <datalist id="group-names">{{range .Groups}}{{if not .Otros}}<option value="{{.Name}}"></option>{{end}}{{end}}</datalist>
   {{end}}
 </div>
 {{end}}
 
-{{/* Cabecera común de una tarjeta: ícono, nombre, descripción, motivo y
-     semáforo. */}}
-{{define "cardhead"}}
-<span class="icon-badge secondary-container"><i class="extra">{{.Icon}}</i></span>
-<div class="max">
-  <div class="bold" title="{{.Name}}">{{if .Href}}<a class="stretched" href="{{.Href}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</div>
-  <div class="small-text secondary-text" title="{{.Description}}">{{.Description}}</div>
-  {{if and .Reason (ne .State "up")}}<div class="small-text state-reason {{.State}}" title="{{.Reason}}">{{.Reason}}</div>{{end}}
-</div>
-<span class="status {{.State}}" title="{{.State.Label}}{{with .Reason}}: {{.}}{{end}}">
-  <span class="dot {{.State}}"></span>
-  <span class="small-text">{{.State.Label}}</span>
-</span>
+{{/* Tarjeta de la portada. Todas tienen las mismas partes en el mismo
+     lugar, estén o no: ícono, nombre, una segunda línea (el motivo si algo
+     anda mal, si no la descripción), el estado abajo a la izquierda y
+     cuatro botones fijos abajo a la derecha (servicios del stack,
+     métricas, compose y abrir). Un botón que no aplica queda en su lugar,
+     apagado: dos tarjetas se ven iguales aunque tengan distinto.
+
+     Una tarjeta de servicio se toca entera para ir a su página (el
+     ::after del nombre la cubre); una de stack se toca para desplegar sus
+     servicios (web/static/services.js). */}}
+{{define "card"}}
+<article class="svc-card{{if .Members}} stack{{end}}" data-state="{{.State}}"{{if .Members}} data-stack="{{.Key}}"{{end}}>
+  <div class="svc-head">
+    {{template "svcicon" .}}
+    <div class="svc-text">
+      <div class="svc-name" title="{{.Name}}">{{if .Href}}<a class="stretched" href="{{.Href}}">{{.Name}}</a>{{else}}{{.Name}}{{end}}</div>
+      {{if and .Reason (ne .State "up")}}
+      <div class="svc-sub reason {{.State}}" title="{{.Reason}}">{{.Reason}}</div>
+      {{else}}
+      <div class="svc-sub" title="{{.Description}}">{{or .Description " "}}</div>
+      {{end}}
+    </div>
+    {{if .Key}}{{template "cardmenu" .}}{{else}}<span class="menu-spacer"></span>{{end}}
+  </div>
+  <div class="svc-foot">
+    <span class="state-pill {{.State}}" title="{{.State.Label}}{{with .Reason}}: {{.}}{{end}}"><span class="dot {{.State}}"></span>{{.State.Label}}</span>
+    <nav class="svc-actions">
+      {{if .Members}}
+      <button type="button" class="icon-btn above" data-stack-toggle aria-expanded="false" title="Servicios del stack ({{len .Members}})" aria-label="Ver los {{len .Members}} servicios del stack"><i>stacks</i><span class="count">{{len .Members}}</span></button>
+      {{else}}
+      <span class="icon-btn off" title="Un solo servicio"><i>stacks</i></span>
+      {{end}}
+      {{if .MetricsHref}}
+      <a class="icon-btn above" href="{{.MetricsHref}}" title="Métricas" aria-label="Métricas de {{.Name}}"><i>monitoring</i></a>
+      {{else}}
+      <span class="icon-btn off" title="Sin métricas: no es un contenedor"><i>monitoring</i></span>
+      {{end}}
+      {{if .StackHref}}
+      <a class="icon-btn above" href="{{.StackHref}}" title="Compose" aria-label="Compose de {{.Name}}"><i>description</i></a>
+      {{else}}
+      <span class="icon-btn off" title="No es de compose"><i>description</i></span>
+      {{end}}
+      {{if .URL}}
+      <a class="icon-btn tonal above" href="{{.URL}}" target="_blank" rel="noopener" title="Abrir {{.URL}}" aria-label="Abrir {{.Name}}"><i>open_in_new</i></a>
+      {{else}}
+      <span class="icon-btn off" title="Sin dirección web"><i>open_in_new</i></span>
+      {{end}}
+    </nav>
+  </div>
+  {{if .Members}}
+  <ul class="stack-members">
+    {{range .Members}}
+    <li class="member-row">
+      <span class="dot {{.State}}" title="{{.State.Label}}"></span>
+      <div class="member-text">
+        <a href="{{.Href}}" title="{{.Name}}">{{.Name}}</a>
+        {{if and .Reason (ne .State "up")}}<span class="reason {{.State}}" title="{{.Reason}}">{{.Reason}}</span>{{end}}
+      </div>
+      <span class="member-state">{{.State.Label}}</span>
+      {{if .Key}}{{template "membermenu" .}}{{end}}
+    </li>
+    {{end}}
+  </ul>
+  {{end}}
+</article>
 {{end}}
 
 {{/* Menú de los tres puntos de una tarjeta. Es un <details>: se abre sin
@@ -205,20 +258,20 @@
      diálogos y frena el refresco de la grilla mientras está abierto. */}}
 {{define "cardmenu"}}
 <details class="card-menu">
-  <summary class="circle transparent" title="Opciones" aria-label="Opciones de {{.Name}}"><i>more_vert</i></summary>
-  <div class="card-menu-list surface-container-high small-elevate">
-    <button type="button" class="transparent" data-dialog="rename-dialog" data-set-key="{{.Key}}" data-set-name="{{.Name}}"{{if .NameLocked}} disabled title="El nombre viene de maestro.yaml"{{end}}>
+  <summary class="icon-btn" title="Opciones" aria-label="Opciones de {{.Name}}"><i>more_vert</i></summary>
+  <div class="card-menu-list">
+    <button type="button" data-dialog="rename-dialog" data-set-key="{{.Key}}" data-set-name="{{.Name}}"{{if .NameLocked}} disabled title="El nombre viene de maestro.yaml"{{end}}>
       <i>edit</i><span>Cambiar nombre</span>
     </button>
-    <button type="button" class="transparent" data-dialog="move-dialog" data-set-key="{{.Key}}" data-set-group="{{.Group}}"{{if .GroupLocked}} disabled title="El grupo viene de maestro.yaml"{{end}}>
+    <button type="button" data-dialog="move-dialog" data-set-key="{{.Key}}" data-set-group="{{.Group}}"{{if .GroupLocked}} disabled title="El grupo viene de maestro.yaml"{{end}}>
       <i>drive_file_move</i><span>Mover a grupo</span>
     </button>
-    {{if .EditHref}}<a class="button transparent" href="{{.EditHref}}"><i>tune</i><span>Editar</span></a>{{end}}
+    {{if .EditHref}}<a href="{{.EditHref}}"><i>tune</i><span>Editar</span></a>{{end}}
     {{if .Separated}}{{template "separateitem" (separateArgs .Key false .SeparateLocked)}}{{end}}
     {{if .Found}}
     <form method="post" action="/discovered/unshow" hx-post="/discovered/unshow" hx-target="#services" hx-swap="outerHTML">
       <input type="hidden" name="key" value="{{.Key}}">
-      <button class="transparent"><i>inbox</i><span>Volver a la bandeja</span></button>
+      <button><i>inbox</i><span>Volver a la bandeja</span></button>
     </form>
     {{else}}
     {{template "hideitem" .}}
@@ -230,9 +283,9 @@
 {{/* Menú de un servicio dentro de la tarjeta de su stack. */}}
 {{define "membermenu"}}
 <details class="card-menu">
-  <summary class="circle transparent" title="Opciones" aria-label="Opciones de {{.Name}}"><i>more_vert</i></summary>
-  <div class="card-menu-list surface-container-high small-elevate">
-    <button type="button" class="transparent" data-dialog="rename-dialog" data-set-key="{{.Key}}" data-set-name="{{.Name}}"{{if .NameLocked}} disabled title="El nombre viene de maestro.yaml"{{end}}>
+  <summary class="icon-btn small" title="Opciones" aria-label="Opciones de {{.Name}}"><i>more_vert</i></summary>
+  <div class="card-menu-list">
+    <button type="button" data-dialog="rename-dialog" data-set-key="{{.Key}}" data-set-name="{{.Name}}"{{if .NameLocked}} disabled title="El nombre viene de maestro.yaml"{{end}}>
       <i>edit</i><span>Cambiar nombre</span>
     </button>
     {{template "separateitem" (separateArgs .Key true .SeparateLocked)}}
@@ -246,7 +299,7 @@
 <form method="post" action="/separate" hx-post="/separate" hx-target="#services" hx-swap="outerHTML">
   <input type="hidden" name="key" value="{{.Key}}">
   <input type="hidden" name="separate" value="{{if .Out}}1{{else}}0{{end}}">
-  <button class="transparent"{{if .Locked}} disabled title="Viene de maestro.yaml"{{end}}>
+  <button{{if .Locked}} disabled title="Viene de maestro.yaml"{{end}}>
     {{if .Out}}<i>call_split</i><span>Sacar del stack</span>{{else}}<i>call_merge</i><span>Volver al stack</span>{{end}}
   </button>
 </form>
@@ -255,66 +308,6 @@
 {{define "hideitem"}}
 <form method="post" action="/hidden" hx-post="/hidden" hx-target="#services" hx-swap="outerHTML">
   <input type="hidden" name="key" value="{{.Key}}">
-  <button class="transparent"{{if .HiddenLocked}} disabled title="maestro.yaml dice hidden: false"{{end}}><i>visibility_off</i><span>Ocultar</span></button>
+  <button{{if .HiddenLocked}} disabled title="maestro.yaml dice hidden: false"{{end}}><i>visibility_off</i><span>Ocultar</span></button>
 </form>
-{{end}}
-
-{{define "servicecard"}}
-<article class="small-round no-elevate surface-container-low service">
-  {{if .Key}}{{template "cardmenu" .}}{{end}}
-  <div class="row">{{template "cardhead" .}}</div>
-  {{if .URL}}
-  <nav class="no-space card-actions">
-    <div class="max"></div>
-    {{if .URL}}
-    <a class="button transparent small above" href="{{.URL}}" target="_blank" rel="noopener">
-      <span>Abrir</span>
-      <i>open_in_new</i>
-    </a>
-    {{end}}
-  </nav>
-  {{end}}
-</article>
-{{end}}
-
-{{/* Tarjeta de un stack: el resumen se toca para desplegar sus servicios.
-     No tiene un enlace que la cubra entera, así que sus links no llevan
-     "above" (que los subiría por encima del menú de tres puntos).
-     web/static/services.js recuerda cuáles estaban abiertas, porque htmx
-     reemplaza la grilla cada 15 s. */}}
-{{define "stackcard"}}
-<article class="small-round no-elevate surface-container-low service stack">
-  {{if .Key}}{{template "cardmenu" .}}{{end}}
-  <details class="stack-details" data-key="{{.Key}}">
-    <summary class="row">
-      {{template "cardhead" .}}
-      <i class="expand">expand_more</i>
-    </summary>
-    <ul class="stack-members">
-      {{range .Members}}
-      <li class="row">
-        <span class="dot {{.State}}" title="{{.State.Label}}"></span>
-        <div class="max">
-          <a href="{{.Href}}" title="{{.Name}}">{{.Name}}</a>
-          {{if and .Reason (ne .State "up")}}<div class="small-text state-reason {{.State}}" title="{{.Reason}}">{{.Reason}}</div>{{end}}
-        </div>
-        <span class="small-text secondary-text">{{.State.Label}}</span>
-        {{if .Key}}{{template "membermenu" .}}{{end}}
-      </li>
-      {{end}}
-    </ul>
-  </details>
-  {{if or .StackHref .URL}}
-  <nav class="no-space card-actions">
-    <div class="max"></div>
-    {{if .StackHref}}<a class="button transparent small" href="{{.StackHref}}"><i>stacks</i><span>Compose</span></a>{{end}}
-    {{if .URL}}
-    <a class="button transparent small" href="{{.URL}}" target="_blank" rel="noopener">
-      <span>Abrir</span>
-      <i>open_in_new</i>
-    </a>
-    {{end}}
-  </nav>
-  {{end}}
-</article>
 {{end}}

@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"path"
 	"time"
+
+	"github.com/ImJustDoingMyPart/maestro/internal/icons"
 )
 
 // State es el semáforo de un servicio en la portada.
@@ -45,18 +47,22 @@ type serviceCard struct {
 	Href        string // página del servicio; vacío en el demo
 	Name        string
 	Description string
-	Icon        string // nombre de un ícono de Material Symbols
-	URL         string
-	State       State
-	Reason      string // motivo principal del estado; vacío si está arriba
-	Group       string // "" va a "Otros"
+	Icon        string // nombre de un ícono de Material Symbols, si no hay logo
+	// Logo es el de la aplicación (internal/icons); nil usa Icon.
+	Logo   *icons.Ref
+	icon   iconHint // de dónde sale Logo
+	URL    string
+	State  State
+	Reason string // motivo principal del estado; vacío si está arriba
+	Group  string // "" va a "Otros"
 	// Key es la clave para ocultarla ("service:<id>" o "stack:<host>/<proyecto>");
 	// vacía en el demo, que no oculta nada.
 	Key string
 	// Members son los servicios de una tarjeta de stack; vacío en la de un
 	// servicio.
-	Members   []memberRow
-	StackHref string // pestaña Compose del stack
+	Members     []memberRow
+	StackHref   string // pestaña Compose del stack (o del proyecto de un servicio suelto)
+	MetricsHref string // pestaña Métricas; vacío si no es un contenedor
 	// NameLocked y GroupLocked: el nombre o el grupo vienen de
 	// maestro.yaml y la interfaz no los cambia.
 	NameLocked  bool
@@ -128,6 +134,7 @@ type pageData struct {
 	Found        []foundHost    // página de Descubiertos, por host
 	FoundFailing int            // descubiertos caídos que no están en la portada
 	Hardware     []hostHardware // página de Hardware
+	HWHost       string         // el host que se muestra en Hardware
 	Charts       []chartSpec    // pestaña Métricas de un servicio
 	Tab          string         // pestaña de la página del servicio: "" (Actividad) o "metrics"
 	Export       string         // página de exportar: el YAML

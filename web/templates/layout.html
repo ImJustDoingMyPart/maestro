@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{.Title}} · Maestro</title>
   <link rel="stylesheet" href="/static/beercss-5.0.3/beer.min.css">
+  <link rel="preload" href="/static/fonts/google-sans-flex-5.3.2/google-sans-flex-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/static/maestro.css">
   <script type="module" src="/static/beercss-5.0.3/beer.min.js"></script>
   <script src="/static/htmx-2.0.11.min.js" defer></script>
@@ -14,21 +15,18 @@
 <body>
   {{if .ShowNav}}
   {{/* Barra superior en pantallas medianas y grandes */}}
-  <header class="fixed m l topbar">
-    <nav>
-      <i class="primary-text">hub</i>
-      <h6 class="small brand">Maestro</h6>
-      <a class="button {{if eq .Active "services"}}secondary-container{{else}}transparent{{end}}" href="/">
-        <i>dashboard</i>
-        <span>Servicios</span>
+  <header class="topbar m l">
+    <a class="brand" href="/"><span class="brand-mark"><i>hub</i></span><span class="brand-name">Maestro</span></a>
+    <nav class="topnav" aria-label="Secciones">
+      <a class="topnav-item{{if eq .Active "services"}} active{{end}}" href="/"{{if eq .Active "services"}} aria-current="page"{{end}}>
+        <i>dashboard</i><span>Servicios</span>
       </a>
-      <a class="button {{if eq .Active "hardware"}}secondary-container{{else}}transparent{{end}}" href="/hardware">
-        <i>memory</i>
-        <span>Hardware</span>
+      <a class="topnav-item{{if eq .Active "hardware"}} active{{end}}" href="/hardware"{{if eq .Active "hardware"}} aria-current="page"{{end}}>
+        <i>memory</i><span>Hardware</span>
       </a>
-      <div class="max"></div>
-      {{if not .Demo}}{{template "logout" .}}{{end}}
     </nav>
+    <div class="max"></div>
+    {{if not .Demo}}{{template "logout" .}}{{end}}
   </header>
 
   {{/* Barra de navegación abajo en el celular */}}
@@ -53,6 +51,6 @@
 
 {{define "logout"}}
 <form method="post" action="/logout">
-  <button class="circle transparent" title="Salir" aria-label="Salir"><i>logout</i></button>
+  <button class="icon-btn" title="Salir" aria-label="Salir"><i>logout</i></button>
 </form>
 {{end}}

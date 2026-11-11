@@ -38,7 +38,7 @@ func TestBandejaDeDescubiertos(t *testing.T) {
 	}
 	b := get("/discovered")
 	for _, want := range []string{"AdGuardHome.service", "unidad de systemd · AdGuard Home", "dns", "LXC 102 · 1,0 GB de RAM · 1 núcleo",
-		"timer de systemd · última corrida falló (exit 1)", `value="found:adguard/unit/AdGuardHome.service"`, `value="found:pve/lxc/102"`, `<h6 class="small">vm <span`} {
+		"timer de systemd · última corrida falló (exit 1)", `value="found:adguard/unit/AdGuardHome.service"`, `value="found:pve/lxc/102"`, `<h2 class="section-title">vm <span`} {
 		if !strings.Contains(b, want) {
 			t.Errorf("la bandeja no tiene %q", want)
 		}
@@ -51,7 +51,7 @@ func TestBandejaDeDescubiertos(t *testing.T) {
 	}
 	b = get("/")
 	if !strings.Contains(b, "2 descubiertos") || !strings.Contains(b, `data-key="found:vm/timer/restic-backup.timer"`) ||
-		!strings.Contains(b, "Volver a la bandeja") || !strings.Contains(b, `status down`) {
+		!strings.Contains(b, "Volver a la bandeja") || !strings.Contains(b, `state-pill down`) {
 		t.Errorf("después de mostrar, la portada:\n%.3000s", b)
 	}
 	if b := get("/discovered"); !strings.Contains(b, "Volver a la bandeja") {

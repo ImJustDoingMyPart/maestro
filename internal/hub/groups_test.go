@@ -231,7 +231,7 @@ func TestOrdenarArrastrando(t *testing.T) {
 		i := strings.Index(part, `data-group="`) + len(`data-group="`)
 		groups = append(groups, part[i:i+strings.Index(part[i:], `"`)])
 	}
-	for _, part := range strings.Split(b, `class="s12 m6 l4" data-key="`)[1:] {
+	for _, part := range strings.Split(b, `class="card-slot" data-key="`)[1:] {
 		keys = append(keys, part[:strings.Index(part, `"`)])
 	}
 	if got, want := strings.Join(groups, " "), "Web Fijo"; got != want {
@@ -269,7 +269,7 @@ func TestSacarDelStack(t *testing.T) {
 		res, _ := c.Get(srv.URL + "/")
 		b := body(t, res)
 		var keys []string
-		for _, part := range strings.Split(b, `class="s12 m6 l4" data-key="`)[1:] {
+		for _, part := range strings.Split(b, `class="card-slot" data-key="`)[1:] {
 			keys = append(keys, part[:strings.Index(part, `"`)])
 		}
 		return strings.Join(keys, " ")

@@ -51,7 +51,7 @@ func TestPortadaConEstadoCombinado(t *testing.T) {
 	c := loggedIn(t, srv)
 	res, _ := c.Get(srv.URL + "/")
 	b := body(t, res)
-	for _, want := range []string{"Degradado", "enfermo unhealthy", "1 degradados", "parado detenido (exit 137)", `<time datetime=`} {
+	for _, want := range []string{"Degradado", "enfermo unhealthy", "1 degradado", "parado detenido (exit 137)", `<time datetime=`} {
 		if !strings.Contains(b, want) {
 			t.Errorf("la portada no tiene %q", want)
 		}

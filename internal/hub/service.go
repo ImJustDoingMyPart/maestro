@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/ImJustDoingMyPart/maestro/internal/catalog"
+	"github.com/ImJustDoingMyPart/maestro/internal/icons"
 	"github.com/ImJustDoingMyPart/maestro/internal/status"
 )
 
@@ -15,6 +16,7 @@ type serviceDetail struct {
 	Name        string
 	Description string
 	Icon        string
+	Logo        *icons.Ref
 	URL         string
 	State       State
 	Reasons     []string // motivos del estado; vacío si está arriba
@@ -53,6 +55,7 @@ func (s *server) servicePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d := detail(svc, s.mon.Status(svc.ID))
+	d.Logo, d.Icon = logoFor(s.icons, serviceHint(svc), d.Icon)
 	if len(svc.Checks) > 0 {
 		d.ChecksURL = "/fragments/checks/" + escapeID(svc.ID)
 	}
@@ -76,6 +79,7 @@ func (s *server) metricsPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d := detail(svc, s.mon.Status(svc.ID))
+	d.Logo, d.Icon = logoFor(s.icons, serviceHint(svc), d.Icon)
 	s.pages.render(w, s.logger, "service", pageData{
 		Title: svc.Name, Active: "services", ShowNav: true, Svc: &d, Tab: "metrics", Charts: serviceCharts(svc),
 	})
@@ -119,13 +123,14 @@ func detail(svc catalog.Service, st status.Status) serviceDetail {
 	}
 	if len(svc.Containers) > 0 {
 		d.LogsURL = "/logs/" + escapeID(svc.ID)
-		d.MetricsURL = "/metrics/" + escapeID(svc.ID)
+		d.MetricsURL = metricsPath(svc.ID)
 	}
 	return d
 }
 
 // servicePath es la URL de la página de un servicio.
 func servicePath(id string) string { return "/services/" + escapeID(id) }
+func metricsPath(id string) string { return "/metrics/" + escapeID(id) }
 
 // escapeID escapa cada segmento del ID por separado: la "/" de un ID de
 // compose queda como separador de la ruta y no como %2F, que algunos
@@ -148,6 +153,7 @@ func (s *server) liveFragment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d := detail(svc, s.mon.Status(svc.ID))
+	d.Logo, d.Icon = logoFor(s.icons, serviceHint(svc), d.Icon)
 	d.OOB = true
 	s.pages.renderFragmentData(w, s.logger, "service", "live", d)
 }

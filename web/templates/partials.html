@@ -1,5 +1,22 @@
 {{/* Partes que comparten varias páginas. */}}
 
+{{/* Ícono de un servicio: el logo de la aplicación (internal/icons) o, si
+     no hay, uno de Material Symbols. Recibe algo con Logo e Icon. */}}
+{{define "svcicon"}}
+<span class="svc-icon" aria-hidden="true">
+  {{- with .Logo -}}
+  {{- if .SrcDark -}}
+  <picture><source media="(prefers-color-scheme: dark)" srcset="{{.SrcDark}}"><img src="{{.Src}}" alt="" loading="lazy" decoding="async"></picture>
+  {{- else -}}
+  <img src="{{.Src}}" alt="" loading="lazy" decoding="async"{{if .Mono}} class="mono"{{end}}>
+  {{- end -}}
+  {{- else -}}
+  <i>{{$.Icon}}</i>
+  {{- end -}}
+</span>
+{{end}}
+
+
 {{/* Cuerpo del visor de logs (web/src/viewer.js). Va dentro de un
      <section class="log-viewer">, y la página tiene que incluir
      "logdetail" una vez. */}}
@@ -40,13 +57,13 @@
 {{/* Selector de rango: lo maneja charts.js y vale para todos los gráficos
      de la página. */}}
 {{define "ranges"}}
-<nav class="wrap small-space chart-ranges" data-ranges role="group" aria-label="Rango de los gráficos">
-  <button type="button" class="chip" data-range="1h">1 h</button>
-  <button type="button" class="chip" data-range="6h">6 h</button>
-  <button type="button" class="chip" data-range="24h">24 h</button>
-  <button type="button" class="chip" data-range="7d">7 días</button>
-  <button type="button" class="chip" data-range="30d">30 días</button>
-  <button type="button" class="chip" data-range="1y">1 año</button>
+<nav class="segmented chart-ranges" data-ranges role="group" aria-label="Rango de los gráficos">
+  <button type="button" data-range="1h">1 h</button>
+  <button type="button" data-range="6h">6 h</button>
+  <button type="button" data-range="24h">24 h</button>
+  <button type="button" data-range="7d">7 d</button>
+  <button type="button" data-range="30d">30 d</button>
+  <button type="button" data-range="1y">1 año</button>
 </nav>
 {{end}}
 
@@ -54,9 +71,10 @@
 
 {{/* Un gráfico de series de tiempo: lo dibuja charts.js con uPlot. */}}
 {{define "chart"}}
-<article class="small-round no-elevate surface-container-low chart" data-chart data-unit="{{.Unit}}"{{if .Stack}} data-stack{{end}} data-series="{{.Series}}">
-  <div class="small-text bold">{{.Title}}</div>
+<article class="chart" data-chart data-unit="{{.Unit}}"{{if .Stack}} data-stack{{end}} data-series="{{.Series}}">
+  <div class="chart-head"><h3 class="chart-title">{{.Title}}</h3><span class="chart-now" data-chart-now></span></div>
   <div class="chart-plot"></div>
-  <div class="small-text secondary-text chart-msg">Cargando…</div>
+  <div class="chart-legend" data-chart-legend></div>
+  <div class="chart-msg">Cargando…</div>
 </article>
 {{end}}
