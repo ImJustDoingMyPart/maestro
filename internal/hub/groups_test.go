@@ -241,3 +241,70 @@ func TestOrdenarArrastrando(t *testing.T) {
 		t.Errorf("tarjetas = %s\nquería    %s", got, want)
 	}
 }
+
+func TestSacarDelStack(t *testing.T) {
+	fixed := compSvc("p", "fijo", "p", "")
+	fixed.SeparateFromFile = true
+	snap := Snapshot{
+		At:    time.Now(),
+		Hosts: []HostStatus{{Name: "vm", OK: true}},
+		Services: []catalog.Service{
+			compSvc("p", "uno", "p", ""),
+			compSvc("p", "dos", "p", ""),
+			compSvc("p", "tres", "p", ""),
+			fixed,
+			{ID: "router", Source: catalog.SourceExternal, Name: "Router"},
+		},
+	}
+	srv := testServer(t, snap)
+	c := loggedIn(t, srv)
+	post := func(form url.Values) int {
+		t.Helper()
+		res := postForm(t, c, srv.URL+"/separate", form, srv.URL)
+		res.Body.Close()
+		return res.StatusCode
+	}
+	cards := func() string {
+		t.Helper()
+		res, _ := c.Get(srv.URL + "/")
+		b := body(t, res)
+		var keys []string
+		for _, part := range strings.Split(b, `class="s12 m6 l4" data-key="`)[1:] {
+			keys = append(keys, part[:strings.Index(part, `"`)])
+		}
+		return strings.Join(keys, " ")
+	}
+
+	if got := cards(); got != "stack:vm/p service:router" {
+		t.Fatalf("al empezar: %s", got)
+	}
+	if code := post(url.Values{"key": {"service:p/uno"}, "separate": {"1"}}); code != http.StatusSeeOther {
+		t.Fatalf("sacar = %d", code)
+	}
+	if got := cards(); got != "stack:vm/p service:p/uno service:router" {
+		t.Errorf("después de sacar: %s", got)
+	}
+	res, _ := c.Get(srv.URL + "/")
+	if b := body(t, res); !strings.Contains(b, "Volver al stack") || !strings.Contains(b, "Sacar del stack") {
+		t.Error("faltan las opciones de sacar y volver")
+	}
+	if code := post(url.Values{"key": {"service:p/uno"}, "separate": {"0"}}); code != http.StatusSeeOther {
+		t.Fatalf("volver = %d", code)
+	}
+	if got := cards(); got != "stack:vm/p service:router" {
+		t.Errorf("después de volver: %s", got)
+	}
+	for name, tc := range map[string]struct {
+		key  string
+		code int
+	}{
+		"del archivo":   {"service:p/fijo", http.StatusConflict},
+		"no es compose": {"service:router", http.StatusBadRequest},
+		"un stack":      {"stack:vm/p", http.StatusBadRequest},
+		"no existe":     {"service:p/nada", http.StatusNotFound},
+	} {
+		if code := post(url.Values{"key": {tc.key}, "separate": {"1"}}); code != tc.code {
+			t.Errorf("%s = %d, quería %d", name, code, tc.code)
+		}
+	}
+}

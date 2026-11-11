@@ -119,3 +119,25 @@ func TestOrdenDeTarjetas(t *testing.T) {
 		t.Errorf("orden = %v", got)
 	}
 }
+
+func TestSeparados(t *testing.T) {
+	s, _ := openTest(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0)
+	yes, no := true, false
+	for _, step := range []struct {
+		key string
+		v   *bool
+	}{{"service:a/x", &yes}, {"service:a/y", &no}, {"service:a/z", &yes}, {"service:a/z", nil}} {
+		if err := s.SetSeparate(ctx, step.key, step.v, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := s.Separated(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := map[string]bool{"service:a/x": true, "service:a/y": false}; !reflect.DeepEqual(got, want) {
+		t.Errorf("separados = %v", got)
+	}
+}

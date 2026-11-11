@@ -195,6 +195,7 @@
     <button type="button" class="transparent" data-dialog="move-dialog" data-set-key="{{.Key}}" data-set-group="{{.Group}}"{{if .GroupLocked}} disabled title="El grupo viene de maestro.yaml"{{end}}>
       <i>drive_file_move</i><span>Mover a grupo</span>
     </button>
+    {{if .Separated}}{{template "separateitem" (separateArgs .Key false .SeparateLocked)}}{{end}}
     {{template "hideitem" .}}
   </div>
 </details>
@@ -208,9 +209,21 @@
     <button type="button" class="transparent" data-dialog="rename-dialog" data-set-key="{{.Key}}" data-set-name="{{.Name}}"{{if .NameLocked}} disabled title="El nombre viene de maestro.yaml"{{end}}>
       <i>edit</i><span>Cambiar nombre</span>
     </button>
+    {{template "separateitem" (separateArgs .Key true .SeparateLocked)}}
     {{template "hideitem" .}}
   </div>
 </details>
+{{end}}
+
+{{/* Sacar un servicio de su stack o devolverlo. */}}
+{{define "separateitem"}}
+<form method="post" action="/separate" hx-post="/separate" hx-target="#services" hx-swap="outerHTML">
+  <input type="hidden" name="key" value="{{.Key}}">
+  <input type="hidden" name="separate" value="{{if .Out}}1{{else}}0{{end}}">
+  <button class="transparent"{{if .Locked}} disabled title="Viene de maestro.yaml"{{end}}>
+    {{if .Out}}<i>call_split</i><span>Sacar del stack</span>{{else}}<i>call_merge</i><span>Volver al stack</span>{{end}}
+  </button>
+</form>
 {{end}}
 
 {{define "hideitem"}}

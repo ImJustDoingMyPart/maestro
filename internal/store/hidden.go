@@ -71,3 +71,38 @@ func (s *Store) Names(ctx context.Context) (map[string]string, error) {
 	}
 	return out, rows.Err()
 }
+
+// SetSeparate saca (true) o devuelve (false) un servicio de la tarjeta de su
+// stack. nil borra lo de la interfaz: vuelve lo que digan los labels.
+func (s *Store) SetSeparate(ctx context.Context, key string, separate *bool, at time.Time) error {
+	if separate == nil {
+		_, err := s.db.ExecContext(ctx, `DELETE FROM separated WHERE key = ?`, key)
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO separated (key, separate, at) VALUES (?, ?, ?)
+		ON CONFLICT (key) DO UPDATE SET separate = excluded.separate, at = excluded.at`,
+		key, *separate, ms(at))
+	return err
+}
+
+// Separated da lo puesto con SetSeparate, por clave.
+func (s *Store) Separated(ctx context.Context) (map[string]bool, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT key, separate FROM separated`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var (
+			key string
+			sep bool
+		)
+		if err := rows.Scan(&key, &sep); err != nil {
+			return nil, err
+		}
+		out[key] = sep
+	}
+	return out, rows.Err()
+}

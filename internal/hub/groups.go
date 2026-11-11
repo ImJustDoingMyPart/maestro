@@ -8,6 +8,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/ImJustDoingMyPart/maestro/internal/catalog"
 	"github.com/ImJustDoingMyPart/maestro/internal/store"
 )
 
@@ -30,6 +31,9 @@ func (s *server) loadPrefs(ctx context.Context) uiPrefs {
 	}
 	if p.CardOrder, err = s.prefs.CardOrder(ctx); err != nil {
 		s.logger.Error("leer orden", "err", err)
+	}
+	if p.Separate, err = s.prefs.Separated(ctx); err != nil {
+		s.logger.Error("leer separados", "err", err)
 	}
 	return p
 }
@@ -315,4 +319,39 @@ func (s *server) orderGroups(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// separate atiende POST /separate: con separate=1 saca el servicio "key"
+// de la tarjeta de su stack; con 0, lo devuelve. Si separate viene del
+// archivo, 409.
+func (s *server) separate(w http.ResponseWriter, r *http.Request) {
+	key, ok := s.prefKey(w, r)
+	if !ok {
+		return
+	}
+	id, isService := strings.CutPrefix(key, "service:")
+	if !isService {
+		http.Error(w, "solo un servicio sale de su stack", http.StatusBadRequest)
+		return
+	}
+	svc, found := findService(s.poller.Snapshot(), id)
+	if !found {
+		http.Error(w, "no existe ese servicio", http.StatusNotFound)
+		return
+	}
+	if svc.Source != catalog.SourceCompose {
+		http.Error(w, "no es un servicio de compose", http.StatusBadRequest)
+		return
+	}
+	if svc.SeparateFromFile {
+		http.Error(w, "separate viene de maestro.yaml", http.StatusConflict)
+		return
+	}
+	v := r.PostFormValue("separate") == "1"
+	if err := s.prefs.SetSeparate(r.Context(), key, &v, time.Now()); err != nil {
+		s.logger.Error("sacar del stack", "key", key, "err", err)
+		http.Error(w, "no se pudo guardar", http.StatusInternalServerError)
+		return
+	}
+	s.gridOrHome(w, r)
 }

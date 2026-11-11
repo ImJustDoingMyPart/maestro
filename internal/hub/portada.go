@@ -22,8 +22,10 @@ type memberRow struct {
 	Name       string
 	Key        string // para ocultarlo o cambiarle el nombre
 	NameLocked bool   // el nombre viene del archivo: no se cambia desde acá
-	State      State
-	Reason     string
+	// SeparateLocked: separate viene del archivo, no se saca desde acá.
+	SeparateLocked bool
+	State          State
+	Reason         string
 }
 
 // stateRank ordena los estados de peor a mejor, para el semáforo de un
@@ -55,6 +57,9 @@ type uiPrefs struct {
 	// CardOrder es la posición de las tarjetas ordenadas a mano dentro de
 	// su grupo.
 	CardOrder map[string]int
+	// Separate saca (true) o devuelve (false) un servicio de la tarjeta de
+	// su stack, salvo que el archivo diga otra cosa.
+	Separate map[string]bool
 }
 
 // otros es el grupo de las tarjetas sin grupo.
@@ -100,8 +105,13 @@ func buildGroups(services []catalog.Service, statusOf func(id string) status.Sta
 		if isHidden(serviceKey(svc.ID)) {
 			continue
 		}
+		if v, ok := p.Separate[serviceKey(svc.ID)]; ok && !svc.SeparateFromFile {
+			svc.Separate = v
+		}
 		if svc.Source != catalog.SourceCompose || svc.Separate {
-			cards = append(cards, singleCard(svc, statusOf(svc.ID)))
+			c := singleCard(svc, statusOf(svc.ID))
+			c.Separated = svc.Source == catalog.SourceCompose
+			cards = append(cards, c)
 			continue
 		}
 		k := stackKey(svc.Host, svc.Project)
@@ -194,17 +204,18 @@ func buildGroups(services []catalog.Service, statusOf func(id string) status.Sta
 
 func singleCard(svc catalog.Service, st status.Status) serviceCard {
 	return serviceCard{
-		Href:        servicePath(svc.ID),
-		Name:        svc.Name,
-		Description: describe(svc),
-		Icon:        sourceIcon(svc.Source),
-		URL:         svc.URL,
-		State:       State(st.State),
-		Reason:      st.Reason(),
-		Group:       svc.Group,
-		Key:         serviceKey(svc.ID),
-		NameLocked:  svc.NameFromFile,
-		GroupLocked: svc.GroupFromFile,
+		Href:           servicePath(svc.ID),
+		Name:           svc.Name,
+		Description:    describe(svc),
+		Icon:           sourceIcon(svc.Source),
+		URL:            svc.URL,
+		State:          State(st.State),
+		Reason:         st.Reason(),
+		Group:          svc.Group,
+		Key:            serviceKey(svc.ID),
+		NameLocked:     svc.NameFromFile,
+		GroupLocked:    svc.GroupFromFile,
+		SeparateLocked: svc.SeparateFromFile,
 	}
 }
 
@@ -270,7 +281,8 @@ func stackCard(host, project string, members []catalog.Service, statusOf func(st
 		st := statusOf(m.ID)
 		c.Members = append(c.Members, memberRow{
 			Href: servicePath(m.ID), Name: m.Name, Key: serviceKey(m.ID), NameLocked: m.NameFromFile,
-			State: State(st.State), Reason: st.Reason(),
+			SeparateLocked: m.SeparateFromFile,
+			State:          State(st.State), Reason: st.Reason(),
 		})
 		if r := stateRank(st.State); r > worst {
 			worst = r

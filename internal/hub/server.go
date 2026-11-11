@@ -89,6 +89,8 @@ type prefStore interface {
 	SetGroupOrder(ctx context.Context, names []string) error
 	CardOrder(ctx context.Context) (map[string]int, error)
 	SetCardOrder(ctx context.Context, keys []string) error
+	Separated(ctx context.Context) (map[string]bool, error)
+	SetSeparate(ctx context.Context, key string, separate *bool, at time.Time) error
 }
 
 // monitorView es lo que los handlers necesitan del monitor. Lo cumple
@@ -148,6 +150,7 @@ func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon moni
 	private.HandleFunc("POST /groups/move", s.moveCard)
 	private.HandleFunc("POST /layout/cards", s.orderCards)
 	private.HandleFunc("POST /layout/groups", s.orderGroups)
+	private.HandleFunc("POST /separate", s.separate)
 	// El ID de un servicio de compose lleva "/" ("media-stack/jellyfin"),
 	// así que va al final de la ruta con {id...}, que toma el resto. Por
 	// eso la acción va antes del ID (/logs/<id>) y no después: con

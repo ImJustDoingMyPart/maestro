@@ -58,6 +58,10 @@ type serviceCard struct {
 	// maestro.yaml y la interfaz no los cambia.
 	NameLocked  bool
 	GroupLocked bool
+	// Separated: un servicio de compose sacado de la tarjeta de su stack
+	// (se puede devolver). SeparateLocked: eso viene del archivo.
+	Separated      bool
+	SeparateLocked bool
 }
 
 type group struct {
@@ -118,6 +122,11 @@ type pageData struct {
 
 // funcs son las funciones que pueden usar las plantillas.
 var funcs = template.FuncMap{
+	// separateArgs arma los datos del ítem "Sacar del stack" / "Volver al
+	// stack" del menú.
+	"separateArgs": func(key string, out, locked bool) map[string]any {
+		return map[string]any{"Key": key, "Out": out, "Locked": locked}
+	},
 	"base": path.Base, // nombre de un archivo sin la carpeta
 	// localTime escribe una hora como <time> que web/static/localtime.js
 	// pasa a la zona del navegador. layout es "time" (15:04:05) o
