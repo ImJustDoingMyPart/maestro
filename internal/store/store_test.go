@@ -27,7 +27,7 @@ func TestMigracionesYPragmas(t *testing.T) {
 	if err := s.db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
 		t.Fatal(err)
 	}
-	if version != 9 {
+	if version != 10 {
 		t.Errorf("user_version = %d, quería 9", version)
 	}
 	var mode string

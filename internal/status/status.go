@@ -50,8 +50,28 @@ type Check struct {
 	CertExpiry time.Time
 }
 
+// Unit es una unidad de systemd (un servicio o un timer) o una LXC o VM de
+// Proxmox, tal como la reporta el agent de su host.
+type Unit struct {
+	Kind string // "service", "timer", "lxc" o "vm"
+	Name string // nombre de la unidad, o de la LXC o VM
+	// Missing: el agent responde pero no la reporta (se borró, o el nombre
+	// del archivo está mal escrito).
+	Missing bool
+	// Active es el ActiveState de systemd (active, inactive, failed,
+	// activating…) o, en una LXC o VM, su estado (running, stopped…).
+	Active string
+	// Result y ExitStatus son cómo terminó la última corrida: de la unidad
+	// o, en un timer, del servicio que dispara. Result vacío: no se sabe.
+	Result     string
+	ExitStatus int
+}
+
 // Input es todo lo que se sabe de un servicio en un momento.
 type Input struct {
+	// Unit es la unidad o el invitado del que sale el servicio; nil si no
+	// sale de uno. Como los contenedores, solo cuenta si HostOK.
+	Unit *Unit
 	// FromContainers es true si el servicio sale de Docker (compose o
 	// contenedor suelto); false para systemd y externos, que por ahora solo
 	// tienen checks.
@@ -127,18 +147,27 @@ func (s Status) Reason() string {
 //     UTC). Si ya venció no hace falta caso aparte: el check falla.
 //
 // Unknown, sin motivos de caída ni de degradado:
-//   - no hay datos: los contenedores no cuentan (FromContainers false o
+//   - no hay datos: los contenedores y la unidad no cuentan (no hay, o
 //     HostOK false) y ningún check tiene Results > 0. Motivo: "sin datos
-//     del agent" si FromContainers y !HostOK; "sin datos todavía" si no.
+//     del agent" si el servicio sale de contenedores o de una unidad y
+//     !HostOK; "sin datos todavía" si no.
 //   - FromContainers y HostOK, pero sin ningún contenedor: "sin
 //     contenedores".
 //   - un contenedor corriendo con Health "starting": "<name> arrancando"
 //     (uno por contenedor en esa situación).
 //
+// Los motivos de Unit (ver unitReasons) van antes que los de los
+// contenedores y los checks, si Unit no es nil y HostOK.
+//
 // Los checks con Results == 0 se ignoran del todo.
 func Evaluate(in Input, now time.Time, p Params) Status {
 	var down, degraded, unknown []string
 	useContainers := in.FromContainers && in.HostOK
+	useUnit := in.Unit != nil && in.HostOK
+	if useUnit {
+		d, g, u := unitReasons(*in.Unit)
+		down, degraded, unknown = append(down, d...), append(degraded, g...), append(unknown, u...)
+	}
 
 	if useContainers {
 		for _, c := range in.Containers {
@@ -192,8 +221,8 @@ func Evaluate(in Input, now time.Time, p Params) Status {
 		return Status{Down, down}
 	case len(degraded) > 0:
 		return Status{Degraded, degraded}
-	case !useContainers && !withData:
-		if in.FromContainers {
+	case !useContainers && !useUnit && !withData:
+		if in.FromContainers || in.Unit != nil {
 			return Status{Unknown, []string{"sin datos del agent"}}
 		}
 		return Status{Unknown, []string{"sin datos todavía"}}
@@ -203,6 +232,68 @@ func Evaluate(in Input, now time.Time, p Params) Status {
 		return Status{Unknown, unknown}
 	}
 	return Status{State: Up}
+}
+
+// unitReasons da los motivos de caída, de degradado y de desconocido de una
+// unidad o un invitado:
+//
+//   - Missing: caída, "<name> no existe en el host".
+//   - servicio: active o reloading está bien; failed es caída, "<name>
+//     falló (exit <ExitStatus>)" si Result es "exit-code" y "<name> falló
+//     (<Result>)" si no (o "<name> falló" sin Result); inactive es caída,
+//     "<name> detenido"; activating, "<name> arrancando" (desconocido);
+//     deactivating, "<name> deteniéndose" (desconocido); cualquier otro,
+//     desconocido "<name>: <Active>".
+//   - timer: si Result no es "" ni "success", caída "última corrida falló
+//     (exit <ExitStatus>)" o "última corrida falló (<Result>)". Además, un
+//     timer que no está active es degradado: "timer detenido".
+//   - lxc o vm: running está bien; stopped es caída, "<name> apagada";
+//     cualquier otro estado, degradado "<name>: <Active>".
+func unitReasons(u Unit) (down, degraded, unknown []string) {
+	if u.Missing {
+		return []string{u.Name + " no existe en el host"}, nil, nil
+	}
+	failed := func(prefix string) string {
+		switch u.Result {
+		case "":
+			return prefix
+		case "exit-code":
+			return fmt.Sprintf("%s (exit %d)", prefix, u.ExitStatus)
+		}
+		return prefix + " (" + u.Result + ")"
+	}
+	switch u.Kind {
+	case "timer":
+		if u.Result != "" && u.Result != "success" {
+			down = append(down, failed("última corrida falló"))
+		}
+		if u.Active != "active" {
+			degraded = append(degraded, "timer detenido")
+		}
+	case "lxc", "vm":
+		switch u.Active {
+		case "running":
+		case "stopped":
+			down = append(down, u.Name+" apagada")
+		default:
+			degraded = append(degraded, u.Name+": "+u.Active)
+		}
+	default:
+		switch u.Active {
+		case "active", "reloading":
+		case "failed":
+			down = append(down, failed(u.Name+" falló"))
+		case "inactive":
+			down = append(down, u.Name+" detenido")
+		case "activating":
+			unknown = append(unknown, u.Name+" arrancando")
+		case "deactivating":
+			unknown = append(unknown, u.Name+" deteniéndose")
+		default:
+			unknown = append(unknown, u.Name+": "+u.Active)
+		}
+	}
+	return down, degraded, unknown
 }
 
 // Event es un cambio de estado que se guarda.

@@ -2,6 +2,7 @@ package status
 
 import (
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 )
@@ -257,6 +258,47 @@ func TestChange(t *testing.T) {
 			got, ok := Change(tt.prev, tt.next)
 			if ok != tt.ok || got != tt.want {
 				t.Errorf("Change = %#v, %v; quería %#v, %v", got, ok, tt.want, tt.ok)
+			}
+		})
+	}
+}
+
+func TestEvaluateUnit(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	tests := []struct {
+		name   string
+		unit   Unit
+		hostOK bool
+		checks []Check
+		want   Status
+	}{
+		{"servicio activo", Unit{Kind: "service", Name: "a.service", Active: "active"}, true, nil, Status{State: Up}},
+		{"servicio recargando", Unit{Kind: "service", Name: "a.service", Active: "reloading"}, true, nil, Status{State: Up}},
+		{"servicio falló con exit", Unit{Kind: "service", Name: "a.service", Active: "failed", Result: "exit-code", ExitStatus: 3}, true, nil, Status{Down, []string{"a.service falló (exit 3)"}}},
+		{"servicio falló por señal", Unit{Kind: "service", Name: "a.service", Active: "failed", Result: "signal"}, true, nil, Status{Down, []string{"a.service falló (signal)"}}},
+		{"servicio falló sin motivo", Unit{Kind: "service", Name: "a.service", Active: "failed"}, true, nil, Status{Down, []string{"a.service falló"}}},
+		{"servicio detenido", Unit{Kind: "service", Name: "a.service", Active: "inactive"}, true, nil, Status{Down, []string{"a.service detenido"}}},
+		{"servicio arrancando", Unit{Kind: "service", Name: "a.service", Active: "activating"}, true, nil, Status{Unknown, []string{"a.service arrancando"}}},
+		{"servicio deteniéndose", Unit{Kind: "service", Name: "a.service", Active: "deactivating"}, true, nil, Status{Unknown, []string{"a.service deteniéndose"}}},
+		{"no existe", Unit{Kind: "service", Name: "b.service", Missing: true}, true, nil, Status{Down, []string{"b.service no existe en el host"}}},
+		{"timer bien", Unit{Kind: "timer", Name: "r.timer", Active: "active", Result: "success"}, true, nil, Status{State: Up}},
+		{"timer sin corridas", Unit{Kind: "timer", Name: "r.timer", Active: "active"}, true, nil, Status{State: Up}},
+		{"timer falló", Unit{Kind: "timer", Name: "r.timer", Active: "active", Result: "exit-code", ExitStatus: 1}, true, nil, Status{Down, []string{"última corrida falló (exit 1)"}}},
+		{"timer detenido", Unit{Kind: "timer", Name: "r.timer", Active: "inactive", Result: "success"}, true, nil, Status{Degraded, []string{"timer detenido"}}},
+		{"lxc prendida", Unit{Kind: "lxc", Name: "dns", Active: "running"}, true, nil, Status{State: Up}},
+		{"vm apagada", Unit{Kind: "vm", Name: "win", Active: "stopped"}, true, nil, Status{Down, []string{"win apagada"}}},
+		{"vm pausada", Unit{Kind: "vm", Name: "win", Active: "paused"}, true, nil, Status{Degraded, []string{"win: paused"}}},
+		{"agent caído", Unit{Kind: "service", Name: "a.service", Active: "failed"}, false, nil, Status{Unknown, []string{"sin datos del agent"}}},
+		{"agent caído con check", Unit{Kind: "service", Name: "a.service"}, false, []Check{{Kind: "http", Results: 1}}, Status{State: Up}},
+		{"unidad y check caen", Unit{Kind: "service", Name: "a.service", Active: "inactive"}, true, []Check{{Kind: "http", Results: 3, Failures: 3, Detail: "timeout"}},
+			Status{Down, []string{"a.service detenido", "check http falla: timeout"}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			u := tt.unit
+			got := Evaluate(Input{Unit: &u, HostOK: tt.hostOK, Checks: tt.checks}, now, DefaultParams)
+			if got.State != tt.want.State || !slices.Equal(got.Reasons, tt.want.Reasons) {
+				t.Fatalf("= %+v, quería %+v", got, tt.want)
 			}
 		})
 	}
