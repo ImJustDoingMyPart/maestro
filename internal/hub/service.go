@@ -27,6 +27,8 @@ type serviceDetail struct {
 	ChecksURL   string // fragmento con el historial de checks; vacío si no tiene
 	LiveURL     string // fragmento con contenedores, motivos y semáforo
 	ReportURL   string // informe para IA
+	PageURL     string // la página (pestaña Actividad)
+	MetricsURL  string // pestaña Métricas; vacío si no tiene contenedores
 	OOB         bool   // se arma para el fragmento: el semáforo va con hx-swap-oob
 	Checks      []checkPanel
 	// Events son los cambios de estado recientes, para un servicio sin logs
@@ -63,6 +65,22 @@ func (s *server) servicePage(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// metricsPage atiende /metrics/{id...}: la página del servicio con la
+// pestaña Métricas.
+func (s *server) metricsPage(w http.ResponseWriter, r *http.Request) {
+	svc, ok := s.lookup(r.Context(), r.PathValue("id"))
+	if !ok || len(svc.Containers) == 0 {
+		s.pages.renderCode(w, s.logger, http.StatusNotFound, "service", pageData{
+			Title: "No existe", Active: "services", ShowNav: true,
+		})
+		return
+	}
+	d := detail(svc, s.mon.Status(svc.ID))
+	s.pages.render(w, s.logger, "service", pageData{
+		Title: svc.Name, Active: "services", ShowNav: true, Svc: &d, Tab: "metrics", Charts: serviceCharts(svc),
+	})
+}
+
 func detail(svc catalog.Service, st status.Status) serviceDetail {
 	d := serviceDetail{
 		ID:          svc.ID,
@@ -75,6 +93,7 @@ func detail(svc catalog.Service, st status.Status) serviceDetail {
 		Host:        svc.Host,
 		LiveURL:     "/fragments/service/" + escapeID(svc.ID),
 		ReportURL:   "/api/services/" + escapeID(svc.ID) + reportSuffix,
+		PageURL:     servicePath(svc.ID),
 	}
 	switch svc.Source {
 	case catalog.SourceCompose:
@@ -100,6 +119,7 @@ func detail(svc catalog.Service, st status.Status) serviceDetail {
 	}
 	if len(svc.Containers) > 0 {
 		d.LogsURL = "/logs/" + escapeID(svc.ID)
+		d.MetricsURL = "/metrics/" + escapeID(svc.ID)
 	}
 	return d
 }

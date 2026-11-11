@@ -712,3 +712,83 @@ a.found-failing {
   font-size: 0.875rem;
   white-space: pre;
 }
+
+/* Hardware y gráficos (etapa 7) */
+.chart-ranges {
+  margin-block: 0.5rem 1rem;
+}
+.chart-ranges .chip.active {
+  background-color: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+.hw-host {
+  margin-block-end: 2.5rem;
+}
+.hw-host-head {
+  margin-block-end: 0.75rem;
+}
+.hw-section {
+  margin-block: 1.5rem 0.5rem;
+}
+.hw-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+  gap: 0.75rem;
+}
+.hw-tile {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  min-width: 0;
+}
+.hw-tile .hw-value {
+  font-size: 1.5rem;
+  line-height: 2rem;
+}
+.hw-tile.warn .hw-value {
+  color: var(--error);
+}
+.hw-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+progress.hw-bar {
+  display: block;
+  width: 100%;
+  height: 0.25rem;
+  margin-block: 0.25rem;
+}
+progress.hw-bar.warn {
+  color: var(--error);
+}
+.hw-charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 26rem), 1fr));
+  gap: 0.75rem;
+  margin-block-start: 0.75rem;
+}
+.chart {
+  margin: 0;
+  padding: 0.75rem;
+  min-width: 0;
+}
+.chart-plot {
+  width: 100%;
+  min-height: 0;
+}
+.chart[data-state="ok"] .chart-msg {
+  display: none;
+}
+.chart .u-legend {
+  font-size: 0.75rem;
+  text-align: start;
+}
+.chart .u-legend .u-marker {
+  border-radius: 50%;
+}
+.hw-fs progress.hw-bar {
+  margin-block: 0.25rem;
+}
+.hw-errors {
+  margin-block-start: 1rem;
+}

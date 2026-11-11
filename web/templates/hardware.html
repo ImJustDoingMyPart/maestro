@@ -1,13 +1,123 @@
+{{define "scripts"}}{{template "chartassets"}}{{end}}
+
 {{define "content"}}
 <header class="transparent">
   <nav>
     <h5 class="max">Hardware</h5>
   </nav>
 </header>
-<article class="small-round no-elevate surface-container-low center-align middle-align medium-height">
-  <div>
-    <i class="extra">memory</i>
-    <p>CPU, RAM, temperaturas, discos y red de cada host llegan en la etapa 6.</p>
-  </div>
+{{template "ranges"}}
+{{if not .Hardware}}
+<article class="small-round no-elevate surface-container-low center-align">
+  <p>No hay hosts con agent en maestro.yaml.</p>
 </article>
+{{end}}
+{{range .Hardware}}
+<section class="hw-host" id="host-{{.Name}}">
+  <nav class="hw-host-head wrap small-space">
+    <i>dns</i>
+    <h6 class="small">{{.Name}}</h6>
+    {{if and .Info.Hostname (ne .Info.Hostname .Name)}}<span class="small-text secondary-text">{{.Info.Hostname}}</span>{{end}}
+    {{if not .OK}}<span class="chip small no-border error-container"><i>cloud_off</i><span>sin respuesta</span></span>{{end}}
+    <div class="max"></div>
+    {{with .Info.CPUModel}}<span class="small-text secondary-text m l">{{.}}</span>{{end}}
+    {{with .Uptime}}<span class="small-text secondary-text">encendido hace {{.}}</span>{{end}}
+  </nav>
+  {{if .NoSystem}}
+  <article class="small-round no-elevate surface-container-low">
+    <p>El agent de {{.Name}} no manda métricas: es de una versión anterior. Actualizalo para ver su hardware.</p>
+  </article>
+  {{else if .Waiting}}
+  <article class="small-round no-elevate surface-container-low">
+    <p>El agent recién arranca: las métricas aparecen con la segunda muestra (unos 15 segundos).</p>
+  </article>
+  {{else}}
+  <div class="hw-tiles">
+    {{range .Tiles}}
+    <article class="small-round no-elevate surface-container-low hw-tile{{if .Warn}} warn{{end}}">
+      <div class="small-text secondary-text">{{.Label}}</div>
+      <div class="hw-value">{{.Value}}</div>
+      {{if ge .Pct 0.0}}<progress class="hw-bar" value="{{.Pct}}" max="100"></progress>{{end}}
+      <div class="small-text secondary-text hw-sub">{{.Sub}}</div>
+    </article>
+    {{end}}
+  </div>
+  <div class="hw-charts">
+    {{range .Charts}}{{template "chart" .}}{{end}}
+  </div>
+  {{if .FS}}
+  <h6 class="small hw-section">Sistemas de archivos</h6>
+  <ul class="list border hw-fs">
+    {{range .FS}}
+    <li>
+      <i>hard_drive</i>
+      <div class="max">
+        <nav class="no-space"><span class="bold max">{{.Mount}}</span><span class="small-text{{if .Warn}} error-text{{end}}">{{.Used}} de {{.Total}}</span></nav>
+        <progress class="hw-bar{{if .Warn}} warn{{end}}" value="{{.Pct}}" max="100"></progress>
+        <div class="small-text secondary-text">{{.Device}} · {{.FSType}}</div>
+      </div>
+    </li>
+    {{end}}
+  </ul>
+  {{with .FSChart}}<div class="hw-charts">{{template "chart" .}}</div>{{end}}
+  {{end}}
+  {{end}}
+
+  {{if .SMART}}
+  <h6 class="small hw-section">Discos (SMART)</h6>
+  <ul class="list border">
+    {{range .SMART}}
+    <li>
+      <span class="dot {{.State}}"></span>
+      <div class="max">
+        <div><span class="bold">{{.Device}}</span>{{with .Model}} · {{.}}{{end}}</div>
+        <div class="small-text secondary-text">Autoevaluación: {{.Verdict}}{{with .Temp}} · {{.}}{{end}}{{with .Hours}} · {{.}} encendido{{end}}{{with .Sectors}} · sectores: {{.}}{{end}}</div>
+        {{with .Note}}<div class="small-text secondary-text">{{.}}</div>{{end}}
+      </div>
+    </li>
+    {{end}}
+  </ul>
+  {{end}}
+
+  {{if .Guests}}
+  <h6 class="small hw-section">LXC y VMs</h6>
+  <ul class="list border">
+    {{range .Guests}}
+    <li>
+      <span class="dot {{.State}}"></span>
+      <a class="max" href="{{.Href}}">
+        <div><span class="bold">{{.Name}}</span> <span class="small-text secondary-text">{{.Kind}} {{.VMID}}</span></div>
+        <div class="small-text secondary-text">{{.Status}}{{with .CPU}} · CPU {{.}}{{end}}{{with .Mem}} · {{.}}{{end}}</div>
+      </a>
+    </li>
+    {{end}}
+  </ul>
+  <div class="hw-charts">{{range .GuestCharts}}{{template "chart" .}}{{end}}</div>
+  {{end}}
+
+  {{if .Containers}}
+  <h6 class="small hw-section">Contenedores que más memoria usan</h6>
+  <ul class="list border">
+    {{range .Containers}}
+    <li>
+      <i>deployed_code</i>
+      {{if .Href}}<a class="max" href="{{.Href}}">{{else}}<div class="max">{{end}}
+        <div class="bold">{{.Name}}</div>
+        <div class="small-text secondary-text">CPU {{.CPU}} · {{.Net}}</div>
+      {{if .Href}}</a>{{else}}</div>{{end}}
+      <span>{{.Mem}}</span>
+    </li>
+    {{end}}
+  </ul>
+  {{if .MoreCount}}<p class="small-text secondary-text">Y {{.MoreCount}} más.</p>{{end}}
+  {{end}}
+
+  {{if .Errors}}
+  <details class="hw-errors small-text secondary-text">
+    <summary>El agent avisó {{len .Errors}} {{if eq (len .Errors) 1}}problema{{else}}problemas{{end}} al leer</summary>
+    <ul>{{range .Errors}}<li>{{.}}</li>{{end}}</ul>
+  </details>
+  {{end}}
+</section>
+{{end}}
 {{end}}

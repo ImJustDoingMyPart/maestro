@@ -212,6 +212,7 @@ func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon moni
 	// /services/<id>/logs, "a/logs" sería ambiguo.
 	private.HandleFunc("GET /services/{id...}", s.servicePage)
 	private.HandleFunc("GET /logs/{id...}", s.streamLogs)
+	private.HandleFunc("GET /metrics/{id...}", s.metricsPage)
 	private.HandleFunc("GET /fragments/checks/{id...}", s.checksFragment)
 	private.HandleFunc("GET /fragments/service/{id...}", s.liveFragment)
 	// Un stack se nombra por host y proyecto, no por servicio: después de
@@ -250,10 +251,6 @@ func (s *server) servicesPage(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) servicesFragment(w http.ResponseWriter, r *http.Request) {
 	s.pages.renderFragment(w, s.logger, "services", "grid", s.servicesData(r.Context()))
-}
-
-func (s *server) hardwarePage(w http.ResponseWriter, r *http.Request) {
-	s.pages.render(w, s.logger, "hardware", pageData{Title: "Hardware", Active: "hardware", ShowNav: true})
 }
 
 // servicesData arma la grilla desde la última foto del poller.

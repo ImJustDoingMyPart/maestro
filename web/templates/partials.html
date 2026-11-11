@@ -36,3 +36,27 @@
   <pre class="log-detail-text"></pre>
 </dialog>
 {{end}}
+
+{{/* Selector de rango: lo maneja charts.js y vale para todos los gráficos
+     de la página. */}}
+{{define "ranges"}}
+<nav class="wrap small-space chart-ranges" data-ranges role="group" aria-label="Rango de los gráficos">
+  <button type="button" class="chip" data-range="1h">1 h</button>
+  <button type="button" class="chip" data-range="6h">6 h</button>
+  <button type="button" class="chip" data-range="24h">24 h</button>
+  <button type="button" class="chip" data-range="7d">7 días</button>
+  <button type="button" class="chip" data-range="30d">30 días</button>
+  <button type="button" class="chip" data-range="1y">1 año</button>
+</nav>
+{{end}}
+
+{{define "chartassets"}}<link rel="stylesheet" href="/static/gen/charts.css"><script src="/static/gen/charts.js" defer></script>{{end}}
+
+{{/* Un gráfico de series de tiempo: lo dibuja charts.js con uPlot. */}}
+{{define "chart"}}
+<article class="small-round no-elevate surface-container-low chart" data-chart data-unit="{{.Unit}}"{{if .Stack}} data-stack{{end}} data-series="{{.Series}}">
+  <div class="small-text bold">{{.Title}}</div>
+  <div class="chart-plot"></div>
+  <div class="small-text secondary-text chart-msg">Cargando…</div>
+</article>
+{{end}}

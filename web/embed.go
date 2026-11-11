@@ -10,7 +10,7 @@
 package web
 
 //go:generate go run ../internal/npmfetch -lock npm.lock -dir node_modules
-//go:generate go tool esbuild src/logs.js src/compose.js --bundle --minify --format=iife --target=es2020,safari15 --legal-comments=none --outdir=static/gen
+//go:generate go tool esbuild src/logs.js src/compose.js src/charts.js --bundle --minify --format=iife --target=es2020,safari15 --legal-comments=none --outdir=static/gen
 
 import (
 	"embed"

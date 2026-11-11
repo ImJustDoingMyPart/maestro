@@ -1,4 +1,4 @@
-{{define "scripts"}}{{if and .Svc .Svc.LogsURL}}<script src="/static/gen/logs.js" defer></script>{{end}}{{if .Svc}}<script src="/static/report.js" defer></script>{{end}}{{end}}
+{{define "scripts"}}{{if eq .Tab "metrics"}}{{template "chartassets"}}{{else if and .Svc .Svc.LogsURL}}<script src="/static/gen/logs.js" defer></script>{{end}}{{if .Svc}}<script src="/static/report.js" defer></script>{{end}}{{end}}
 
 {{define "content"}}
 {{with .Svc}}
@@ -41,11 +41,18 @@
 {{if .ChecksURL}}{{template "checks" $}}{{end}}
 
 <div class="tabs left-align">
-  <a class="active"><i>history</i><span>Actividad</span></a>
+  <a{{if eq $.Tab "metrics"}} href="{{.PageURL}}"{{else}} class="active"{{end}}><i>history</i><span>Actividad</span></a>
+  {{if .MetricsURL}}<a{{if eq $.Tab "metrics"}} class="active"{{else}} href="{{.MetricsURL}}"{{end}}><i>monitoring</i><span>Métricas</span></a>{{end}}
   {{if .StackURL}}<a href="{{.StackURL}}"><i>stacks</i><span>Compose</span></a>{{end}}
 </div>
 
-{{if .LogsURL}}
+{{if eq $.Tab "metrics"}}
+{{template "ranges"}}
+<div class="hw-charts">
+  {{range $.Charts}}{{template "chart" .}}{{end}}
+</div>
+<p class="small-text secondary-text">Métricas de cada contenedor según Docker: la CPU en porcentaje de un núcleo y la memoria sin la caché de archivos, como docker stats.</p>
+{{else if .LogsURL}}
 <section class="log-viewer" data-stream="{{.LogsURL}}"{{if gt (len .Containers) 1}} data-replicas="{{range $i, $c := .Containers}}{{if $i}} {{end}}{{$c.Name}}{{end}}"{{end}}>
   {{template "logviewer"}}
   <noscript><p>El visor de logs necesita JavaScript.</p></noscript>

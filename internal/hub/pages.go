@@ -118,12 +118,15 @@ type pageData struct {
 
 	Groups       []group
 	Summary      summary
-	HiddenCount  int         // cuántas tarjetas están ocultas
-	FoundPending int         // cuántos descubiertos quedan en la bandeja
-	Found        []foundHost // página de Descubiertos, por host
-	FoundFailing int         // descubiertos caídos que no están en la portada
-	Export       string      // página de exportar: el YAML
-	Hidden       []hiddenRow // página de ocultos
+	HiddenCount  int            // cuántas tarjetas están ocultas
+	FoundPending int            // cuántos descubiertos quedan en la bandeja
+	Found        []foundHost    // página de Descubiertos, por host
+	FoundFailing int            // descubiertos caídos que no están en la portada
+	Hardware     []hostHardware // página de Hardware
+	Charts       []chartSpec    // pestaña Métricas de un servicio
+	Tab          string         // pestaña de la página del servicio: "" (Actividad) o "metrics"
+	Export       string         // página de exportar: el YAML
+	Hidden       []hiddenRow    // página de ocultos
 	HostProblems []HostStatus
 	Updated      time.Time // hora de la última vuelta del poller; cero si no hubo
 

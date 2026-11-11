@@ -11,6 +11,7 @@ package collect
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io/fs"
 	"log/slog"
 	"os"
@@ -330,8 +331,17 @@ func (c *Collector) hostMetrics(prev, cur *rawSample) *agent.HostMetrics {
 	}
 	m.FS = c.filesystems()
 	if temps, err := procfs.ReadHwmon(os.DirFS(filepath.Join(c.opts.Sys, "class/hwmon"))); err == nil {
+		// Dos chips con el mismo nombre (dos módulos de RAM, dos GPUs) dan
+		// sensores con el mismo chip y nombre: el segundo lleva " (2)",
+		// así cada uno es una serie distinta.
+		seen := map[string]int{}
 		for _, t := range temps {
-			m.Temps = append(m.Temps, agent.TempValue{Chip: t.Chip, Label: t.Label, Celsius: t.Celsius})
+			label := t.Label
+			k := t.Chip + "/" + t.Label
+			if seen[k]++; seen[k] > 1 {
+				label = fmt.Sprintf("%s (%d)", t.Label, seen[k])
+			}
+			m.Temps = append(m.Temps, agent.TempValue{Chip: t.Chip, Label: label, Celsius: t.Celsius})
 		}
 	}
 	return m
