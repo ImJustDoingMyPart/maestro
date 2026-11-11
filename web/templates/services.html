@@ -125,6 +125,7 @@
     <span class="chip no-border surface-container"><span class="dot down"></span>{{.Summary.Down}} caídos</span>
     <span class="chip no-border surface-container"><span class="dot unknown"></span>{{.Summary.Unknown}} sin datos</span>
     {{if not .Updated.IsZero}}<span class="small-text secondary-text updated">Actualizado {{localTime .Updated "time"}}</span>{{end}}
+    {{if .FoundPending}}<a class="chip no-border surface-container" href="/discovered"><i>travel_explore</i><span>{{.FoundPending}} {{if eq .FoundPending 1}}descubierto{{else}}descubiertos{{end}}</span></a>{{end}}
     {{if .HiddenCount}}<a class="chip no-border surface-container" href="/hidden"><i>visibility_off</i><span>{{.HiddenCount}} {{if eq .HiddenCount 1}}oculto{{else}}ocultos{{end}}</span></a>{{end}}
   </nav>
 
@@ -162,6 +163,8 @@
   <nav class="edit-only edit-bar wrap">
     <button type="button" class="border" data-dialog="group-new-dialog"><i>add</i><span>Nuevo grupo</span></button>
     <a class="button border" href="/externals/new"><i>public</i><span>Agregar servicio externo</span></a>
+    <a class="button border" href="/discovered"><i>travel_explore</i><span>Descubiertos</span></a>
+    <a class="button border" href="/hidden"><i>visibility_off</i><span>Ocultos</span></a>
   </nav>
   <datalist id="group-names">{{range .Groups}}{{if not .Otros}}<option value="{{.Name}}"></option>{{end}}{{end}}</datalist>
   {{end}}
@@ -198,7 +201,14 @@
     </button>
     {{if .EditHref}}<a class="button transparent" href="{{.EditHref}}"><i>tune</i><span>Editar</span></a>{{end}}
     {{if .Separated}}{{template "separateitem" (separateArgs .Key false .SeparateLocked)}}{{end}}
+    {{if .Found}}
+    <form method="post" action="/discovered/unshow" hx-post="/discovered/unshow" hx-target="#services" hx-swap="outerHTML">
+      <input type="hidden" name="key" value="{{.Key}}">
+      <button class="transparent"><i>inbox</i><span>Volver a la bandeja</span></button>
+    </form>
+    {{else}}
     {{template "hideitem" .}}
+    {{end}}
   </div>
 </details>
 {{end}}

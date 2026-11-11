@@ -101,6 +101,9 @@ type prefStore interface {
 	CreateExternal(ctx context.Context, e store.External, name, group string, at time.Time) error
 	UpdateExternal(ctx context.Context, e store.External, name, group string, at time.Time) error
 	DeleteExternal(ctx context.Context, id string) error
+	Shown(ctx context.Context) (map[string]bool, error)
+	Show(ctx context.Context, key string, at time.Time) error
+	Unshow(ctx context.Context, key string) error
 }
 
 // monitorView es lo que los handlers necesitan del monitor. Lo cumple
@@ -129,7 +132,7 @@ type server struct {
 }
 
 func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon monitorView, prefs prefStore, sessions *auth.Sessions, apiToken string, logger *slog.Logger) (http.Handler, error) {
-	p, err := parsePages(web.Templates, "services", "service", "stack", "hardware", "login", "hidden", "external")
+	p, err := parsePages(web.Templates, "services", "service", "stack", "hardware", "login", "hidden", "external", "discovered")
 	if err != nil {
 		return nil, err
 	}
@@ -169,6 +172,9 @@ func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon moni
 	private.HandleFunc("POST /layout/cards", s.orderCards)
 	private.HandleFunc("POST /layout/groups", s.orderGroups)
 	private.HandleFunc("POST /separate", s.separate)
+	private.HandleFunc("GET /discovered", s.discoveredPage)
+	private.HandleFunc("POST /discovered/show", s.showFound)
+	private.HandleFunc("POST /discovered/unshow", s.unshowFound)
 	private.HandleFunc("GET /externals/new", s.newExternalPage)
 	private.HandleFunc("POST /externals", s.createExternal)
 	private.HandleFunc("GET /externals/{id}", s.editExternalPage)
@@ -230,8 +236,9 @@ func (s *server) servicesData(ctx context.Context) pageData {
 	data := pageData{Live: true}
 
 	p := s.loadPrefs(ctx)
-	data.Groups, data.HiddenCount = buildGroups(applyNames(snap.Services, p.Names), s.mon.Status, p)
+	data.Groups, data.HiddenCount = buildGroups(applyNames(snap.Services, p.Names), snap.Discovered, s.mon.Status, p)
 	data.Summary = summarize(data.Groups)
+	data.FoundPending = pending(snap.Discovered, p.Shown)
 
 	for _, h := range snap.Hosts {
 		if !h.OK {

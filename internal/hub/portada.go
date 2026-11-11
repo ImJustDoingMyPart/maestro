@@ -60,6 +60,8 @@ type uiPrefs struct {
 	// Separate saca (true) o devuelve (false) un servicio de la tarjeta de
 	// su stack, salvo que el archivo diga otra cosa.
 	Separate map[string]bool
+	// Shown es lo descubierto que se pasó a la portada, por clave.
+	Shown map[string]bool
 }
 
 // otros es el grupo de las tarjetas sin grupo.
@@ -83,7 +85,10 @@ const otros = "Otros"
 //
 // Los nombres de servicios de p.Names ya vienen aplicados (applyNames);
 // acá se usan los de los stacks.
-func buildGroups(services []catalog.Service, statusOf func(id string) status.Status, p uiPrefs) (groups []group, hiddenCount int) {
+//
+// De found (la bandeja de Descubiertos) salen como tarjeta solo los de
+// p.Shown.
+func buildGroups(services []catalog.Service, found []Discovered, statusOf func(id string) status.Status, p uiPrefs) (groups []group, hiddenCount int) {
 	isHidden := func(key string) bool {
 		_, ok := p.Hidden[key]
 		if ok {
@@ -136,6 +141,16 @@ func buildGroups(services []catalog.Service, statusOf func(id string) status.Sta
 			c.Name = n
 		}
 		cards = append(cards, c)
+	}
+
+	for _, d := range found {
+		if p.Shown[d.Key()] {
+			c := foundCard(d)
+			if n := p.Names[c.Key]; n != "" {
+				c.Name = n
+			}
+			cards = append(cards, c)
+		}
 	}
 
 	byGroup := map[string]*group{}
@@ -306,4 +321,43 @@ func stackCard(host, project string, members []catalog.Service, statusOf func(st
 		return cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
 	})
 	return c
+}
+
+// foundKindLabel y kindIcon describen lo descubierto según su tipo.
+func foundKindLabel(kind string) string {
+	switch kind {
+	case "unit":
+		return "unidad de systemd"
+	case "timer":
+		return "timer de systemd"
+	case "lxc":
+		return "LXC"
+	case "vm":
+		return "VM"
+	}
+	return kind
+}
+
+func kindIcon(kind string) string {
+	switch kind {
+	case "timer":
+		return "schedule"
+	case "lxc":
+		return "inventory_2"
+	case "vm":
+		return "computer"
+	}
+	return "settings"
+}
+
+// foundCard es la tarjeta de algo descubierto que se pasó a la portada.
+func foundCard(d Discovered) serviceCard {
+	return serviceCard{
+		Name:        d.Name,
+		Description: foundKindLabel(d.Kind) + " en " + d.Host,
+		Icon:        kindIcon(d.Kind),
+		State:       d.State,
+		Key:         d.Key(),
+		Found:       true,
+	}
 }

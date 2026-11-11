@@ -106,3 +106,35 @@ func (s *Store) Separated(ctx context.Context) (map[string]bool, error) {
 	}
 	return out, rows.Err()
 }
+
+// Show pasa algo descubierto a la portada. Mostrar uno ya mostrado no es
+// error.
+func (s *Store) Show(ctx context.Context, key string, at time.Time) error {
+	_, err := s.db.ExecContext(ctx,
+		`INSERT INTO shown (key, at) VALUES (?, ?) ON CONFLICT (key) DO NOTHING`, key, ms(at))
+	return err
+}
+
+// Unshow lo devuelve a la bandeja.
+func (s *Store) Unshow(ctx context.Context, key string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM shown WHERE key = ?`, key)
+	return err
+}
+
+// Shown da lo descubierto que se muestra en la portada.
+func (s *Store) Shown(ctx context.Context) (map[string]bool, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT key FROM shown`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string]bool{}
+	for rows.Next() {
+		var key string
+		if err := rows.Scan(&key); err != nil {
+			return nil, err
+		}
+		out[key] = true
+	}
+	return out, rows.Err()
+}

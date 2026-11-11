@@ -37,9 +37,25 @@ type HostStatus struct {
 	LastOK time.Time // cero si nunca respondió
 }
 
+// Discovered es algo que un agent encontró y que no va solo a la portada:
+// una unidad o un timer de systemd, una LXC o una VM de Proxmox. Va a la
+// bandeja de Descubiertos, de donde "Mostrar" lo pasa a la portada. Lo
+// llenan los agents desde la etapa 7; hasta entonces la lista está vacía.
+type Discovered struct {
+	Host   string
+	Kind   string // "unit", "timer", "lxc" o "vm"
+	Name   string // nombre de la unidad o del timer, o de la LXC o VM
+	State  State  // lo que reporta el agent; desde la etapa 7 lo calcula el monitor
+	Detail string // "activa", "última corrida hace 3 h, bien", …
+}
+
+// Key es la clave de la tarjeta: "found:<host>/<tipo>/<nombre>".
+func (d Discovered) Key() string { return "found:" + d.Host + "/" + d.Kind + "/" + d.Name }
+
 // Snapshot es la foto que muestra la portada.
 type Snapshot struct {
-	Services []catalog.Service
+	Services   []catalog.Service
+	Discovered []Discovered
 	Hosts    []HostStatus // ordenados por nombre
 	At       time.Time    // cero hasta la primera vuelta
 }

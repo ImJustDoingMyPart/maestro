@@ -41,7 +41,7 @@ func TestBuildGroupsConGruposDeLaInterfaz(t *testing.T) {
 	}
 	up := func(string) status.Status { return status.Status{State: status.Up} }
 
-	groups, _ := buildGroups(services, up, uiPrefs{
+	groups, _ := buildGroups(services, nil, up, uiPrefs{
 		Groups: map[string]string{
 			"service:a/web":   "Media",
 			"stack:vm/media":  "Media",
@@ -64,7 +64,7 @@ func TestBuildGroupsConGruposDeLaInterfaz(t *testing.T) {
 	// Un stack toma el bloqueo del servicio del que saca el grupo.
 	m1, m2 := compSvc("s", "uno", "s", ""), compSvc("s", "dos", "Red", "")
 	m2.GroupFromFile = true
-	groups, _ = buildGroups([]catalog.Service{m1, m2}, up, uiPrefs{Groups: map[string]string{"stack:vm/s": "Otro"}})
+	groups, _ = buildGroups([]catalog.Service{m1, m2}, nil, up, uiPrefs{Groups: map[string]string{"stack:vm/s": "Otro"}})
 	if got := layout(groups); got != "Red: s" || !groups[0].Services[0].GroupLocked {
 		t.Errorf("stack con grupo del archivo: %s, %+v", got, groups[0].Services[0])
 	}

@@ -22,6 +22,7 @@ func TestDemoRoutes(t *testing.T) {
 	}{
 		{"/", http.StatusOK, []string{"Jellyfin", "AdGuard Home", "Forgejo", `class="dot down"`, "2 caídos"}},
 		{"/hardware", http.StatusOK, []string{"Hardware"}},
+		{"/discovered", http.StatusOK, []string{"AdGuardHome.service", "Volver a la bandeja", "disabled"}},
 		{"/static/beercss-5.0.3/beer.min.css", http.StatusOK, nil},
 		{"/static/htmx-2.0.11.min.js", http.StatusOK, nil},
 		{"/static/maestro.css", http.StatusOK, []string{".dot.up"}},

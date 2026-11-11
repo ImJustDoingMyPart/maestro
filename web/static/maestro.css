@@ -671,3 +671,9 @@ body.dark  { --status-warn: #ffb74d; }
 .danger-zone > summary {
   cursor: pointer;
 }
+
+.found-list .row-name {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}

@@ -53,8 +53,8 @@ func (s *server) unhide(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/hidden", http.StatusSeeOther)
 }
 
-// prefKey lee y valida la clave del formulario: "service:<id>" o
-// "stack:<host>/<proyecto>". No hace falta que exista: un stack bajado se
+// prefKey lee y valida la clave del formulario: "service:<id>",
+// "stack:<host>/<proyecto>" o "found:<host>/<tipo>/<nombre>". No hace falta que exista: un stack bajado se
 // puede seguir mostrando u ocultando.
 func (s *server) prefKey(w http.ResponseWriter, r *http.Request) (string, bool) {
 	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
@@ -64,7 +64,7 @@ func (s *server) prefKey(w http.ResponseWriter, r *http.Request) (string, bool) 
 	}
 	key := r.PostFormValue("key")
 	kind, rest, _ := strings.Cut(key, ":")
-	if (kind != "service" && kind != "stack") || rest == "" || len(key) > 512 {
+	if (kind != "service" && kind != "stack" && kind != "found") || rest == "" || len(key) > 512 {
 		http.Error(w, "clave inválida", http.StatusBadRequest)
 		return "", false
 	}

@@ -42,10 +42,20 @@ var demoGroups = []group{
 	}},
 }
 
+// demoFound son descubiertos inventados para mirar la bandeja.
+var demoFound = []Discovered{
+	{Host: "adguard", Kind: "unit", Name: "AdGuardHome.service", State: StateUp, Detail: "activa"},
+	{Host: "adguard", Kind: "unit", Name: "systemd-resolved.service", State: StateUp, Detail: "activa"},
+	{Host: "pve", Kind: "lxc", Name: "102 adguard", State: StateUp, Detail: "encendida"},
+	{Host: "pve", Kind: "vm", Name: "100 debian-vm", State: StateUp, Detail: "encendida"},
+	{Host: "vm", Kind: "timer", Name: "restic-backup.timer", State: StateDown, Detail: "última corrida hace 3 h, falló (exit 1)"},
+	{Host: "vm", Kind: "unit", Name: "netbird.service", State: StateUp, Detail: "activa"},
+}
+
 // newDemoHandler arma las rutas del modo --demo: la portada con servicios
 // falsos, Hardware vacío y los estáticos. Sin login ni agents.
 func newDemoHandler(logger *slog.Logger) (http.Handler, error) {
-	p, err := parsePages(web.Templates, "services", "hardware")
+	p, err := parsePages(web.Templates, "services", "hardware", "discovered")
 	if err != nil {
 		return nil, err
 	}
@@ -56,12 +66,19 @@ func newDemoHandler(logger *slog.Logger) (http.Handler, error) {
 	// "GET /{$}" solo coincide con "/" exacto; sin {$}, "/" atrapa todo.
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		p.render(w, logger, "services", pageData{
-			Title:   "Servicios",
-			Active:  "services",
-			ShowNav: true,
-			Demo:    true,
-			Groups:  demoGroups,
-			Summary: summarize(demoGroups),
+			Title:        "Servicios",
+			Active:       "services",
+			ShowNav:      true,
+			Demo:         true,
+			Groups:       demoGroups,
+			Summary:      summarize(demoGroups),
+			FoundPending: len(demoFound) - 1,
+		})
+	})
+	mux.HandleFunc("GET /discovered", func(w http.ResponseWriter, r *http.Request) {
+		p.render(w, logger, "discovered", pageData{
+			Title: "Descubiertos", Active: "services", ShowNav: true, Demo: true,
+			Found: foundRows(demoFound, map[string]bool{demoFound[4].Key(): true}),
 		})
 	})
 	mux.HandleFunc("GET /hardware", func(w http.ResponseWriter, r *http.Request) {

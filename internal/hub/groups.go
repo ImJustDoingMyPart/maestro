@@ -35,13 +35,17 @@ func (s *server) loadPrefs(ctx context.Context) uiPrefs {
 	if p.Separate, err = s.prefs.Separated(ctx); err != nil {
 		s.logger.Error("leer separados", "err", err)
 	}
+	if p.Shown, err = s.prefs.Shown(ctx); err != nil {
+		s.logger.Error("leer mostrados", "err", err)
+	}
 	return p
 }
 
 // currentGroups arma la portada como la ve ahora la persona.
 func (s *server) currentGroups(ctx context.Context) []group {
 	p := s.loadPrefs(ctx)
-	groups, _ := buildGroups(applyNames(s.poller.Snapshot().Services, p.Names), s.mon.Status, p)
+	snap := s.poller.Snapshot()
+	groups, _ := buildGroups(applyNames(snap.Services, p.Names), snap.Discovered, s.mon.Status, p)
 	return groups
 }
 

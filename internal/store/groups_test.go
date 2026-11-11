@@ -141,3 +141,24 @@ func TestSeparados(t *testing.T) {
 		t.Errorf("separados = %v", got)
 	}
 }
+
+func TestMostrados(t *testing.T) {
+	s, _ := openTest(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0)
+	for _, k := range []string{"found:lxc/unit/a", "found:lxc/unit/a", "found:pve/vm/b"} {
+		if err := s.Show(ctx, k, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := s.Unshow(ctx, "found:pve/vm/b"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Shown(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := map[string]bool{"found:lxc/unit/a": true}; !reflect.DeepEqual(got, want) {
+		t.Errorf("mostrados = %v", got)
+	}
+}

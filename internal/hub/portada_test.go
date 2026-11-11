@@ -38,7 +38,7 @@ func TestBuildGroups(t *testing.T) {
 		return status.Status{State: status.Up}
 	}
 
-	groups, hidden := buildGroups(services, statusOf, uiPrefs{})
+	groups, hidden := buildGroups(services, nil, statusOf, uiPrefs{})
 	if hidden != 0 {
 		t.Errorf("hidden = %d", hidden)
 	}
@@ -69,7 +69,7 @@ func TestBuildGroups(t *testing.T) {
 
 	// Ocultar: un servicio de un stack de dos lo deja como tarjeta suelta;
 	// un stack entero desaparece; las claves que no existen no cuentan.
-	groups, hidden = buildGroups(services, statusOf, uiPrefs{Hidden: map[string]time.Time{
+	groups, hidden = buildGroups(services, nil, statusOf, uiPrefs{Hidden: map[string]time.Time{
 		"service:media/qbittorrent": {}, "stack:vm/immich": {}, "service:no/existe": {},
 	}})
 	if hidden != 2 {

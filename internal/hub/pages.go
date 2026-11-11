@@ -64,6 +64,8 @@ type serviceCard struct {
 	SeparateLocked bool
 	// EditHref: un externo creado desde la interfaz se edita ahí.
 	EditHref string
+	// Found: viene de la bandeja de Descubiertos; "Ocultar" lo devuelve ahí.
+	Found bool
 }
 
 type group struct {
@@ -113,6 +115,8 @@ type pageData struct {
 	Groups       []group
 	Summary      summary
 	HiddenCount  int         // cuántas tarjetas están ocultas
+	FoundPending int         // cuántos descubiertos quedan en la bandeja
+	Found        []foundRow  // página de Descubiertos
 	Hidden       []hiddenRow // página de ocultos
 	HostProblems []HostStatus
 	Updated      time.Time // hora de la última vuelta del poller; cero si no hubo

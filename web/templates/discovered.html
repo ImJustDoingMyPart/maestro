@@ -1,0 +1,37 @@
+{{define "content"}}
+<header class="transparent">
+  <nav>
+    <a class="button circle transparent" href="/" title="Volver" aria-label="Volver a Servicios"><i>arrow_back</i></a>
+    <h5 class="max">Descubiertos</h5>
+  </nav>
+</header>
+<p class="secondary-text">Unidades y timers de systemd, LXC y VMs de Proxmox que encontraron los agents. No van a la portada hasta que se los muestra; una unidad que falla avisa igual.</p>
+{{if .Found}}
+<ul class="list border found-list">
+  {{range .Found}}
+  <li>
+    <i>{{.Icon}}</i>
+    <div class="max">
+      <div class="row-name"><span class="dot {{.State}}" title="{{.State.Label}}"></span>{{.Name}}</div>
+      <div class="small-text secondary-text">{{.KindLabel}} en {{.Host}}{{with .Detail}} · {{.}}{{end}}</div>
+    </div>
+    {{if .Shown}}
+    <form method="post" action="/discovered/unshow">
+      <input type="hidden" name="key" value="{{.Key}}">
+      <button class="small border" title="Sacarlo de la portada"{{if $.Demo}} disabled{{end}}><i>inbox</i><span>Volver a la bandeja</span></button>
+    </form>
+    {{else}}
+    <form method="post" action="/discovered/show">
+      <input type="hidden" name="key" value="{{.Key}}">
+      <button class="small"{{if $.Demo}} disabled{{end}}><i>visibility</i><span>Mostrar</span></button>
+    </form>
+    {{end}}
+  </li>
+  {{end}}
+</ul>
+{{else}}
+<article class="small-round no-elevate surface-container-low center-align">
+  <p>Todavía no hay nada descubierto. Las unidades de systemd y las LXC y VMs de Proxmox llegan con los agents de esos hosts.</p>
+</article>
+{{end}}
+{{end}}
