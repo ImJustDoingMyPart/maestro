@@ -2,6 +2,8 @@
 // palabras en mayúsculas (ERROR, WARN), logfmt (level=error), JSON
 // ("level":"error"), corchetes ([error]) y los niveles numéricos de pino
 // (50 = error, 40 = warn). No es exacto: es una ayuda para filtrar.
+// internal/loglevel es el port a Go (para el informe para IA): los dos
+// tienen los mismos casos de test y tienen que cambiar juntos.
 
 export const INFO = 0;
 export const WARN = 1;
