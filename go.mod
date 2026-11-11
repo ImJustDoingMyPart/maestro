@@ -4,6 +4,7 @@ go 1.27.3
 
 require (
 	github.com/containerd/errdefs v1.0.0
+	github.com/coreos/go-systemd/v22 v22.7.0
 	github.com/moby/moby/api v1.56.1
 	github.com/moby/moby/client v0.6.2
 	go.yaml.in/yaml/v4 v4.0.0
@@ -23,6 +24,7 @@ require (
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
+	github.com/godbus/dbus/v5 v5.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect

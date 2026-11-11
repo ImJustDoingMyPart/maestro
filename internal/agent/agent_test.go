@@ -31,7 +31,7 @@ func (f fakeSource) Logs(ctx context.Context, id string, opts LogOptions) (iter.
 
 func newTestServer(t *testing.T, src ContainerSource) *httptest.Server {
 	t.Helper()
-	h, err := NewHandler(src, nil, testToken, slog.New(slog.DiscardHandler))
+	h, err := NewHandler(src, nil, nil, testToken, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func newTestServer(t *testing.T, src ContainerSource) *httptest.Server {
 
 func TestTokenDebil(t *testing.T) {
 	for _, tok := range []string{"", "corto", strings.Repeat("x", MinTokenLen-1)} {
-		if _, err := NewHandler(fakeSource{}, nil, tok, slog.New(slog.DiscardHandler)); !errors.Is(err, ErrWeakToken) {
+		if _, err := NewHandler(fakeSource{}, nil, nil, tok, slog.New(slog.DiscardHandler)); !errors.Is(err, ErrWeakToken) {
 			t.Errorf("NewHandler(token de %d) = %v, quería ErrWeakToken", len(tok), err)
 		}
 	}

@@ -53,7 +53,7 @@ func (f *fakeStacks) Action(_ context.Context, project, action string) (iter.Seq
 
 func newStackClient(t *testing.T, st StackSource) *Client {
 	t.Helper()
-	h, err := NewHandler(fakeSource{}, st, testToken, slog.New(slog.DiscardHandler))
+	h, err := NewHandler(fakeSource{}, st, nil, testToken, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,7 +155,7 @@ func TestStacksErrores(t *testing.T) {
 }
 
 func TestStacksPedidosInvalidos(t *testing.T) {
-	h, _ := NewHandler(fakeSource{}, &fakeStacks{}, testToken, slog.New(slog.DiscardHandler))
+	h, _ := NewHandler(fakeSource{}, &fakeStacks{}, nil, testToken, slog.New(slog.DiscardHandler))
 	tests := []struct {
 		method, path, body string
 		want               int
@@ -176,7 +176,7 @@ func TestStacksPedidosInvalidos(t *testing.T) {
 	}
 
 	// Sin --stacks-dir, 501.
-	h, _ = NewHandler(fakeSource{}, nil, testToken, slog.New(slog.DiscardHandler))
+	h, _ = NewHandler(fakeSource{}, nil, nil, testToken, slog.New(slog.DiscardHandler))
 	req := httptest.NewRequest("GET", "/v1/stacks/demo/files", nil)
 	req.Header.Set("Authorization", "Bearer "+testToken)
 	rec := httptest.NewRecorder()

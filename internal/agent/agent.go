@@ -64,16 +64,21 @@ var ErrWeakToken = errors.New("el token del agent tiene que tener al menos 32 ca
 // requestTimeout acota cuánto puede tardar Docker en contestar una petición.
 const requestTimeout = 15 * time.Second
 
-// NewHandler arma las rutas del agent. Todas exigen el token. stacks puede
-// ser nil (el agent corre sin --stacks-dir): las rutas de stacks contestan
-// 501.
-func NewHandler(src ContainerSource, stacks StackSource, token string, logger *slog.Logger) (http.Handler, error) {
+// NewHandler arma las rutas del agent. Todas exigen el token. src puede ser
+// nil (un host sin Docker): /v1/containers da una lista vacía y los logs,
+// 501. stacks puede ser nil (el agent corre sin --stacks-dir): las rutas de
+// stacks contestan 501. sys puede ser nil (tests): /v1/system contesta 501.
+func NewHandler(src ContainerSource, stacks StackSource, sys SystemSource, token string, logger *slog.Logger) (http.Handler, error) {
 	if len(token) < MinTokenLen {
 		return nil, ErrWeakToken
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /v1/containers", func(w http.ResponseWriter, r *http.Request) {
+		if src == nil {
+			writeJSON(w, http.StatusOK, ContainersResponse{Containers: []Container{}})
+			return
+		}
 		ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
 		defer cancel()
 
@@ -88,7 +93,20 @@ func NewHandler(src ContainerSource, stacks StackSource, token string, logger *s
 		}
 		writeJSON(w, http.StatusOK, ContainersResponse{Containers: cs})
 	})
-	mux.HandleFunc("GET /v1/containers/{id}/logs", handleLogs(src, logger.Error))
+	if src != nil {
+		mux.HandleFunc("GET /v1/containers/{id}/logs", handleLogs(src, logger.Error))
+	} else {
+		mux.HandleFunc("GET /v1/containers/{id}/logs", func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, http.StatusNotImplemented, ErrorBody{Error: "el agent corre sin Docker"})
+		})
+	}
+	if sys != nil {
+		mux.HandleFunc("GET /v1/system", handleSystem(sys))
+	} else {
+		mux.HandleFunc("GET /v1/system", func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, http.StatusNotImplemented, ErrorBody{Error: "el agent no tiene colector"})
+		})
+	}
 	if stacks != nil {
 		stackRoutes(mux, stacks, logger.Error)
 	} else {

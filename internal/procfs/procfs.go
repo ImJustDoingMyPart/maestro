@@ -315,7 +315,15 @@ func ReadHwmon(fsys fs.FS) ([]Temp, error) {
 	}
 	var chips []chip
 	for _, e := range entries {
-		if rest, ok := strings.CutPrefix(e.Name(), "hwmon"); ok && e.IsDir() && isDigits(rest) {
+		// En /sys/class/hwmon las entradas son symlinks a la carpeta del
+		// dispositivo: se sigue el link para ver si es una carpeta.
+		isDir := e.IsDir()
+		if e.Type()&fs.ModeSymlink != 0 {
+			if fi, err := fs.Stat(fsys, e.Name()); err == nil {
+				isDir = fi.IsDir()
+			}
+		}
+		if rest, ok := strings.CutPrefix(e.Name(), "hwmon"); ok && isDir && isDigits(rest) {
 			n, _ := strconv.Atoi(rest)
 			chips = append(chips, chip{e.Name(), n})
 		}

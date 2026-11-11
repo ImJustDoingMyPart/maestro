@@ -21,11 +21,13 @@ import (
 
 	"github.com/ImJustDoingMyPart/maestro/internal/agent"
 	"github.com/ImJustDoingMyPart/maestro/internal/auth"
+	"github.com/ImJustDoingMyPart/maestro/internal/collect"
 	"github.com/ImJustDoingMyPart/maestro/internal/docker"
 	"github.com/ImJustDoingMyPart/maestro/internal/httpserver"
 	"github.com/ImJustDoingMyPart/maestro/internal/hub"
 	"github.com/ImJustDoingMyPart/maestro/internal/stacks"
 	"github.com/ImJustDoingMyPart/maestro/internal/store"
+	"github.com/ImJustDoingMyPart/maestro/internal/systemd"
 )
 
 // version se inyecta al compilar:
@@ -174,6 +176,13 @@ func runAgent(ctx context.Context, args []string, stderr io.Writer) error {
 	listen := fs.String("listen", "127.0.0.1:9101", "dirección donde escucha el agent")
 	stacksDir := fs.String("stacks-dir", "", "carpeta de los stacks de compose; sin ella, el agent no edita ni levanta stacks")
 	gitAuthor := fs.String("git-author", stacks.DefaultAuthor, "autor de los commits al guardar un archivo de un stack")
+	useDocker := fs.Bool("docker", true, "lee Docker (contenedores, logs, stacks); false en un host sin Docker")
+	useSystemd := fs.Bool("systemd", true, "lee las unidades y timers de systemd por el bus del sistema")
+	proxmox := fs.Bool("proxmox", false, "lee las LXC y VMs con pvesh (en el host de Proxmox, como root)")
+	smart := fs.Bool("smart", false, "lee el SMART de los discos con smartctl (como root)")
+	procDir := fs.String("proc", "/proc", "carpeta de /proc")
+	sysDir := fs.String("sys", "/sys", "carpeta de /sys")
+	hostFS := fs.String("hostfs", "", "dónde está montada la raíz del host si el agent corre en un contenedor (p. ej. /hostfs)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -185,28 +194,44 @@ func runAgent(ctx context.Context, args []string, stderr io.Writer) error {
 	}
 
 	logger := slog.New(slog.NewTextHandler(stderr, nil))
-	dc, err := docker.New()
-	if err != nil {
-		return fmt.Errorf("agent: cliente de Docker: %w", err)
-	}
-	defer dc.Close()
-	// Los eventos "die" dan el exit code de un reinicio, que el inspect ya
-	// no tiene cuando el contenedor volvió a arrancar.
-	go dc.WatchExits(ctx, logger)
+	opts := collect.Options{Proc: *procDir, Sys: *sysDir, HostFS: *hostFS, Proxmox: *proxmox, SMART: *smart, Logger: logger}
 
-	// stacksSrc es una interfaz: queda nil si no hay --stacks-dir. Ojo con
-	// asignarle un *stacks.Manager nil: una interfaz que guarda un puntero
-	// nil no es nil, y el handler creería que hay stacks.
-	var stacksSrc agent.StackSource
-	if *stacksDir != "" {
-		m, err := stacks.New(stacks.Options{Root: *stacksDir, Author: *gitAuthor}, dc, logger)
+	// containers y stacksSrc son interfaces: quedan nil sin Docker o sin
+	// --stacks-dir. Ojo con asignarles un puntero nil: una interfaz que
+	// guarda un puntero nil no es nil, y el handler creería que hay.
+	var (
+		containers agent.ContainerSource
+		stacksSrc  agent.StackSource
+	)
+	if *useDocker {
+		dc, err := docker.New()
 		if err != nil {
-			return fmt.Errorf("agent: %w", err)
+			return fmt.Errorf("agent: cliente de Docker: %w", err)
 		}
-		stacksSrc = m
+		defer dc.Close()
+		// Los eventos "die" dan el exit code de un reinicio, que el
+		// inspect ya no tiene cuando el contenedor volvió a arrancar.
+		go dc.WatchExits(ctx, logger)
+		containers, opts.Docker = dc, dc
+		if *stacksDir != "" {
+			m, err := stacks.New(stacks.Options{Root: *stacksDir, Author: *gitAuthor}, dc, logger)
+			if err != nil {
+				return fmt.Errorf("agent: %w", err)
+			}
+			stacksSrc = m
+		}
+	} else if *stacksDir != "" {
+		return errors.New("agent: --stacks-dir necesita Docker (sacá --docker=false)")
 	}
+	if *useSystemd {
+		r := systemd.New()
+		defer r.Close()
+		opts.Units = r
+	}
+	col := collect.New(opts)
+	go col.Run(ctx)
 
-	h, err := agent.NewHandler(dc, stacksSrc, token, logger)
+	h, err := agent.NewHandler(containers, stacksSrc, col, token, logger)
 	if err != nil {
 		return fmt.Errorf("agent: %w", err)
 	}

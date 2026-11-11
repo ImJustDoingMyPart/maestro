@@ -2,6 +2,7 @@ package procfs
 
 import (
 	"errors"
+	"io/fs"
 	"math"
 	"slices"
 	"strings"
@@ -283,6 +284,17 @@ func TestReadHwmon(t *testing.T) {
 		if got[i].Chip != want[i].Chip || got[i].Label != want[i].Label || math.Abs(got[i].Celsius-want[i].Celsius) > 1e-9 {
 			t.Fatalf("[%d] = %+v, quería %+v\ntodo: %+v", i, got[i], want[i], got)
 		}
+	}
+
+	// En /sys/class/hwmon, hwmonN es un symlink a la carpeta del
+	// dispositivo.
+	linked := fstest.MapFS{
+		"hwmon0": {Data: []byte("devices/platform/coretemp.0/hwmon/hwmon0"), Mode: fs.ModeSymlink},
+		"devices/platform/coretemp.0/hwmon/hwmon0/name":        {Data: []byte("coretemp\n")},
+		"devices/platform/coretemp.0/hwmon/hwmon0/temp1_input": {Data: []byte("42000\n")},
+	}
+	if got, err := ReadHwmon(linked); err != nil || len(got) != 1 || got[0].Chip != "coretemp" || got[0].Celsius != 42 {
+		t.Fatalf("symlink: %+v, %v", got, err)
 	}
 
 	if got, err := ReadHwmon(fstest.MapFS{}); err != nil || got != nil {
