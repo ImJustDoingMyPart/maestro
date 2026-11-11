@@ -71,12 +71,18 @@ export MAESTRO_TOKEN_VM="$MAESTRO_AGENT_TOKEN"
 
 ## Portada
 
-Tarjetas por grupo, en orden alfabético (sin distinguir mayúsculas) y con "Otros" al final. Se refresca cada 15 segundos.
+Tarjetas por grupo. Los grupos van en el orden que se les dio (arrastrando o con `groups:` en el archivo) y después por nombre, sin distinguir mayúsculas, con "Otros" (las tarjetas sin grupo) siempre al final; las tarjetas, en el orden en que se las arrastró y después por nombre. Se refresca cada 15 segundos.
 
 - **Un stack, una tarjeta.** Un proyecto de compose con más de un servicio es una sola tarjeta (Immich, no sus cinco contenedores). Si uno solo de sus servicios tiene link, la tarjeta toma su nombre, grupo y link; si no, el nombre del proyecto y el primer grupo que declare alguno de sus servicios. Su semáforo es el peor de sus servicios, con el motivo de ese servicio. Al tocarla se despliegan sus servicios, cada uno con su semáforo y el link a su página, y abajo está el link a la pestaña Compose. La portada recuerda qué tarjetas están desplegadas mientras dure la pestaña del navegador.
-- `maestro.separate: "true"` (o `separate: true` en el archivo) saca a un servicio de la tarjeta de su stack.
-- **Menú de tres puntos** arriba a la derecha de cada tarjeta, y en cada servicio dentro de un stack: **Cambiar nombre** y **Ocultar**. El nombre se guarda en la base del hub y pisa a los labels, pero no al archivo (si el nombre viene de `maestro.yaml`, la opción está deshabilitada); vacío vuelve al original. Mientras el menú o el diálogo están abiertos, la portada no se refresca.
-- **Ocultar.** Ocultar solo la saca de la portada: el estado se sigue calculando y la página del servicio sigue existiendo. `/hidden` lista lo oculto, con un botón para mostrarlo de nuevo. Lo oculto se guarda en la base del hub. Es distinto de `maestro.ignore`, que saca al servicio del catálogo.
+- **Sacar del stack.** Un servicio sale de la tarjeta de su stack a una propia con "Sacar del stack" en su menú, con `maestro.separate: "true"` o con `separate: true` en el archivo; "Volver al stack" lo devuelve.
+- **Menú de tres puntos** arriba a la derecha de cada tarjeta, y en cada servicio dentro de un stack: **Cambiar nombre**, **Mover a grupo** (uno que no existe se crea; vacío va a Otros; "Grupo original" vuelve al de los labels), **Sacar del stack** o **Volver al stack**, **Editar** (solo los servicios externos creados desde la interfaz) y **Ocultar**. Mientras un menú o un diálogo están abiertos, la portada no se refresca.
+- **Ocultar.** Ocultar solo la saca de la portada: el estado se sigue calculando y la página del servicio sigue existiendo. `/hidden` lista lo oculto, con un botón para mostrarlo de nuevo. Es distinto de `maestro.ignore`, que saca al servicio del catálogo.
+- **Modo edición** (botón "Editar" arriba): las tarjetas se arrastran dentro de su grupo y de un grupo a otro, y los grupos por su manija; en el celular, manteniendo apretado un momento. Cada grupo tiene botones para cambiarle el nombre (si ya existe uno con el nombre nuevo, los dos quedan en uno) y borrarlo (sus tarjetas pasan a Otros), y abajo están "Nuevo grupo" (aparece vacío al final), "Agregar servicio externo", "Descubiertos", "Ocultos" y "Exportar a maestro.yaml". Mientras dura, la portada no se refresca ni los links navegan.
+- **Servicios externos** (`/externals/new`): lo que no se descubre (el router, un sitio web), con un check HTTP o TCP validado igual que en el archivo. El check push queda solo en el archivo: su token es un secreto. Tampoco se aceptan URLs con usuario y contraseña.
+- **Descubiertos** (`/discovered`): las unidades y timers de systemd y las LXC y VMs de Proxmox que encuentren los agents no van solos a la portada; "Mostrar" las pasa. Hasta que los agents las reporten (etapa 7) la bandeja está vacía; `--demo` la muestra con datos inventados.
+- **Exportar** (`/export`, o `/export.yaml` para bajarlo): lo configurado desde la interfaz como secciones de `maestro.yaml`, para versionarlo y rearmar el hub sin perderlo. No trae hosts ni tokens: la interfaz no guarda secretos. El orden de las tarjetas dentro de cada grupo no se exporta.
+
+Todo lo que se configura desde la interfaz se guarda en la base del hub y pisa a los labels, pero no al archivo: si `maestro.yaml` fija un nombre, un grupo, `separate`, `hidden` o el orden de los grupos, el control correspondiente queda deshabilitado (y el hub responde 409 si se lo pide igual).
 - Nombre, descripción y motivo se cortan con "…" en una línea (el texto entero queda al pasar el mouse) y el semáforo tiene ancho fijo, así el contenido no cambia el tamaño de la tarjeta.
 
 ## Página de un servicio
@@ -149,7 +155,7 @@ La censura se equivoca a favor de tapar: `cache key: users:42` o `10-vnc-passwor
 
 ## Configuración
 
-Lo que se puede descubrir no se configura: todo contenedor aparece solo. Un servicio se ajusta con labels en su `compose.yml` o con el archivo `maestro.yaml` del hub. Prioridad, de mayor a menor: `maestro.yaml`, labels `maestro.*`, labels `homepage.*` y nombres de compose. Los labels de Homepage ya existentes se aprovechan sin migrar nada.
+Lo que se puede descubrir no se configura: todo contenedor aparece solo. Lo habitual se hace desde la interfaz (ver "Portada"); un servicio también se ajusta con labels en su `compose.yml` o con el archivo `maestro.yaml` del hub. Prioridad, de mayor a menor: `maestro.yaml`, la interfaz, labels `maestro.*`, labels `homepage.*` y nombres de compose. Los labels de Homepage ya existentes se aprovechan sin migrar nada.
 
 ### Identidad de un servicio
 
@@ -178,11 +184,13 @@ Una clave `maestro.*` desconocida o un valor inválido se ignora y queda en el l
 
 ### `maestro.yaml`
 
-Ver [`maestro.example.yaml`](maestro.example.yaml). Tiene dos secciones y una clave suelta:
+Ver [`maestro.example.yaml`](maestro.example.yaml). Tiene estas secciones y una clave suelta:
 
 - `api_token`: opcional, el token para pedir la API sin sesión (ver "Informe para IA").
 - `hosts`: cada host con agent, con `agent` (URL) y `token`.
 - `services`: con clave `<proyecto>/<servicio>` pisa valores de un servicio descubierto; con una clave sin `/` declara uno propio, que es una unidad systemd si tiene `unit` (y entonces necesita `host`) o un servicio externo si no.
+- `stacks`: con clave `<host>/<proyecto>`, `name`, `group` y `hidden` de la tarjeta de un stack. El host tiene que estar en `hosts`.
+- `groups`: lista con el orden de los grupos de la portada. "Otros" no va: siempre queda al final.
 
 | Clave de un servicio | Tipo | Dónde vale |
 |---|---|---|
@@ -190,6 +198,7 @@ Ver [`maestro.example.yaml`](maestro.example.yaml). Tiene dos secciones y una cl
 | `check` | `{http, expect, redirects, tcp, push, interval, timeout}` (ver abajo) | todos |
 | `alert`, `ignore` | `true`/`false` | todos |
 | `separate` | `true`/`false` | servicios de compose |
+| `hidden` | `true`: no se muestra en la portada; `false`: no se oculta desde la interfaz | todos |
 | `host` | nombre de un host de `hosts` | solo propios |
 | `unit` | unidad systemd | solo propios |
 
