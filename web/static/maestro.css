@@ -538,8 +538,11 @@ body.dark  { --status-warn: #ffb74d; }
   display: flex;
   flex-direction: column;
 }
-.card-menu-list form {
-  margin: 0;
+/* Beer separa con margen un form que sigue a otro elemento (como el link
+   "Editar"); su selector (":not(.grid, nav, .row) > … + :is(form, …)")
+   gana por especificidad, de ahí el !important. */
+details.card-menu > .card-menu-list > * {
+  margin: 0 !important;
 }
 .card-menu-list button,
 .card-menu-list a.button {
@@ -679,6 +682,7 @@ body.dark  { --status-warn: #ffb74d; }
 }
 
 .export-yaml {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   padding: 1rem;
   overflow-x: auto;
   font-size: 0.875rem;
