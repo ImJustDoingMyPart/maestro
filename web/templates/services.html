@@ -5,24 +5,96 @@
   <nav>
     <h5 class="max">Servicios</h5>
     {{if .Demo}}<span class="chip small tertiary-container no-border">demo</span>{{end}}
+    {{if .Live}}
+    <button type="button" class="transparent edit-toggle" data-edit-toggle aria-pressed="false">
+      <i class="view-only">edit</i><span class="view-only">Editar</span>
+      <i class="edit-only">check</i><span class="edit-only">Listo</span>
+    </button>
+    {{end}}
     {{if not .Demo}}<div class="s">{{template "logout" .}}</div>{{end}}
   </nav>
 </header>
 {{template "grid" .}}
 {{if .Live}}
-{{/* Fuera de la grilla: htmx la reemplaza cada 15 s y se lo llevaría. */}}
-<dialog class="rename-dialog small-round">
+{{/* Fuera de la grilla: htmx la reemplaza cada 15 s y se la llevaría.
+     Los abre web/static/services.js con un botón data-dialog="<id>"; los
+     data-set-<campo> del botón llenan los campos del formulario y los
+     elementos data-text="<campo>" del diálogo. Mientras hay uno abierto la
+     grilla no se refresca. */}}
+<dialog id="rename-dialog" class="small-round form-dialog">
   <h6>Cambiar nombre</h6>
   <form method="post" action="/names" hx-post="/names" hx-target="#services" hx-swap="outerHTML">
     <input type="hidden" name="key">
     <div class="field label border">
-      <input type="text" name="name" id="rename-name" maxlength="80" autocomplete="off" placeholder=" " autofocus>
+      <input type="text" name="name" id="rename-name" maxlength="80" autocomplete="off" placeholder=" " data-focus>
       <label for="rename-name">Nombre</label>
     </div>
     <p class="small-text secondary-text">Vacío vuelve al nombre original.</p>
+    <p class="small-text error-text dialog-error" role="alert"></p>
     <nav class="right-align">
       <button type="button" class="border" data-close>Cancelar</button>
       <button type="submit">Guardar</button>
+    </nav>
+  </form>
+</dialog>
+<dialog id="move-dialog" class="small-round form-dialog">
+  <h6>Mover a grupo</h6>
+  <form method="post" action="/groups/move" hx-post="/groups/move" hx-target="#services" hx-swap="outerHTML">
+    <input type="hidden" name="key">
+    <div class="field label border">
+      <input type="text" name="group" id="move-group" maxlength="40" autocomplete="off" placeholder=" " list="group-names" data-focus>
+      <label for="move-group">Grupo</label>
+    </div>
+    <p class="small-text secondary-text">Uno que no existe se crea. Vacío va a Otros.</p>
+    <p class="small-text error-text dialog-error" role="alert"></p>
+    <nav class="right-align wrap">
+      <button type="submit" class="transparent" name="reset" value="1" title="El que dicen los labels del compose">Grupo original</button>
+      <div class="max"></div>
+      <button type="button" class="border" data-close>Cancelar</button>
+      <button type="submit">Mover</button>
+    </nav>
+  </form>
+</dialog>
+<dialog id="group-new-dialog" class="small-round form-dialog">
+  <h6>Nuevo grupo</h6>
+  <form method="post" action="/groups" hx-post="/groups" hx-target="#services" hx-swap="outerHTML">
+    <div class="field label border">
+      <input type="text" name="name" id="group-new-name" maxlength="40" autocomplete="off" placeholder=" " required data-focus>
+      <label for="group-new-name">Nombre</label>
+    </div>
+    <p class="small-text secondary-text">Aparece vacío al final: arrastrá tarjetas o usá "Mover a grupo".</p>
+    <p class="small-text error-text dialog-error" role="alert"></p>
+    <nav class="right-align">
+      <button type="button" class="border" data-close>Cancelar</button>
+      <button type="submit">Crear</button>
+    </nav>
+  </form>
+</dialog>
+<dialog id="group-rename-dialog" class="small-round form-dialog">
+  <h6>Cambiar nombre del grupo</h6>
+  <form method="post" action="/groups/rename" hx-post="/groups/rename" hx-target="#services" hx-swap="outerHTML">
+    <input type="hidden" name="name">
+    <div class="field label border">
+      <input type="text" name="to" id="group-rename-to" maxlength="40" autocomplete="off" placeholder=" " required data-focus>
+      <label for="group-rename-to">Nombre</label>
+    </div>
+    <p class="small-text secondary-text">Si ya hay un grupo con ese nombre, los dos quedan en uno.</p>
+    <p class="small-text error-text dialog-error" role="alert"></p>
+    <nav class="right-align">
+      <button type="button" class="border" data-close>Cancelar</button>
+      <button type="submit">Guardar</button>
+    </nav>
+  </form>
+</dialog>
+<dialog id="group-delete-dialog" class="small-round form-dialog">
+  <h6>Borrar grupo</h6>
+  <form method="post" action="/groups/delete" hx-post="/groups/delete" hx-target="#services" hx-swap="outerHTML">
+    <input type="hidden" name="name">
+    <p>Las tarjetas de <b data-text="name"></b> pasan a Otros.</p>
+    <p class="small-text error-text dialog-error" role="alert"></p>
+    <nav class="right-align">
+      <button type="button" class="border" data-close>Cancelar</button>
+      <button type="submit" class="error">Borrar</button>
     </nav>
   </form>
 </dialog>
@@ -32,7 +104,7 @@
 {{/* "grid" es lo que htmx vuelve a pedir cada 15 s y reemplaza entero
      (outerHTML): por eso el div con hx-get va adentro del fragmento. */}}
 {{define "grid"}}
-<div id="services"{{if .Live}} hx-get="/fragments/services" hx-trigger="every 15s" hx-swap="outerHTML"{{end}}>
+<div id="services"{{if .Live}} hx-get="/fragments/services" hx-trigger="every 15s, refresh" hx-swap="outerHTML"{{end}}>
   {{range .HostProblems}}
   <article class="small-round no-elevate error-container host-problem">
     <nav>
@@ -60,15 +132,34 @@
   </article>
   {{end}}
 
+  <div class="groups">
   {{range .Groups}}
-  <h6 class="group-title">{{.Name}}</h6>
-  <div class="grid small-space cards">
-    {{range .Services}}
-    <div class="s12 m6 l4">
-      {{if .Members}}{{template "stackcard" .}}{{else}}{{template "servicecard" .}}{{end}}
+  <section class="group{{if .Empty}} empty{{end}}{{if .Otros}} otros{{end}}" data-group="{{.Name}}">
+    <nav class="group-head">
+      <h6 class="group-title max">{{.Name}}</h6>
+      {{if $.Live}}
+      <button type="button" class="circle transparent small edit-only" data-dialog="group-rename-dialog" data-set-name="{{.Name}}" data-set-to="{{.Name}}"
+        {{if .Otros}}disabled title="Otros es el grupo de las tarjetas sin grupo"{{else if .Locked}}disabled title="El grupo viene de maestro.yaml"{{else}}title="Cambiar nombre"{{end}} aria-label="Cambiar nombre del grupo {{.Name}}"><i>edit</i></button>
+      <button type="button" class="circle transparent small edit-only" data-dialog="group-delete-dialog" data-set-name="{{.Name}}"
+        {{if .Otros}}disabled title="Otros es el grupo de las tarjetas sin grupo"{{else if .Locked}}disabled title="El grupo viene de maestro.yaml"{{else}}title="Borrar"{{end}} aria-label="Borrar el grupo {{.Name}}"><i>delete</i></button>
+      {{end}}
+    </nav>
+    <div class="grid small-space cards">
+      {{range .Services}}
+      <div class="s12 m6 l4" data-key="{{.Key}}">
+        {{if .Members}}{{template "stackcard" .}}{{else}}{{template "servicecard" .}}{{end}}
+      </div>
+      {{end}}
     </div>
-    {{end}}
+    {{if .Empty}}<p class="small-text secondary-text empty-hint">Grupo vacío: mové tarjetas acá.</p>{{end}}
+  </section>
+  {{end}}
   </div>
+  {{if .Live}}
+  <nav class="edit-only edit-bar">
+    <button type="button" class="border" data-dialog="group-new-dialog"><i>add</i><span>Nuevo grupo</span></button>
+  </nav>
+  <datalist id="group-names">{{range .Groups}}{{if not .Otros}}<option value="{{.Name}}"></option>{{end}}{{end}}</datalist>
   {{end}}
 </div>
 {{end}}
@@ -88,24 +179,42 @@
 </span>
 {{end}}
 
-{{/* Menú de los tres puntos de una tarjeta o de un servicio dentro de un
-     stack: cambiar nombre y ocultar. Es un <details>: se abre sin
-     JavaScript. web/static/services.js lo cierra al tocar afuera, abre el
-     diálogo de "Cambiar nombre" y frena el refresco de la grilla mientras
-     está abierto. Recibe un serviceCard o un memberRow. */}}
+{{/* Menú de los tres puntos de una tarjeta. Es un <details>: se abre sin
+     JavaScript. web/static/services.js lo cierra al tocar afuera, abre los
+     diálogos y frena el refresco de la grilla mientras está abierto. */}}
 {{define "cardmenu"}}
 <details class="card-menu">
   <summary class="circle transparent" title="Opciones" aria-label="Opciones de {{.Name}}"><i>more_vert</i></summary>
   <div class="card-menu-list surface-container-high small-elevate">
-    <button type="button" class="transparent" data-rename-key="{{.Key}}" data-rename-name="{{.Name}}"{{if .NameLocked}} disabled title="El nombre viene de maestro.yaml"{{end}}>
+    <button type="button" class="transparent" data-dialog="rename-dialog" data-set-key="{{.Key}}" data-set-name="{{.Name}}"{{if .NameLocked}} disabled title="El nombre viene de maestro.yaml"{{end}}>
       <i>edit</i><span>Cambiar nombre</span>
     </button>
-    <form method="post" action="/hidden" hx-post="/hidden" hx-target="#services" hx-swap="outerHTML">
-      <input type="hidden" name="key" value="{{.Key}}">
-      <button class="transparent"><i>visibility_off</i><span>Ocultar</span></button>
-    </form>
+    <button type="button" class="transparent" data-dialog="move-dialog" data-set-key="{{.Key}}" data-set-group="{{.Group}}"{{if .GroupLocked}} disabled title="El grupo viene de maestro.yaml"{{end}}>
+      <i>drive_file_move</i><span>Mover a grupo</span>
+    </button>
+    {{template "hideitem" .}}
   </div>
 </details>
+{{end}}
+
+{{/* Menú de un servicio dentro de la tarjeta de su stack. */}}
+{{define "membermenu"}}
+<details class="card-menu">
+  <summary class="circle transparent" title="Opciones" aria-label="Opciones de {{.Name}}"><i>more_vert</i></summary>
+  <div class="card-menu-list surface-container-high small-elevate">
+    <button type="button" class="transparent" data-dialog="rename-dialog" data-set-key="{{.Key}}" data-set-name="{{.Name}}"{{if .NameLocked}} disabled title="El nombre viene de maestro.yaml"{{end}}>
+      <i>edit</i><span>Cambiar nombre</span>
+    </button>
+    {{template "hideitem" .}}
+  </div>
+</details>
+{{end}}
+
+{{define "hideitem"}}
+<form method="post" action="/hidden" hx-post="/hidden" hx-target="#services" hx-swap="outerHTML">
+  <input type="hidden" name="key" value="{{.Key}}">
+  <button class="transparent"><i>visibility_off</i><span>Ocultar</span></button>
+</form>
 {{end}}
 
 {{define "servicecard"}}
@@ -148,7 +257,7 @@
           {{if and .Reason (ne .State "up")}}<div class="small-text state-reason {{.State}}" title="{{.Reason}}">{{.Reason}}</div>{{end}}
         </div>
         <span class="small-text secondary-text">{{.State.Label}}</span>
-        {{if .Key}}{{template "cardmenu" .}}{{end}}
+        {{if .Key}}{{template "membermenu" .}}{{end}}
       </li>
       {{end}}
     </ul>

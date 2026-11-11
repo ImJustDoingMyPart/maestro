@@ -10,9 +10,33 @@
 body.light { --status-up: #2e7d32; }
 body.dark  { --status-up: #81c995; }
 
-.group-title {
+.group-head {
   margin-block: 1.5rem 0.5rem;
+  min-block-size: 2.5rem;
+}
+.group-title {
+  margin: 0;
   color: var(--on-surface-variant);
+}
+
+/* Modo edición: body.editing (lo pone web/static/services.js) muestra los
+   controles de los grupos, los grupos vacíos y "Nuevo grupo". */
+body:not(.editing) .edit-only,
+body.editing .view-only,
+body:not(.editing) .group.empty {
+  display: none;
+}
+.group.empty .empty-hint {
+  padding: 1rem;
+  border: 1px dashed var(--outline-variant);
+  border-radius: 0.5rem;
+  text-align: center;
+}
+.edit-bar {
+  margin-block: 1.5rem;
+}
+.dialog-error:empty {
+  display: none;
 }
 
 .service {

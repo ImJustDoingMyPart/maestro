@@ -1,5 +1,5 @@
-// Portada: tarjetas de stack desplegadas, menú de los tres puntos y el
-// diálogo de "Cambiar nombre".
+// Portada: tarjetas de stack desplegadas, menú de los tres puntos, los
+// diálogos (cambiar nombre, mover a grupo, grupos) y el modo edición.
 (function () {
   var KEY = "maestro.stacks.abiertos";
   function load() {
@@ -46,34 +46,73 @@
     if (e.key === "Escape") closeMenus(null);
   });
 
-  // Cambiar nombre: el diálogo está fuera de la grilla.
+  // Diálogos: un botón data-dialog="<id>" abre el diálogo; cada atributo
+  // data-set-<campo>="valor" del botón llena el campo name="<campo>" del
+  // formulario y los elementos data-text="<campo>".
   document.addEventListener("click", function (e) {
-    var btn = e.target.closest("[data-rename-key]");
-    if (!btn) return;
-    var dlg = document.querySelector("dialog.rename-dialog");
+    var btn = e.target.closest("[data-dialog]");
+    if (!btn || btn.disabled) return;
+    var dlg = document.getElementById(btn.dataset.dialog);
     if (!dlg) return;
     closeMenus(null);
-    dlg.querySelector("input[name=key]").value = btn.dataset.renameKey;
-    var input = dlg.querySelector("input[name=name]");
-    input.value = btn.dataset.renameName;
+    var form = dlg.querySelector("form");
+    if (form) form.reset();
+    var err = dlg.querySelector(".dialog-error");
+    if (err) err.textContent = "";
+    Array.prototype.forEach.call(btn.attributes, function (a) {
+      if (a.name.indexOf("data-set-") !== 0) return;
+      var field = a.name.slice("data-set-".length);
+      var input = form && form.elements.namedItem(field);
+      if (input) input.value = a.value;
+      dlg.querySelectorAll('[data-text="' + field + '"]').forEach(function (el) { el.textContent = a.value; });
+    });
     dlg.showModal();
+    var focus = dlg.querySelector("[data-focus]");
     // Después del showModal, que mueve el foco por su cuenta.
-    requestAnimationFrame(function () { input.focus(); input.select(); });
+    if (focus) requestAnimationFrame(function () { focus.focus(); focus.select(); });
   });
   document.addEventListener("click", function (e) {
-    if (e.target.closest("dialog.rename-dialog [data-close]")) e.target.closest("dialog").close();
+    if (e.target.closest("dialog.form-dialog [data-close]")) e.target.closest("dialog").close();
   });
   document.addEventListener("htmx:afterRequest", function (e) {
-    var dlg = e.target.closest && e.target.closest("dialog.rename-dialog");
+    var dlg = e.target.closest && e.target.closest("dialog.form-dialog");
     if (dlg && e.detail.successful) dlg.close();
   });
+  // Un error (400, 409) no reemplaza la grilla: el texto va al diálogo.
+  document.addEventListener("htmx:responseError", function (e) {
+    var dlg = e.target.closest && e.target.closest("dialog.form-dialog");
+    var err = dlg && dlg.querySelector(".dialog-error");
+    if (err) err.textContent = (e.detail.xhr.responseText || "No se pudo guardar.").trim();
+  });
 
-  // Mientras hay un menú o el diálogo abiertos, el refresco de la grilla
-  // espera: si no, se cierran en la mano.
+  // Modo edición: la clase "editing" en body muestra los controles de los
+  // grupos y los grupos vacíos. Mientras dura, la grilla no se refresca.
+  function editing() { return document.body.classList.contains("editing"); }
+  function setEditing(on) {
+    document.body.classList.toggle("editing", on);
+    document.querySelectorAll("[data-edit-toggle]").forEach(function (b) {
+      b.setAttribute("aria-pressed", on ? "true" : "false");
+    });
+    if (!on && window.htmx) htmx.trigger("#services", "refresh");
+    document.dispatchEvent(new CustomEvent("maestro:editing", { detail: on }));
+  }
+  document.addEventListener("click", function (e) {
+    if (e.target.closest("[data-edit-toggle]")) setEditing(!editing());
+  });
+  // En el modo edición los links de las tarjetas no navegan: se arrastran.
+  document.addEventListener("click", function (e) {
+    if (!editing()) return;
+    var a = e.target.closest("#services a.stretched, #services .stack-members a");
+    if (a) e.preventDefault();
+  }, true);
+
+  // Mientras hay un menú o un diálogo abiertos, o se está editando, el
+  // refresco de la grilla espera: si no, se cierran en la mano. Los cambios
+  // hechos desde un diálogo (hx-post) sí pasan.
   document.addEventListener("htmx:beforeRequest", function (e) {
     var cfg = e.detail.requestConfig;
     if (!cfg || cfg.verb !== "get" || e.detail.elt.id !== "services") return;
-    if (document.querySelector("details.card-menu[open], dialog.rename-dialog[open]")) e.preventDefault();
+    if (editing() || document.querySelector("details.card-menu[open], dialog.form-dialog[open]")) e.preventDefault();
   });
 
   document.addEventListener("DOMContentLoaded", function () { restore(document); });

@@ -41,22 +41,43 @@ func stateRank(s status.State) int {
 	}
 }
 
+// uiPrefs es la configuración de la portada hecha desde la interfaz. Las
+// claves son las de ocultar: "service:<id>" o "stack:<host>/<proyecto>".
+type uiPrefs struct {
+	Hidden map[string]time.Time
+	Names  map[string]string
+	// Groups es el grupo de cada tarjeta ("" es "Otros"); una clave que no
+	// está deja el de los labels.
+	Groups map[string]string
+	// GroupOrder son los grupos que conoce la interfaz, en orden. Pueden
+	// estar vacíos.
+	GroupOrder []string
+}
+
+// otros es el grupo de las tarjetas sin grupo.
+const otros = "Otros"
+
 // buildGroups arma la portada: las tarjetas por grupo, sin las ocultas, y
 // cuántas cosas que existen están ocultas.
 //
 // Un proyecto de compose con más de un servicio visible (y sin Separate)
 // es una sola tarjeta. Toma nombre, grupo, descripción y link del servicio
 // que tiene link, si hay uno solo; si no, el nombre del proyecto y el grupo
-// de stackGroup. Su
-// semáforo es el peor de sus servicios, con el motivo de ese servicio. Los
-// grupos van en orden alfabético con "Otros" (sin grupo) al final, y las
-// tarjetas, por nombre, en los dos casos sin distinguir mayúsculas.
+// de stackGroup. Su semáforo es el peor de sus servicios, con el motivo de
+// ese servicio.
 //
-// names son los nombres puestos desde la interfaz: los de servicios ya
-// vienen aplicados (applyNames); acá se usan los de los stacks.
-func buildGroups(services []catalog.Service, statusOf func(id string) status.Status, hidden map[string]time.Time, names map[string]string) (groups []group, hiddenCount int) {
+// El grupo de una tarjeta es el de la interfaz (p.Groups) salvo que venga
+// del archivo. Los grupos van primero en el orden de p.GroupOrder, después
+// los demás en orden alfabético y "Otros" (sin grupo) al final; los de
+// p.GroupOrder sin tarjetas salen vacíos (Empty), para el modo edición. Las
+// tarjetas van por nombre. Los órdenes alfabéticos no distinguen
+// mayúsculas.
+//
+// Los nombres de servicios de p.Names ya vienen aplicados (applyNames);
+// acá se usan los de los stacks.
+func buildGroups(services []catalog.Service, statusOf func(id string) status.Status, p uiPrefs) (groups []group, hiddenCount int) {
 	isHidden := func(key string) bool {
-		_, ok := hidden[key]
+		_, ok := p.Hidden[key]
 		if ok {
 			hiddenCount++
 		}
@@ -98,34 +119,63 @@ func buildGroups(services []catalog.Service, statusOf func(id string) status.Sta
 			continue
 		}
 		c := stackCard(b.host, b.project, b.members, statusOf)
-		if n := names[c.Key]; n != "" {
+		if n := p.Names[c.Key]; n != "" {
 			c.Name = n
 		}
 		cards = append(cards, c)
 	}
 
-	slices.SortFunc(cards, func(a, b serviceCard) int {
-		// "" (Otros) va al final.
-		if (a.Group == "") != (b.Group == "") {
-			if a.Group == "" {
+	byGroup := map[string]*group{}
+	for _, c := range cards {
+		if g, ok := p.Groups[c.Key]; ok && !c.GroupLocked {
+			c.Group = g
+		}
+		name := cmp.Or(c.Group, otros)
+		g := byGroup[name]
+		if g == nil {
+			g = &group{Name: name, Otros: name == otros}
+			byGroup[name] = g
+		}
+		g.Locked = g.Locked || c.GroupLocked
+		g.Services = append(g.Services, c)
+	}
+	for _, name := range p.GroupOrder {
+		if byGroup[name] == nil && name != otros {
+			byGroup[name] = &group{Name: name, Empty: true}
+		}
+	}
+
+	pos := map[string]int{}
+	for i, name := range p.GroupOrder {
+		if _, ok := pos[name]; !ok {
+			pos[name] = i
+		}
+	}
+	for _, g := range byGroup {
+		slices.SortFunc(g.Services, func(a, b serviceCard) int {
+			return cmp.Or(cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)), cmp.Compare(a.Key, b.Key))
+		})
+		groups = append(groups, *g)
+	}
+	slices.SortFunc(groups, func(a, b group) int {
+		if a.Otros != b.Otros {
+			if a.Otros {
 				return 1
 			}
 			return -1
 		}
-		// Sin distinguir mayúsculas: "media" va antes que "Web".
-		return cmp.Or(
-			cmp.Compare(strings.ToLower(a.Group), strings.ToLower(b.Group)),
-			cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)),
-			cmp.Compare(a.Key, b.Key))
-	})
-	for _, c := range cards {
-		name := cmp.Or(c.Group, "Otros")
-		if n := len(groups); n == 0 || groups[n-1].Name != name {
-			groups = append(groups, group{Name: name})
+		pa, oka := pos[a.Name]
+		pb, okb := pos[b.Name]
+		switch {
+		case oka && okb:
+			return cmp.Compare(pa, pb)
+		case oka:
+			return -1
+		case okb:
+			return 1
 		}
-		g := &groups[len(groups)-1]
-		g.Services = append(g.Services, c)
-	}
+		return cmp.Or(cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)), cmp.Compare(a.Name, b.Name))
+	})
 	return groups, hiddenCount
 }
 
@@ -141,6 +191,7 @@ func singleCard(svc catalog.Service, st status.Status) serviceCard {
 		Group:       svc.Group,
 		Key:         serviceKey(svc.ID),
 		NameLocked:  svc.NameFromFile,
+		GroupLocked: svc.GroupFromFile,
 	}
 }
 
@@ -163,14 +214,14 @@ func applyNames(services []catalog.Service, names map[string]string) []catalog.S
 // stackGroup es el grupo de un stack sin servicio principal: el primero que
 // declare alguno de sus servicios (por label o archivo, o sea distinto del
 // nombre del proyecto, que es el grupo por defecto); si ninguno declara,
-// el del proyecto.
-func stackGroup(project string, members []catalog.Service) string {
+// el del proyecto. locked dice que sale del archivo.
+func stackGroup(project string, members []catalog.Service) (group string, locked bool) {
 	for _, m := range members {
 		if m.Group != project {
-			return m.Group
+			return m.Group, m.GroupFromFile
 		}
 	}
-	return members[0].Group
+	return members[0].Group, members[0].GroupFromFile
 }
 
 func stackCard(host, project string, members []catalog.Service, statusOf func(string) status.Status) serviceCard {
@@ -178,11 +229,11 @@ func stackCard(host, project string, members []catalog.Service, statusOf func(st
 		Name:        project,
 		Description: fmt.Sprintf("%d servicios", len(members)),
 		Icon:        sourceIcon(catalog.SourceCompose),
-		Group:       stackGroup(project, members),
 		Key:         stackKey(host, project),
 		StackHref:   stackPath(host, project),
 		State:       StateUp,
 	}
+	c.Group, c.GroupLocked = stackGroup(project, members)
 	var main *catalog.Service
 	for i := range members {
 		if members[i].URL == "" {
@@ -195,7 +246,7 @@ func stackCard(host, project string, members []catalog.Service, statusOf func(st
 		main = &members[i]
 	}
 	if main != nil {
-		c.Name, c.URL, c.Group = main.Name, main.URL, main.Group
+		c.Name, c.URL, c.Group, c.GroupLocked = main.Name, main.URL, main.Group, main.GroupFromFile
 		if main.Description != "" {
 			c.Description = fmt.Sprintf("%s · %d servicios", main.Description, len(members))
 		}

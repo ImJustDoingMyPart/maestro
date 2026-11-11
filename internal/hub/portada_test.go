@@ -38,7 +38,7 @@ func TestBuildGroups(t *testing.T) {
 		return status.Status{State: status.Up}
 	}
 
-	groups, hidden := buildGroups(services, statusOf, nil, nil)
+	groups, hidden := buildGroups(services, statusOf, uiPrefs{})
 	if hidden != 0 {
 		t.Errorf("hidden = %d", hidden)
 	}
@@ -69,9 +69,9 @@ func TestBuildGroups(t *testing.T) {
 
 	// Ocultar: un servicio de un stack de dos lo deja como tarjeta suelta;
 	// un stack entero desaparece; las claves que no existen no cuentan.
-	groups, hidden = buildGroups(services, statusOf, map[string]time.Time{
+	groups, hidden = buildGroups(services, statusOf, uiPrefs{Hidden: map[string]time.Time{
 		"service:media/qbittorrent": {}, "stack:vm/immich": {}, "service:no/existe": {},
-	}, nil)
+	}})
 	if hidden != 2 {
 		t.Errorf("hidden = %d, quería 2", hidden)
 	}
@@ -174,7 +174,7 @@ func TestStackGroup(t *testing.T) {
 		for _, g := range tt.groups {
 			ms = append(ms, catalog.Service{Group: g})
 		}
-		if got := stackGroup("juguete", ms); got != tt.want {
+		if got, _ := stackGroup("juguete", ms); got != tt.want {
 			t.Errorf("stackGroup(%v) = %q, quería %q", tt.groups, got, tt.want)
 		}
 	}
@@ -209,7 +209,7 @@ func TestCambiarNombre(t *testing.T) {
 
 	res, _ := c.Get(srv.URL + "/")
 	b := body(t, res)
-	for _, want := range []string{">Fotos<", ">Mi web<", "Del archivo", `data-rename-name="Fotos"`, "El nombre viene de maestro.yaml"} {
+	for _, want := range []string{">Fotos<", ">Mi web<", "Del archivo", `data-set-name="Fotos"`, "El nombre viene de maestro.yaml"} {
 		if !strings.Contains(b, want) {
 			t.Errorf("la portada no tiene %q", want)
 		}

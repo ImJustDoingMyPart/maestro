@@ -54,14 +54,18 @@ type serviceCard struct {
 	// servicio.
 	Members   []memberRow
 	StackHref string // pestaña Compose del stack
-	// NameLocked: el nombre viene de maestro.yaml y la interfaz no lo
-	// cambia.
-	NameLocked bool
+	// NameLocked y GroupLocked: el nombre o el grupo vienen de
+	// maestro.yaml y la interfaz no los cambia.
+	NameLocked  bool
+	GroupLocked bool
 }
 
 type group struct {
 	Name     string
 	Services []serviceCard
+	Otros    bool // las tarjetas sin grupo: no se renombra, borra ni mueve
+	Locked   bool // alguna tarjeta tiene el grupo del archivo: no se renombra ni borra
+	Empty    bool // creado desde la interfaz, sin tarjetas: solo se ve en el modo edición
 }
 
 type summary struct {

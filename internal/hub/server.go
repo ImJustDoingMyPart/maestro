@@ -79,6 +79,14 @@ type prefStore interface {
 	Unhide(ctx context.Context, key string) error
 	Names(ctx context.Context) (map[string]string, error)
 	SetName(ctx context.Context, key, name string, at time.Time) error
+	Groups(ctx context.Context) ([]string, error)
+	AddGroup(ctx context.Context, name string) error
+	CardGroups(ctx context.Context) (map[string]string, error)
+	SetCardGroup(ctx context.Context, key, group string, at time.Time) error
+	ResetCardGroup(ctx context.Context, key string) error
+	RenameGroup(ctx context.Context, from, to string, keys []string, at time.Time) error
+	DeleteGroup(ctx context.Context, name string, keys []string, at time.Time) error
+	SetGroupOrder(ctx context.Context, names []string) error
 }
 
 // monitorView es lo que los handlers necesitan del monitor. Lo cumple
@@ -132,6 +140,10 @@ func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon moni
 	private.HandleFunc("POST /hidden", s.hide)
 	private.HandleFunc("POST /hidden/show", s.unhide)
 	private.HandleFunc("POST /names", s.rename)
+	private.HandleFunc("POST /groups", s.addGroup)
+	private.HandleFunc("POST /groups/rename", s.renameGroup)
+	private.HandleFunc("POST /groups/delete", s.deleteGroup)
+	private.HandleFunc("POST /groups/move", s.moveCard)
 	// El ID de un servicio de compose lleva "/" ("media-stack/jellyfin"),
 	// así que va al final de la ruta con {id...}, que toma el resto. Por
 	// eso la acción va antes del ID (/logs/<id>) y no después: con
@@ -187,12 +199,8 @@ func (s *server) servicesData(ctx context.Context) pageData {
 	snap := s.poller.Snapshot()
 	data := pageData{Live: true}
 
-	hidden, err := s.prefs.Hidden(ctx)
-	if err != nil {
-		s.logger.Error("leer ocultos", "err", err) // se muestra todo
-	}
-	names := s.names(ctx)
-	data.Groups, data.HiddenCount = buildGroups(applyNames(snap.Services, names), s.mon.Status, hidden, names)
+	p := s.loadPrefs(ctx)
+	data.Groups, data.HiddenCount = buildGroups(applyNames(snap.Services, p.Names), s.mon.Status, p)
 	data.Summary = summarize(data.Groups)
 
 	for _, h := range snap.Hosts {
