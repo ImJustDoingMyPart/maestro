@@ -37,6 +37,11 @@ services:
     alert: false
   precio:
     description: "cuesta $5 y ${ esto no es variable"
+  immich/redis:
+    hidden: true
+stacks:
+  vm/immich: { name: Fotos, group: Archivos, hidden: false }
+groups: [Archivos, Red]
 `
 	cfg, err := Parse([]byte(data), env(map[string]string{
 		"VM_IP":    "192.168.0.11",
@@ -57,7 +62,10 @@ services:
 			},
 			"media-stack/jellyfin": {Alert: ptr(false)},
 			"precio":               {Description: "cuesta $5 y ${ esto no es variable"},
+			"immich/redis":         {Hidden: ptr(true)},
 		},
+		Stacks: map[string]Stack{"vm/immich": {Name: "Fotos", Group: "Archivos", Hidden: ptr(false)}},
+		Groups: []string{"Archivos", "Red"},
 	}
 	if !reflect.DeepEqual(cfg, want) {
 		t.Errorf("Parse:\n got %#v\nwant %#v", cfg, want)
@@ -169,6 +177,16 @@ func TestParseErrores(t *testing.T) {
 			want: []string{"services.b.check.push", "mismo token que a"},
 		},
 		{
+			name: "stacks con clave mala y host inexistente",
+			data: "stacks:\n  immich: {name: Fotos}\n  lxc/web: {hidden: true}\n",
+			want: []string{"stacks.immich: la clave va como", `stacks.lxc/web: el host "lxc"`},
+		},
+		{
+			name: "groups vacío, repetido y Otros",
+			data: "groups: [Red, \"\", Red, otros]\n",
+			want: []string{"groups[1]: nombre vacío", `"Red" está repetido`, "va siempre al final"},
+		},
+		{
 			name: "YAML roto",
 			data: "hosts: [\n",
 			want: []string{"yaml"},
@@ -214,7 +232,7 @@ func TestTokenNoSeFiltra(t *testing.T) {
 func TestFileServices(t *testing.T) {
 	cfg := &Config{Services: map[string]Service{
 		"adguard":    {Name: "AdGuard", Host: "vm", Unit: "a.service", Check: &Check{HTTP: "http://a/", Expect: 200}},
-		"p/s":        {Alert: ptr(false), Ignore: ptr(true), Separate: ptr(true)},
+		"p/s":        {Alert: ptr(false), Ignore: ptr(true), Separate: ptr(true), Hidden: ptr(true)},
 		"sin-checks": {Group: "Red"},
 		"restic":     {Check: &Check{Push: "0123456789abcdef", Interval: "96h"}},
 		"db": {Check: &Check{
@@ -226,7 +244,7 @@ func TestFileServices(t *testing.T) {
 			Name: "AdGuard", Host: "vm", Unit: "a.service",
 			Checks: []catalog.Check{{Kind: catalog.CheckHTTP, Target: "http://a/", Expect: 200}},
 		},
-		"p/s":        {Alert: ptr(false), Ignore: ptr(true), Separate: ptr(true)},
+		"p/s":        {Alert: ptr(false), Ignore: ptr(true), Separate: ptr(true), Hidden: ptr(true)},
 		"sin-checks": {Group: "Red"}, // Checks nil: no pisa los checks de los labels
 		"restic": {Checks: []catalog.Check{
 			{Kind: catalog.CheckPush, Target: "0123456789abcdef", Interval: 96 * time.Hour},

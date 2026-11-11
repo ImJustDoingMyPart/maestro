@@ -27,6 +27,12 @@ type Config struct {
 	// Services pisan servicios de compose (clave "<proyecto>/<servicio>") o
 	// declaran servicios propios (clave sin "/"). Ver catalog.FileService.
 	Services map[string]Service `yaml:"services"`
+	// Stacks pisan la tarjeta de un stack de compose en la portada; la
+	// clave es "<host>/<proyecto>".
+	Stacks map[string]Stack `yaml:"stacks"`
+	// Groups fija el orden de los grupos de la portada. Los que no están
+	// van después, por nombre; "Otros" siempre al final.
+	Groups []string `yaml:"groups"`
 	// APIToken deja pedir la API (el informe para IA) con
 	// "Authorization: Bearer <token>", sin sesión, por ejemplo con curl
 	// desde un agente. Vacío: la API solo con sesión. Es un secreto: va en
@@ -55,6 +61,15 @@ func (h Host) LogValue() slog.Value {
 	return slog.GroupValue(slog.String("agent", h.Agent), slog.String("token", "[censurado]"))
 }
 
+// Stack es una entrada de "stacks:": nombre, grupo y si se oculta la
+// tarjeta de un stack. Lo que se declara acá no se cambia desde la
+// interfaz.
+type Stack struct {
+	Name   string `yaml:"name"`
+	Group  string `yaml:"group"`
+	Hidden *bool  `yaml:"hidden"`
+}
+
 // Service es una entrada de "services:".
 type Service struct {
 	Name        string `yaml:"name"`
@@ -70,6 +85,9 @@ type Service struct {
 	Ignore *bool `yaml:"ignore"`
 	// Separate saca a un servicio de compose de la tarjeta de su stack.
 	Separate *bool `yaml:"separate"`
+	// Hidden oculta (true) la tarjeta en la portada o la fija como
+	// visible (false). Distinto de ignore: se sigue vigilando.
+	Hidden *bool `yaml:"hidden"`
 }
 
 // Check son los checks de un servicio: uno HTTP, uno TCP y uno push como
@@ -209,6 +227,29 @@ func (c *Config) validate() error {
 		add("api_token: tiene que tener al menos %d caracteres (openssl rand -hex 32)", MinAPITokenLen)
 	}
 
+	for _, key := range sortedKeys(c.Stacks) {
+		host, project, ok := strings.Cut(key, "/")
+		if !ok || host == "" || project == "" || strings.Contains(project, "/") {
+			add("stacks.%s: la clave va como <host>/<proyecto>", key)
+			continue
+		}
+		if _, ok := c.Hosts[host]; !ok {
+			add("stacks.%s: el host %q no está en hosts", key, host)
+		}
+	}
+	seenGroups := map[string]bool{}
+	for i, g := range c.Groups {
+		switch {
+		case strings.TrimSpace(g) == "":
+			add("groups[%d]: nombre vacío", i)
+		case seenGroups[g]:
+			add("groups: %q está repetido", g)
+		case strings.EqualFold(g, "Otros"):
+			add("groups: \"Otros\" es el grupo de las tarjetas sin grupo y va siempre al final")
+		}
+		seenGroups[g] = true
+	}
+
 	pushTokens := map[string]string{} // token → primer servicio que lo usa
 	for _, key := range sortedKeys(c.Services) {
 		s := c.Services[key]
@@ -315,6 +356,7 @@ func (c *Config) FileServices() map[string]catalog.FileService {
 			Alert:       s.Alert,
 			Ignore:      s.Ignore,
 			Separate:    s.Separate,
+			Hidden:      s.Hidden,
 		}
 		if s.Check != nil {
 			fs.Checks = s.Check.checks()
