@@ -27,7 +27,16 @@ type Config struct {
 	// Services pisan servicios de compose (clave "<proyecto>/<servicio>") o
 	// declaran servicios propios (clave sin "/"). Ver catalog.FileService.
 	Services map[string]Service `yaml:"services"`
+	// APIToken deja pedir la API (el informe para IA) con
+	// "Authorization: Bearer <token>", sin sesión, por ejemplo con curl
+	// desde un agente. Vacío: la API solo con sesión. Es un secreto: va en
+	// una variable ${...}.
+	APIToken string `yaml:"api_token"`
 }
+
+// MinAPITokenLen es el largo mínimo del token de la API: da acceso a los
+// informes, con su compose censurado y sus logs.
+const MinAPITokenLen = 32
 
 // Host es un host con agent.
 type Host struct {
@@ -194,6 +203,10 @@ func (c *Config) validate() error {
 		if h.Token == "" {
 			add("hosts.%s.token: falta (va en una variable de entorno, ${...})", name)
 		}
+	}
+
+	if c.APIToken != "" && len(c.APIToken) < MinAPITokenLen {
+		add("api_token: tiene que tener al menos %d caracteres (openssl rand -hex 32)", MinAPITokenLen)
 	}
 
 	pushTokens := map[string]string{} // token → primer servicio que lo usa

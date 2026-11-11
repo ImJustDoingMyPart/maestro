@@ -22,7 +22,7 @@ func TestCrearPrimerUsuario(t *testing.T) {
 	t.Cleanup(func() { st.Close() })
 	logger := slog.New(slog.DiscardHandler)
 	snap := Snapshot{}
-	h, err := newHandler(fixedSnapshot(snap), nil, nil, &fakeMonitor{snap: snap}, st, auth.NewSessions(st, false, logger), logger)
+	h, err := newHandler(fixedSnapshot(snap), nil, nil, &fakeMonitor{snap: snap}, st, auth.NewSessions(st, false, logger), testAPIToken, logger)
 	if err != nil {
 		t.Fatal(err)
 	}

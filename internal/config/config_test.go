@@ -89,6 +89,11 @@ func TestParseErrores(t *testing.T) {
 			want: []string{"hostz", "line 1"},
 		},
 		{
+			name: "token de la API corto",
+			data: "api_token: ${T}\n",
+			want: []string{"api_token", "32"},
+		},
+		{
 			name: "clave desconocida en un servicio",
 			data: "services:\n  router:\n    nmae: Router\n",
 			want: []string{"nmae", "line 3"},
@@ -246,6 +251,7 @@ func TestEjemploDelRepo(t *testing.T) {
 		"MAESTRO_TOKEN_VM":      "a",
 		"MAESTRO_TOKEN_ADGUARD": "b",
 		"MAESTRO_PUSH_RESTIC":   "0123456789abcdef",
+		"MAESTRO_API_TOKEN":     "0123456789abcdef0123456789abcdef",
 	}))
 	if err != nil {
 		t.Fatal(err)

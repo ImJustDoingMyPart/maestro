@@ -7,6 +7,11 @@
 # Una clave desconocida también es un error. Dentro de un mapa entre llaves
 # ({ ... }) la variable va entre comillas: token: "${MAESTRO_TOKEN_VM}".
 
+# Token para pedir la API sin sesión, por ejemplo el informe para IA con
+#   curl -H "Authorization: Bearer $MAESTRO_API_TOKEN" https://<maestro>/api/services/<id>/report
+# Opcional; mínimo 32 caracteres (openssl rand -hex 32).
+api_token: ${MAESTRO_API_TOKEN}
+
 hosts:
   vm:
     agent: http://192.168.0.11:9101

@@ -59,7 +59,7 @@ func Serve(ctx context.Context, opts Options, logger *slog.Logger) error {
 	poller.onPoll = mon.Update
 	go poller.Run(ctx)
 
-	h, err := newHandler(poller, poller, poller, mon, st, auth.NewSessions(st, !opts.Dev, logger), logger)
+	h, err := newHandler(poller, poller, poller, mon, st, auth.NewSessions(st, !opts.Dev, logger), cfg.APIToken, logger)
 	if err != nil {
 		return err
 	}
@@ -99,16 +99,17 @@ type server struct {
 	prefs    prefStore
 	runs     *runStore
 	sessions *auth.Sessions
+	apiToken string // vacío: la API solo con sesión
 	pages    pages
 	logger   *slog.Logger
 }
 
-func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon monitorView, prefs prefStore, sessions *auth.Sessions, logger *slog.Logger) (http.Handler, error) {
+func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon monitorView, prefs prefStore, sessions *auth.Sessions, apiToken string, logger *slog.Logger) (http.Handler, error) {
 	p, err := parsePages(web.Templates, "services", "service", "stack", "hardware", "login", "hidden")
 	if err != nil {
 		return nil, err
 	}
-	s := &server{poller: poller, logs: logs, stacks: stacks, mon: mon, prefs: prefs, runs: newRunStore(), sessions: sessions, pages: p, logger: logger}
+	s := &server{poller: poller, logs: logs, stacks: stacks, mon: mon, prefs: prefs, runs: newRunStore(), sessions: sessions, apiToken: apiToken, pages: p, logger: logger}
 
 	mux := http.NewServeMux()
 	mux.Handle("GET /static/", http.StripPrefix("/static/", staticHandler()))
@@ -119,6 +120,9 @@ func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon moni
 	// Push: lo llaman scripts, sin sesión. El token es la credencial.
 	mux.HandleFunc("GET /push/{token}", s.push)
 	mux.HandleFunc("POST /push/{token}", s.push)
+	// API: sesión o token de la API. Fuera de RequireLogin, que
+	// redirigiría al login en vez de responder 401.
+	mux.HandleFunc("GET /api/services/{rest...}", s.serviceReport)
 
 	private := http.NewServeMux()
 	private.HandleFunc("GET /{$}", s.servicesPage)
