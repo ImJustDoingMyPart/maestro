@@ -55,8 +55,14 @@ func Serve(ctx context.Context, opts Options, logger *slog.Logger) error {
 	}
 	go mon.Run(ctx)
 
+	rec := newRecorder(st, logger)
+	go rec.Run(ctx)
+
 	poller := NewPoller(cfg, logger)
-	poller.onPoll = mon.Update
+	poller.onPoll = func(snap Snapshot) {
+		mon.Update(snap)
+		rec.Record(snap)
+	}
 	if ui, err := externalServices(ctx, st); err != nil {
 		return fmt.Errorf("servicios externos: %w", err)
 	} else if len(ui) > 0 {
@@ -132,6 +138,7 @@ type server struct {
 	apiToken string          // vacío: la API solo con sesión
 	ui       uiServiceSetter // nil si el poller no recibe externos (tests con foto fija)
 	shown    shownSetter     // ídem, para lo descubierto que se muestra
+	metrics  metricsStore    // nil si la base no guarda métricas (tests con prefs falsas)
 	fileKeys map[string]bool // claves de services: en el archivo
 	layout   fileLayout      // stacks: y groups: del archivo
 	pages    pages
@@ -149,6 +156,9 @@ func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon moni
 	}
 	if u, ok := poller.(shownSetter); ok {
 		s.shown = u
+	}
+	if m, ok := prefs.(metricsStore); ok {
+		s.metrics = m
 	}
 	if f, ok := poller.(interface{ FileKeys() map[string]bool }); ok {
 		s.fileKeys = f.FileKeys()
@@ -174,6 +184,7 @@ func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon moni
 	private.HandleFunc("GET /{$}", s.servicesPage)
 	private.HandleFunc("GET /fragments/services", s.servicesFragment)
 	private.HandleFunc("GET /hardware", s.hardwarePage)
+	private.HandleFunc("GET /data/metrics", s.metricsHandler)
 	private.HandleFunc("GET /hidden", s.hiddenPage)
 	private.HandleFunc("POST /hidden", s.hide)
 	private.HandleFunc("POST /hidden/show", s.unhide)
