@@ -92,6 +92,13 @@ type FileService struct {
 	Alert       *bool
 	Ignore      *bool
 	Separate    *bool
+	// Hidden oculta (true) o fija como visible (false) la tarjeta en la
+	// portada. No cambia nada en el catálogo: lo aplica el hub.
+	Hidden *bool
+	// FromUI marca un servicio propio creado desde la interfaz, no desde el
+	// archivo: sus campos no cuentan como "del archivo" (NameFromFile y
+	// los demás quedan en false) y la interfaz lo puede editar y borrar.
+	FromUI bool
 }
 
 // Service es un servicio ya combinado, listo para mostrar. Los slices sin
@@ -125,8 +132,15 @@ type Service struct {
 	// va en una tarjeta propia.
 	Separate bool
 	// NameFromFile dice que Name viene de maestro.yaml: un nombre puesto
-	// desde la interfaz no lo pisa (archivo > interfaz > labels).
-	NameFromFile bool
+	// desde la interfaz no lo pisa (archivo > interfaz > labels). Lo mismo
+	// GroupFromFile y SeparateFromFile.
+	NameFromFile     bool
+	GroupFromFile    bool
+	SeparateFromFile bool
+	// Hidden es el hidden de maestro.yaml; nil si no lo declara.
+	Hidden *bool
+	// FromUI: servicio propio creado desde la interfaz (ver FileService).
+	FromUI bool
 }
 
 // Catalog combina las fuentes. Guarda qué claves de labels desconocidas ya
@@ -198,9 +212,12 @@ func (c *Catalog) Build(containers []Container, file map[string]FileService) []S
 			continue
 		}
 		s := Service{
-			ID: key, Source: SourceExternal, Name: cmp.Or(fs.Name, key), NameFromFile: fs.Name != "",
+			ID: key, Source: SourceExternal, Name: cmp.Or(fs.Name, key),
 			Group: fs.Group, Icon: fs.Icon, URL: fs.URL, Description: fs.Description,
-			Host: fs.Host, Unit: fs.Unit,
+			Host: fs.Host, Unit: fs.Unit, FromUI: fs.FromUI,
+		}
+		if !fs.FromUI {
+			s.NameFromFile, s.GroupFromFile, s.Hidden = fs.Name != "", fs.Group != "", fs.Hidden
 		}
 		if fs.Unit != "" {
 			s.Source = SourceSystemd
@@ -269,6 +286,8 @@ func (c *Catalog) fromContainers(id string, reps []Container, fs FileService) (S
 	s.Name = cmp.Or(fs.Name, labels["maestro.name"], labels["homepage.name"], s.Name)
 	s.NameFromFile = fs.Name != ""
 	s.Group = cmp.Or(fs.Group, labels["maestro.group"], labels["homepage.group"], s.Group)
+	s.GroupFromFile = fs.Group != ""
+	s.Hidden = fs.Hidden
 	s.Icon = pick(fs.Icon, "maestro.icon", "homepage.icon")
 	s.URL = pick(fs.URL, "maestro.url", "homepage.href")
 	s.Description = pick(fs.Description, "maestro.description", "homepage.description")
@@ -301,6 +320,7 @@ func (c *Catalog) fromContainers(id string, reps []Container, fs FileService) (S
 	}
 	if fs.Separate != nil {
 		s.Separate = *fs.Separate
+		s.SeparateFromFile = true
 	}
 	return s, true
 }

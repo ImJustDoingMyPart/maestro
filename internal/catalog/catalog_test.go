@@ -210,7 +210,7 @@ func TestBuild(t *testing.T) {
 			file:       map[string]FileService{"router": {Name: "Router", Group: "Red"}},
 			want: []Service{
 				{ID: "router", Source: SourceContainer, Name: "router", Host: "vm", Containers: []Container{{Host: "vm", Name: "router"}}},
-				{ID: "router", Source: SourceExternal, Name: "Router", Group: "Red", NameFromFile: true},
+				{ID: "router", Source: SourceExternal, Name: "Router", Group: "Red", NameFromFile: true, GroupFromFile: true},
 			},
 		},
 		{
@@ -235,7 +235,7 @@ func TestBuild(t *testing.T) {
 				},
 			},
 			want: []Service{{
-				ID: "adguard", Source: SourceSystemd, Name: "AdGuard Home", NameFromFile: true, Group: "Red", Host: "adguard",
+				ID: "adguard", Source: SourceSystemd, Name: "AdGuard Home", NameFromFile: true, GroupFromFile: true, Group: "Red", Host: "adguard",
 				Unit: "AdGuardHome.service", URL: "https://adguard.example.org",
 				Checks: []Check{{Kind: CheckHTTP, Target: "http://10.0.0.2/"}}, Alert: true,
 			}},
@@ -243,7 +243,7 @@ func TestBuild(t *testing.T) {
 		{
 			name: "servicio externo del archivo, sin nombre usa la clave",
 			file: map[string]FileService{"router": {Group: "Red"}},
-			want: []Service{{ID: "router", Source: SourceExternal, Name: "router", Group: "Red"}},
+			want: []Service{{ID: "router", Source: SourceExternal, Name: "router", Group: "Red", GroupFromFile: true}},
 		},
 		{
 			name:       "check de labels activa la alerta",
@@ -388,8 +388,36 @@ func TestBuild(t *testing.T) {
 					s.Separate = true
 					return s
 				}(),
-				composeService("p", "b", compose("b", "p", "b", map[string]string{"maestro.separate": "true"})),
+				func() Service {
+					s := composeService("p", "b", compose("b", "p", "b", map[string]string{"maestro.separate": "true"}))
+					s.SeparateFromFile = true
+					return s
+				}(),
 			},
+		},
+		{
+			name: "hidden del archivo pasa al servicio, en compose y en propios",
+			containers: []Container{compose("a", "p", "a", nil)},
+			file:       map[string]FileService{"p/a": {Hidden: ptr(true)}, "router": {Hidden: ptr(false)}},
+			want: []Service{
+				{ID: "router", Source: SourceExternal, Name: "router", Hidden: ptr(false)},
+				func() Service {
+					s := composeService("p", "a", compose("a", "p", "a", nil))
+					s.Hidden = ptr(true)
+					return s
+				}(),
+			},
+		},
+		{
+			name: "servicio creado desde la interfaz: nada cuenta como del archivo",
+			file: map[string]FileService{"router": {
+				Name: "Router", Group: "Red", Hidden: ptr(true), FromUI: true,
+				Checks: []Check{{Kind: CheckTCP, Target: "192.168.0.1:80"}},
+			}},
+			want: []Service{{
+				ID: "router", Source: SourceExternal, Name: "Router", Group: "Red", FromUI: true,
+				Checks: []Check{{Kind: CheckTCP, Target: "192.168.0.1:80"}}, Alert: true,
+			}},
 		},
 		{
 			name: "orden por grupo, nombre e ID",
@@ -402,7 +430,7 @@ func TestBuild(t *testing.T) {
 			file: map[string]FileService{"ext": {Group: "a-proj", Name: "zz"}},
 			want: []Service{
 				composeService("a-proj", "m", compose("m", "a-proj", "m", nil)),
-				{ID: "ext", Source: SourceExternal, Name: "zz", Group: "a-proj", NameFromFile: true},
+				{ID: "ext", Source: SourceExternal, Name: "zz", Group: "a-proj", NameFromFile: true, GroupFromFile: true},
 				composeService("b-proj", "a", compose("a", "b-proj", "a", nil)),
 				func() Service {
 					s := composeService("c-proj", "x", compose("x1", "c-proj", "x", map[string]string{"maestro.group": "b-proj", "maestro.name": "a"}))
