@@ -5,9 +5,9 @@ Panel único para un servidor chico administrado por una persona: una portada co
 Es un solo binario de Go con dos modos:
 
 - `maestro serve`: el **hub**. Web, login y base SQLite. No toca el socket de Docker: le pide los datos a los agents.
-- `maestro agent`: uno por **host**. Lee Docker, edita y levanta los stacks de compose, y responde solo al hub, con un token.
+- `maestro agent`: uno por **host**. Lee Docker (si hay), `/proc`, `/sys` y systemd, edita y levanta los stacks de compose, y responde solo al hub, con un token.
 
-Estado: etapa 5 (informe para IA). Hay portada con login y lista de servicios desde Docker; el semáforo combina el estado de los contenedores con checks HTTP, TCP y push que corren en el hub, y cada cambio de estado queda guardado. Cada servicio tiene su página con el historial de sus checks, la línea de tiempo (logs en vivo con los cambios de estado intercalados) y, si es de compose, la pestaña Compose para editar el `compose.yml` y el `.env` y correr `up`, `down`, `restart` y `pull`. Cada servicio da además un informe en Markdown, con los secretos censurados, para pegarlo en un agente de IA.
+Estado: etapa 7 (hardware, métricas y descubrimiento). Además de lo de abajo, cada host con agent tiene su hardware (CPU, RAM, red, discos, temperaturas, SMART) con historial, cada servicio de Docker su pestaña Métricas, y las unidades y timers de systemd y las LXC y VMs de Proxmox llegan a la bandeja de Descubiertos. Lo de etapas anteriores: Hay portada con login y lista de servicios desde Docker; el semáforo combina el estado de los contenedores con checks HTTP, TCP y push que corren en el hub, y cada cambio de estado queda guardado. Cada servicio tiene su página con el historial de sus checks, la línea de tiempo (logs en vivo con los cambios de estado intercalados) y, si es de compose, la pestaña Compose para editar el `compose.yml` y el `.env` y correr `up`, `down`, `restart` y `pull`. Cada servicio da además un informe en Markdown, con los secretos censurados, para pegarlo en un agente de IA.
 
 ## Desarrollo
 
@@ -79,7 +79,7 @@ Tarjetas por grupo. Los grupos van en el orden que se les dio (arrastrando o con
 - **Ocultar.** Ocultar solo la saca de la portada: el estado se sigue calculando y la página del servicio sigue existiendo. `/hidden` lista lo oculto, con un botón para mostrarlo de nuevo. Es distinto de `maestro.ignore`, que saca al servicio del catálogo.
 - **Modo edición** (botón "Editar" arriba): las tarjetas se arrastran dentro de su grupo y de un grupo a otro, y los grupos por su manija; en el celular, manteniendo apretado un momento. Cada grupo tiene botones para cambiarle el nombre (si ya existe uno con el nombre nuevo, los dos quedan en uno) y borrarlo (sus tarjetas pasan a Otros), y abajo están "Nuevo grupo" (aparece vacío al final), "Agregar servicio externo", "Descubiertos", "Ocultos" y "Exportar a maestro.yaml". Mientras dura, la portada no se refresca ni los links navegan.
 - **Servicios externos** (`/externals/new`): lo que no se descubre (el router, un sitio web), con un check HTTP o TCP validado igual que en el archivo. El check push queda solo en el archivo: su token es un secreto. Tampoco se aceptan URLs con usuario y contraseña.
-- **Descubiertos** (`/discovered`): las unidades y timers de systemd y las LXC y VMs de Proxmox que encuentren los agents no van solos a la portada; "Mostrar" las pasa. Hasta que los agents las reporten (etapa 7) la bandeja está vacía; `--demo` la muestra con datos inventados.
+- **Descubiertos** (`/discovered`): las unidades y timers de systemd y las LXC y VMs de Proxmox que encuentran los agents no van solos a la portada; "Mostrar" las pasa. Ver "Descubiertos" abajo.
 - **Exportar** (`/export`, o `/export.yaml` para bajarlo): lo configurado desde la interfaz como secciones de `maestro.yaml`, para versionarlo y rearmar el hub sin perderlo. No trae hosts ni tokens: la interfaz no guarda secretos. El orden de las tarjetas dentro de cada grupo no se exporta.
 
 Todo lo que se configura desde la interfaz se guarda en la base del hub y pisa a los labels, pero no al archivo: si `maestro.yaml` fija un nombre, un grupo, `separate`, `hidden` o el orden de los grupos, el control correspondiente queda deshabilitado (y el hub responde 409 si se lo pide igual).
@@ -96,6 +96,27 @@ Tocar una tarjeta de la portada lleva a `/services/<id>` (por ejemplo `/services
 - Un contenedor que escribe más de 2000 líneas por segundo no ahoga al navegador: las de más se omiten y se avisa cuántas.
 - El visor guarda las últimas 10 000 líneas y dibuja solo las que se ven. Detecta el nivel de cada línea (`ERROR`, `level=warn`, `"level":"error"`, `[error]`, los niveles numéricos de pino) para filtrar por avisos o errores, busca sin distinguir mayúsculas y saca los códigos de color ANSI.
 - Al subir para leer se pausa el avance automático (mientras tanto guarda hasta 50 000 líneas para que lo que se lee no se borre); el botón del costado vuelve al final. Tocar una línea la muestra entera, con la fecha completa y el JSON indentado.
+
+## Hardware y métricas
+
+El agent toma una muestra cada 15 segundos y el hub guarda cada una (una sola vez, aunque la pida dos) como series de tiempo en su base.
+
+- **Hardware** (`/hardware`): por host, la CPU, la RAM, el swap, la carga y la temperatura más alta en el momento; gráficos de CPU, memoria, red (por interfaz), discos (lectura y escritura por disco entero) y temperaturas (por sensor de hwmon); el espacio de cada sistema de archivos; el SMART de los discos; en un Proxmox, sus LXC y VMs con su CPU y RAM; y los contenedores que más memoria usan, con link a su servicio.
+- **Métricas** (pestaña de la página de un servicio de Docker, `/metrics/<id>`): CPU, memoria, red y disco de cada contenedor, una línea por réplica. Los números son los de `docker stats`: la CPU en porcentaje de un núcleo (200 % son dos núcleos llenos) y la memoria sin la caché de archivos inactiva.
+- Los gráficos son de [uPlot](https://github.com/leeoniya/uPlot); el rango (1 h a 1 año) se elige arriba, vale para toda la página y el navegador lo recuerda. Se refrescan cada minuto. Un hueco en los datos (el agent caído) corta la línea en vez de unir los extremos. `GET /data/metrics?range=24h&key=…` da los datos, con sesión.
+- Cada muestra se suma en tres resoluciones: 1 minuto (se guarda 26 horas), 10 minutos (15 días) y 1 hora (400 días; 90 para los contenedores, que son muchas más series). Hasta 24 h se dibuja por minuto, 7 días cada 10 minutos y más, por hora; cada punto es el promedio del intervalo (también se guarda el máximo).
+- Las interfaces de red que crean Docker y Proxmox para cada contenedor o invitado (`veth`, `tap`, `fwbr`, `docker0`, `br-…`) no se muestran: van y vienen, y su tráfico ya pasa por la interfaz física o el puente principal. Los sistemas de archivos son los de disco (ext4, xfs, btrfs, zfs…), uno por dispositivo. Dos sensores con el mismo chip y nombre (dos módulos de RAM iguales) llevan " (2)".
+- **SMART** (`--smart`, como root): `smartctl -n standby` cada 10 minutos, así un disco en reposo no se despierta para leerlo. Se muestra la autoevaluación, la temperatura, las horas encendido y los sectores reasignados, pendientes e incorregibles (en NVMe, los errores de medio); con sectores malos el disco sale degradado aunque la autoevaluación pase. Una VM no ve el SMART de los discos físicos: lo lee el agent del host de Proxmox.
+
+## Descubiertos
+
+El agent lee por D-Bus (el bus del sistema, que deja leer sin ser root) los servicios y timers de systemd cargados y, con `--proxmox` en un host de Proxmox, las LXC y VMs con `pvesh` cada 30 segundos. Todo va a la bandeja (`/discovered`), por host, con lo que falla primero y un filtro.
+
+- **Estado**: un servicio `active` está arriba; `failed` está caído con el motivo (`falló (exit 1)`); `inactive`, caído ("detenido"); arrancando o deteniéndose, sin datos. Un timer se juzga por cómo terminó la última corrida del servicio que dispara (`última corrida falló (exit 1)`) y sale degradado si el timer mismo no está activo. Una LXC o VM prendida está arriba, apagada está caída y pausada, degradada. Un script con timer (Restic) se vigila así, sin push.
+- **Mostrar** la pasa a la portada como un servicio más: se renombra, se mueve y se ordena como cualquier tarjeta, sus cambios de estado se guardan y tiene su página (`/services/found:<host>/<tipo>/<nombre>`, por ejemplo `found:vm/timer/restic-backup.timer` o `found:pve/lxc/102`; las LXC y VMs se nombran por VMID, que no cambia). "Volver a la bandeja" (o "Ocultar") la saca.
+- **Una unidad que falla avisa aunque no esté en la portada**: arriba de la portada aparece cuántas hay, con link a la bandeja.
+- Una unidad declarada en el archivo (`unit` y `host` en `services`) toma su estado del mismo lugar; si el agent responde y no la tiene, sale caída ("no existe en el host").
+- El journal de las unidades todavía no se muestra.
 
 ## Checks y estado
 
@@ -211,13 +232,30 @@ Una clave desconocida es un error al arrancar, igual que una variable `${VAR}` q
 `deploy/compose.yml` es un ejemplo con los dos contenedores en el mismo host:
 
 - `hub` en la red del proxy (por ejemplo, `caddy_net`), sin socket de Docker.
-- `agent` con `network_mode: host`, el socket montado y el grupo `docker` del host por `group_add`, y la carpeta de los stacks montada **en la misma ruta que en el host**: los labels de compose dan la ruta del host, y `docker compose` le pasa al daemon las rutas de los bind mounts tal cual. Corre con el uid y el gid del dueño de esa carpeta (`user:`), para que lo que escribe y los commits queden como suyos.
+- `agent` con `network_mode: host`, el socket montado y el grupo `docker` del host por `group_add`, el socket de D-Bus del sistema (para systemd), la raíz del host en `/hostfs` de solo lectura (para el espacio de los discos) y la carpeta de los stacks montada **en la misma ruta que en el host**: los labels de compose dan la ruta del host, y `docker compose` le pasa al daemon las rutas de los bind mounts tal cual. Corre con el uid y el gid del dueño de esa carpeta (`user:`), para que lo que escribe y los commits queden como suyos.
 
 Son dos imágenes del mismo `Dockerfile`: el hub (por defecto, `distroless/static`) y el agent (`--target agent`, Alpine con el CLI de Docker, el plugin de compose y git). Los dos corren como usuario sin privilegios, con el sistema de archivos de solo lectura y sin capacidades. Mientras no hay ningún usuario, la pantalla de login ofrece crear el primero (usuario, contraseña de 12 caracteres o más y repetirla) y entra con él; apenas existe, esa pantalla desaparece y `/setup` se niega. La creación es atómica: de dos pedidos a la vez, gana uno. Queda en el log con la IP. Hasta crearlo, cualquiera que llegue a la página puede hacerlo: conviene crearlo enseguida después del primer despliegue. También se puede crear, o cambiar la contraseña, por la terminal:
 
 ```sh
 docker compose run --rm hub passwd --db /data/maestro.db --user <usuario>
 ```
+
+### Agent en un host sin Docker (LXC, Proxmox)
+
+El binario es estático: se copia al host y corre como servicio de systemd, sin Docker. [`deploy/maestro-agent.service`](deploy/maestro-agent.service) es la unidad, con las instrucciones arriba. Las opciones del agent:
+
+| Opción | Por defecto | Qué hace |
+|---|---|---|
+| `--listen` | `127.0.0.1:9101` | dónde escucha |
+| `--docker` | `true` | lee Docker (contenedores, logs, stats y stacks); `false` en un host sin Docker |
+| `--stacks-dir`, `--git-author` | | stacks de compose (necesita Docker) |
+| `--systemd` | `true` | servicios y timers por el bus del sistema; en un contenedor hay que montar `/run/dbus/system_bus_socket` |
+| `--proxmox` | `false` | LXC y VMs con `pvesh` (en el host de Proxmox, como root) |
+| `--smart` | `false` | SMART con `smartctl` (como root) |
+| `--hostfs` | | en un contenedor, dónde está montada la raíz del host (`/:/hostfs:ro`): los sistemas de archivos se buscan ahí |
+| `--proc`, `--sys` | `/proc`, `/sys` | de dónde lee el host. En un contenedor con `network_mode: host`, el `/proc` propio ya da la CPU, la memoria, los discos y la red del host |
+
+El token va siempre en `MAESTRO_AGENT_TOKEN` (no en un flag: se vería en `ps`). En el hub, cada host es una entrada de `hosts:` con la URL y el token.
 
 ## Seguridad
 
@@ -226,6 +264,8 @@ docker compose run --rm hub passwd --db /data/maestro.db --user <usuario>
 - El agent no se publica y exige un token Bearer. El token se compara en tiempo constante y no se muestra en los logs.
 - Montar el socket con `:ro` no hace que la API de Docker sea de solo lectura. El agent levanta y baja stacks y edita sus compose: quien controle el agent (o el hub, que le habla con el token) tiene el equivalente a root en ese host. Por eso el login, el agent sin publicar y el acceso solo detrás del proxy.
 - El agent solo lee y escribe el `compose.yml` y el `.env` de un proyecto, y solo dentro de `--stacks-dir`: una ruta que, resueltos los symlinks, cae afuera se rechaza.
+- El agent de un contenedor monta la raíz del host de solo lectura, para medir el espacio de los discos: lee lo que su usuario puede leer, nada más. Con el socket de Docker ya podía mucho más.
+- El agent de un host de Proxmox corre como root (lo piden `pvesh` y `smartctl`) y solo hace lecturas: sin Docker no edita ni levanta nada.
 - El `.env` viaja del agent al navegador para editarlo: lleva secretos, y por eso esa página solo existe con sesión iniciada.
 - El informe para IA sale censurado siempre. Con el token de la API se puede pedir sin sesión: el token se compara en tiempo constante y uno equivocado queda en el log con la IP.
 - Las líneas de log se insertan como texto, nunca como HTML: un contenedor no puede meter marcado en la página.

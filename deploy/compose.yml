@@ -35,13 +35,13 @@ services:
       target: agent
     image: maestro-agent:dev
     restart: unless-stopped
-    # Red del host: hace falta para leer las métricas de red del host
-    # (etapa 6) y para que el hub, desde caddy_net, llegue por la IP LAN.
+    # Red del host: hace falta para leer las métricas de red del host y para que el hub, desde caddy_net, llegue por la IP LAN.
     network_mode: host
     command:
       - agent
       - --listen=${AGENT_LISTEN:?falta en .env, p. ej. 192.168.0.11:9101}
       - --stacks-dir=${STACKS_DIR:?falta en .env, p. ej. /home/anon/docker}
+      - --hostfs=/hostfs
     environment:
       MAESTRO_AGENT_TOKEN: ${MAESTRO_AGENT_TOKEN:?falta en .env}
     # Corre con el uid y el grupo del dueño de los stacks, para que los
@@ -60,6 +60,13 @@ services:
       # está cada compose.yml con la ruta del host, y docker compose le pasa
       # al daemon las rutas de los bind mounts tal cual.
       - ${STACKS_DIR}:${STACKS_DIR}
+      # Unidades y timers de systemd: el bus del sistema deja leerlos sin
+      # ser root.
+      - /run/dbus/system_bus_socket:/run/dbus/system_bus_socket:ro
+      # La raíz del host, de solo lectura, para el espacio de los discos.
+      # /proc, la red y los discos ya son los del host (network_mode: host
+      # y /proc no está aislado para esos archivos).
+      - /:/hostfs:ro
     tmpfs:
       - /tmp    # HOME y DOCKER_CONFIG de la imagen
     read_only: true

@@ -1,0 +1,38 @@
+# Agent de Maestro en un host sin Docker: una LXC o el host de Proxmox.
+#
+# Instalación (como root):
+#   install -m 755 maestro /usr/local/bin/maestro    # CGO_ENABLED=0 go build ./cmd/maestro
+#   install -d -m 700 /etc/maestro
+#   printf 'MAESTRO_AGENT_TOKEN=%s\n' "$(openssl rand -hex 32)" > /etc/maestro/agent.env
+#   chmod 600 /etc/maestro/agent.env
+#   cp maestro-agent.service /etc/systemd/system/ && systemctl daemon-reload
+#   systemctl enable --now maestro-agent
+#
+# Después, en maestro.yaml del hub, el host con la IP de este y el mismo
+# token (por variable de entorno del hub, nunca escrito en el archivo).
+#
+# En el host de Proxmox se agregan --proxmox y --smart a ExecStart (por eso
+# corre como root). En una LXC alcanza con --docker=false: lee su /proc y
+# su systemd.
+
+[Unit]
+Description=Maestro agent
+Documentation=https://github.com/ImJustDoingMyPart/maestro
+After=network-online.target dbus.service
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=/etc/maestro/agent.env
+# Cambiar la IP por la del host (la que ve el hub). No publicarlo afuera
+# de la LAN: lo protege el token.
+ExecStart=/usr/local/bin/maestro agent --listen 192.168.0.X:9101 --docker=false
+Restart=on-failure
+RestartSec=5s
+# Solo lee: sin escrituras al sistema.
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
