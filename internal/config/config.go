@@ -346,3 +346,19 @@ func (c *Check) checks() []catalog.Check {
 	}
 	return out
 }
+
+// ValidateCheck valida un check con las mismas reglas que el archivo; key
+// es el nombre del servicio para los mensajes. La usa la interfaz para los
+// servicios externos que se crean ahí.
+func ValidateCheck(key string, c *Check) error {
+	var errs []error
+	validateCheck(key, c, func(format string, args ...any) { errs = append(errs, fmt.Errorf(format, args...)) })
+	return errors.Join(errs...)
+}
+
+// ValidURL dice si raw es una URL http o https absoluta, como las del
+// archivo.
+func ValidURL(raw string) error { return checkURL(raw) }
+
+// Checks pasa un check ya validado a los de catalog (ver FileServices).
+func (c *Check) Checks() []catalog.Check { return c.checks() }

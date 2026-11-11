@@ -159,8 +159,9 @@
   {{end}}
   </div>
   {{if .Live}}
-  <nav class="edit-only edit-bar">
+  <nav class="edit-only edit-bar wrap">
     <button type="button" class="border" data-dialog="group-new-dialog"><i>add</i><span>Nuevo grupo</span></button>
+    <a class="button border" href="/externals/new"><i>public</i><span>Agregar servicio externo</span></a>
   </nav>
   <datalist id="group-names">{{range .Groups}}{{if not .Otros}}<option value="{{.Name}}"></option>{{end}}{{end}}</datalist>
   {{end}}
@@ -195,6 +196,7 @@
     <button type="button" class="transparent" data-dialog="move-dialog" data-set-key="{{.Key}}" data-set-group="{{.Group}}"{{if .GroupLocked}} disabled title="El grupo viene de maestro.yaml"{{end}}>
       <i>drive_file_move</i><span>Mover a grupo</span>
     </button>
+    {{if .EditHref}}<a class="button transparent" href="{{.EditHref}}"><i>tune</i><span>Editar</span></a>{{end}}
     {{if .Separated}}{{template "separateitem" (separateArgs .Key false .SeparateLocked)}}{{end}}
     {{template "hideitem" .}}
   </div>

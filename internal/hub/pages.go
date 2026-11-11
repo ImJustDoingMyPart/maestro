@@ -62,6 +62,8 @@ type serviceCard struct {
 	// (se puede devolver). SeparateLocked: eso viene del archivo.
 	Separated      bool
 	SeparateLocked bool
+	// EditHref: un externo creado desde la interfaz se edita ahí.
+	EditHref string
 }
 
 type group struct {
@@ -105,6 +107,7 @@ type pageData struct {
 	Live    bool // la grilla se refresca sola (no en el demo)
 
 	Svc   *serviceDetail // página de un servicio; nil si no existe
+	Ext   *externalForm  // alta o edición de un servicio externo
 	Stack *stackPage     // pestaña Compose de un stack
 
 	Groups       []group

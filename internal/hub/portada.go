@@ -216,7 +216,16 @@ func singleCard(svc catalog.Service, st status.Status) serviceCard {
 		NameLocked:     svc.NameFromFile,
 		GroupLocked:    svc.GroupFromFile,
 		SeparateLocked: svc.SeparateFromFile,
+		EditHref:       editHref(svc),
 	}
+}
+
+// editHref es la página de edición de un externo creado desde la interfaz.
+func editHref(svc catalog.Service) string {
+	if svc.FromUI {
+		return "/externals/" + svc.ID
+	}
+	return ""
 }
 
 // applyNames devuelve una copia de services con los nombres puestos desde

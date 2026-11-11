@@ -57,6 +57,11 @@ func Serve(ctx context.Context, opts Options, logger *slog.Logger) error {
 
 	poller := NewPoller(cfg, logger)
 	poller.onPoll = mon.Update
+	if ui, err := externalServices(ctx, st); err != nil {
+		return fmt.Errorf("servicios externos: %w", err)
+	} else if len(ui) > 0 {
+		poller.SetUIServices(ui)
+	}
 	go poller.Run(ctx)
 
 	h, err := newHandler(poller, poller, poller, mon, st, auth.NewSessions(st, !opts.Dev, logger), cfg.APIToken, logger)
@@ -91,6 +96,11 @@ type prefStore interface {
 	SetCardOrder(ctx context.Context, keys []string) error
 	Separated(ctx context.Context) (map[string]bool, error)
 	SetSeparate(ctx context.Context, key string, separate *bool, at time.Time) error
+	Externals(ctx context.Context) ([]store.External, error)
+	External(ctx context.Context, id string) (store.External, error)
+	CreateExternal(ctx context.Context, e store.External, name, group string, at time.Time) error
+	UpdateExternal(ctx context.Context, e store.External, name, group string, at time.Time) error
+	DeleteExternal(ctx context.Context, id string) error
 }
 
 // monitorView es lo que los handlers necesitan del monitor. Lo cumple
@@ -111,17 +121,25 @@ type server struct {
 	prefs    prefStore
 	runs     *runStore
 	sessions *auth.Sessions
-	apiToken string // vacío: la API solo con sesión
+	apiToken string          // vacío: la API solo con sesión
+	ui       uiServiceSetter // nil si el poller no recibe externos (tests con foto fija)
+	fileKeys map[string]bool // claves de services: en el archivo
 	pages    pages
 	logger   *slog.Logger
 }
 
 func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon monitorView, prefs prefStore, sessions *auth.Sessions, apiToken string, logger *slog.Logger) (http.Handler, error) {
-	p, err := parsePages(web.Templates, "services", "service", "stack", "hardware", "login", "hidden")
+	p, err := parsePages(web.Templates, "services", "service", "stack", "hardware", "login", "hidden", "external")
 	if err != nil {
 		return nil, err
 	}
 	s := &server{poller: poller, logs: logs, stacks: stacks, mon: mon, prefs: prefs, runs: newRunStore(), sessions: sessions, apiToken: apiToken, pages: p, logger: logger}
+	if u, ok := poller.(uiServiceSetter); ok {
+		s.ui = u
+	}
+	if f, ok := poller.(interface{ FileKeys() map[string]bool }); ok {
+		s.fileKeys = f.FileKeys()
+	}
 
 	mux := http.NewServeMux()
 	mux.Handle("GET /static/", http.StripPrefix("/static/", staticHandler()))
@@ -151,6 +169,11 @@ func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon moni
 	private.HandleFunc("POST /layout/cards", s.orderCards)
 	private.HandleFunc("POST /layout/groups", s.orderGroups)
 	private.HandleFunc("POST /separate", s.separate)
+	private.HandleFunc("GET /externals/new", s.newExternalPage)
+	private.HandleFunc("POST /externals", s.createExternal)
+	private.HandleFunc("GET /externals/{id}", s.editExternalPage)
+	private.HandleFunc("POST /externals/{id}", s.updateExternal)
+	private.HandleFunc("POST /externals/{id}/delete", s.deleteExternal)
 	// El ID de un servicio de compose lleva "/" ("media-stack/jellyfin"),
 	// así que va al final de la ruta con {id...}, que toma el resto. Por
 	// eso la acción va antes del ID (/logs/<id>) y no después: con

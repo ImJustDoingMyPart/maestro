@@ -63,6 +63,7 @@ type hostState struct {
 type Poller struct {
 	agents   map[string]agentClient
 	file     map[string]catalog.FileService
+	ui       map[string]catalog.FileService // externos de la interfaz; protegido por mu
 	catalog  *catalog.Catalog
 	interval time.Duration
 	timeout  time.Duration
@@ -247,6 +248,12 @@ func (p *Poller) poll(ctx context.Context) {
 		h.containers = r.cs
 	}
 
+	p.rebuildLocked(now)
+}
+
+// rebuildLocked rearma la foto con los últimos contenedores de cada host,
+// sin pedirles nada a los agents. Se llama con mu tomado.
+func (p *Poller) rebuildLocked(at time.Time) {
 	var all []catalog.Container
 	hosts := make([]HostStatus, 0, len(p.hosts))
 	for _, name := range slices.Sorted(maps.Keys(p.hosts)) {
@@ -261,7 +268,45 @@ func (p *Poller) poll(ctx context.Context) {
 			})
 		}
 	}
-	p.snap = Snapshot{Services: p.catalog.Build(all, p.file), Hosts: hosts, At: now}
+	file := p.file
+	if len(p.ui) > 0 {
+		// El archivo gana: un externo de la interfaz con una clave que
+		// también está en el archivo no cuenta.
+		file = maps.Clone(p.file)
+		if file == nil {
+			file = map[string]catalog.FileService{}
+		}
+		for k, fs := range p.ui {
+			if _, ok := file[k]; !ok {
+				fs.FromUI = true
+				file[k] = fs
+			}
+		}
+	}
+	p.snap = Snapshot{Services: p.catalog.Build(all, file), Hosts: hosts, At: at}
+}
+
+// SetUIServices cambia los servicios externos creados desde la interfaz y
+// rearma la foto enseguida (también el monitor, que arranca o para sus
+// checks), sin esperar la próxima vuelta.
+func (p *Poller) SetUIServices(ui map[string]catalog.FileService) {
+	p.mu.Lock()
+	p.ui = ui
+	p.rebuildLocked(p.snap.At)
+	snap := p.snap
+	p.mu.Unlock()
+	if p.onPoll != nil {
+		p.onPoll(snap)
+	}
+}
+
+// FileKeys dice qué claves de servicio declara el archivo.
+func (p *Poller) FileKeys() map[string]bool {
+	out := make(map[string]bool, len(p.file))
+	for k := range p.file { // p.file no cambia después de newPoller
+		out[k] = true
+	}
+	return out
 }
 
 // describe es el texto chico de la tarjeta: la descripción declarada o, si no

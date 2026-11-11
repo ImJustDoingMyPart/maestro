@@ -541,7 +541,8 @@ body.dark  { --status-warn: #ffb74d; }
 .card-menu-list form {
   margin: 0;
 }
-.card-menu-list button {
+.card-menu-list button,
+.card-menu-list a.button {
   inline-size: 100%;
   justify-content: flex-start;
   border-radius: 0;
@@ -645,4 +646,28 @@ body.dark  { --status-warn: #ffb74d; }
   font-family: monospace;
   font-size: 0.8rem;
   white-space: pre;
+}
+
+/* Formulario de un servicio externo: los campos de HTTP solo con HTTP
+   elegido (sin JavaScript, con :has). */
+.external-form:has(input[name=kind][value=tcp]:checked) .http-only,
+.external-form:has(input[name=kind][value=http]:checked) .tcp-only {
+  display: none;
+}
+.external-form .check-kind {
+  margin-block: 0.5rem 1rem;
+}
+.external-form .redirects {
+  display: flex;
+  align-items: center;
+}
+.form-errors {
+  margin: 0;
+  padding-inline-start: 1.25rem;
+}
+.danger-zone {
+  margin-block-start: 2.5rem;
+}
+.danger-zone > summary {
+  cursor: pointer;
 }

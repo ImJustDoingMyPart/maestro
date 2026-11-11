@@ -1,0 +1,80 @@
+{{define "content"}}
+{{with .Ext}}
+<header class="transparent">
+  <nav>
+    <a class="button circle transparent" href="/" title="Volver" aria-label="Volver a Servicios"><i>arrow_back</i></a>
+    <h5 class="max">{{if .ID}}Editar servicio externo{{else}}Nuevo servicio externo{{end}}</h5>
+  </nav>
+</header>
+<p class="secondary-text">Algo que Maestro no puede descubrir (el router, un sitio web) y se vigila con un check. El check push va solo en <code>maestro.yaml</code>: su token es un secreto.</p>
+
+{{if .Errors}}
+<article class="small-round no-elevate error-container" role="alert">
+  <ul class="form-errors">{{range .Errors}}<li>{{.}}</li>{{end}}</ul>
+</article>
+{{end}}
+
+<form method="post" action="{{if .ID}}/externals/{{.ID}}{{else}}/externals{{end}}" class="external-form">
+  <div class="grid">
+    <div class="s12 m6 field label border">
+      <input type="text" name="name" id="ext-name" value="{{.Name}}" maxlength="80" required autocomplete="off" placeholder=" ">
+      <label for="ext-name">Nombre</label>
+    </div>
+    <div class="s12 m6 field label border">
+      <input type="text" name="group" id="ext-group" value="{{.Group}}" maxlength="40" list="ext-groups" autocomplete="off" placeholder=" ">
+      <label for="ext-group">Grupo (vacío: Otros)</label>
+      <datalist id="ext-groups">{{range .Groups}}<option value="{{.}}"></option>{{end}}</datalist>
+    </div>
+    <div class="s12 m6 field label border">
+      <input type="url" name="url" id="ext-url" value="{{.URL}}" autocomplete="off" placeholder=" ">
+      <label for="ext-url">Link de la tarjeta (opcional)</label>
+    </div>
+    <div class="s12 m6 field label border">
+      <input type="text" name="description" id="ext-desc" value="{{.Description}}" maxlength="200" autocomplete="off" placeholder=" ">
+      <label for="ext-desc">Descripción (opcional)</label>
+    </div>
+  </div>
+
+  <h6 class="small">Check</h6>
+  <nav class="check-kind">
+    <label class="radio"><input type="radio" name="kind" value="http"{{if eq .Kind "http"}} checked{{end}}><span>HTTP</span></label>
+    <label class="radio"><input type="radio" name="kind" value="tcp"{{if eq .Kind "tcp"}} checked{{end}}><span>TCP</span></label>
+  </nav>
+  <div class="grid">
+    <div class="s12 field label border">
+      <input type="text" name="target" id="ext-target" value="{{.Target}}" required autocomplete="off" placeholder=" ">
+      <label for="ext-target"><span class="http-only">URL (http://192.168.0.1/)</span><span class="tcp-only">host:puerto (192.168.0.1:53)</span></label>
+    </div>
+    <div class="s12 m6 field label border http-only">
+      <input type="text" name="expect" id="ext-expect" value="{{.Expect}}" inputmode="numeric" maxlength="3" autocomplete="off" placeholder=" ">
+      <label for="ext-expect">Código esperado (vacío: cualquier 2xx)</label>
+    </div>
+    <div class="s12 m6 http-only redirects">
+      <label class="checkbox"><input type="checkbox" name="redirects" value="1"{{if .Redirects}} checked{{end}}><span>Seguir redirecciones</span></label>
+    </div>
+    <div class="s6 field label border">
+      <input type="text" name="interval" id="ext-interval" value="{{.Interval}}" autocomplete="off" placeholder=" ">
+      <label for="ext-interval">Cada cuánto (vacío: 60s)</label>
+    </div>
+    <div class="s6 field label border">
+      <input type="text" name="timeout" id="ext-timeout" value="{{.Timeout}}" autocomplete="off" placeholder=" ">
+      <label for="ext-timeout">Timeout (vacío: 10s)</label>
+    </div>
+  </div>
+  <nav class="right-align">
+    <a class="button border" href="/">Cancelar</a>
+    <button type="submit">{{if .ID}}Guardar{{else}}Crear{{end}}</button>
+  </nav>
+</form>
+
+{{if .ID}}
+<details class="danger-zone">
+  <summary class="small-text secondary-text">Borrar este servicio</summary>
+  <form method="post" action="/externals/{{.ID}}/delete">
+    <p class="small-text">Se deja de vigilar y desaparece de la portada. Su historial de checks se va borrando con la compactación.</p>
+    <button class="error small"><i>delete</i><span>Borrar {{.Name}}</span></button>
+  </form>
+</details>
+{{end}}
+{{end}}
+{{end}}
