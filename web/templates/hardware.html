@@ -1,4 +1,4 @@
-{{define "scripts"}}{{template "chartassets"}}{{if .Live}}<script src="/static/sortable-1.15.7.min.js" defer></script>
+{{define "scripts"}}{{template "chartassets"}}<script src="/static/hwlive.js" defer></script>{{if .Live}}<script src="/static/sortable-1.15.7.min.js" defer></script>
 <script src="/static/hardware.js" defer></script>{{end}}{{end}}
 
 {{define "content"}}
@@ -84,7 +84,7 @@
       <div class="hw-row hw-row-head"><span>Stack o contenedor</span><span>CPU</span><span class="m l">Red</span><span>Memoria</span></div>
       {{range $h.Containers}}
       {{if .Members}}
-      <details class="hw-stack">
+      <details class="hw-stack" data-stack="{{.Name}}">
         <summary class="hw-row" title="Ver sus {{len .Members}} contenedores">
           <span class="hw-row-name">{{template "svcicon" .}}<span title="{{.Name}}">{{.Name}}</span><span class="hw-count">{{len .Members}}</span><i class="hw-chevron">expand_more</i></span>
           <span>{{.CPU}}</span>
