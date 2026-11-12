@@ -270,6 +270,7 @@ func singleCard(svc catalog.Service, st status.Status) serviceCard {
 		EditHref:       editHref(svc),
 		HiddenLocked:   svc.Hidden != nil,
 		icon:           serviceHint(svc),
+		IconLocked:     svc.IconFromFile,
 	}
 	if len(svc.Containers) > 0 {
 		c.MetricsHref = metricsPath(svc.ID)
@@ -345,6 +346,7 @@ func stackCard(host, project string, members []catalog.Service, statusOf func(st
 	if main != nil {
 		c.Name, c.URL, c.Group, c.GroupLocked = main.Name, main.URL, main.Group, main.GroupFromFile
 		c.icon = serviceHint(*main)
+		c.IconLocked = main.IconFromFile
 		if len(main.Containers) > 0 {
 			c.MetricsHref = metricsPath(main.ID)
 		}

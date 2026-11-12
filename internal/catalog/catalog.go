@@ -134,10 +134,11 @@ type Service struct {
 	Separate bool
 	// NameFromFile dice que Name viene de maestro.yaml: un nombre puesto
 	// desde la interfaz no lo pisa (archivo > interfaz > labels). Lo mismo
-	// GroupFromFile y SeparateFromFile.
+	// GroupFromFile, SeparateFromFile e IconFromFile.
 	NameFromFile     bool
 	GroupFromFile    bool
 	SeparateFromFile bool
+	IconFromFile     bool
 	// Hidden es el hidden de maestro.yaml; nil si no lo declara.
 	Hidden *bool
 	// FromUI: servicio propio creado desde la interfaz (ver FileService).
@@ -219,6 +220,7 @@ func (c *Catalog) Build(containers []Container, file map[string]FileService) []S
 		}
 		if !fs.FromUI {
 			s.NameFromFile, s.GroupFromFile, s.Hidden = fs.Name != "", fs.Group != "", fs.Hidden
+			s.IconFromFile = fs.Icon != ""
 		}
 		if fs.Unit != "" {
 			s.Source = SourceSystemd
@@ -290,6 +292,7 @@ func (c *Catalog) fromContainers(id string, reps []Container, fs FileService) (S
 	s.GroupFromFile = fs.Group != ""
 	s.Hidden = fs.Hidden
 	s.Icon = pick(fs.Icon, "maestro.icon", "homepage.icon")
+	s.IconFromFile = fs.Icon != ""
 	s.URL = pick(fs.URL, "maestro.url", "homepage.href")
 	s.Description = pick(fs.Description, "maestro.description", "homepage.description")
 

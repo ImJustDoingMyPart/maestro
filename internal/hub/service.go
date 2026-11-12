@@ -55,7 +55,7 @@ func (s *server) servicePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d := detail(svc, s.mon.Status(svc.ID))
-	d.Logo, d.Icon = logoFor(s.icons, serviceHint(svc), d.Icon)
+	d.Logo, d.Icon = logoFor(s.icons, serviceHint(svc).withOverride(s.chosenIcons(r.Context())[serviceKey(svc.ID)], svc.IconFromFile), d.Icon)
 	if len(svc.Checks) > 0 {
 		d.ChecksURL = "/fragments/checks/" + escapeID(svc.ID)
 	}
@@ -79,7 +79,7 @@ func (s *server) metricsPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d := detail(svc, s.mon.Status(svc.ID))
-	d.Logo, d.Icon = logoFor(s.icons, serviceHint(svc), d.Icon)
+	d.Logo, d.Icon = logoFor(s.icons, serviceHint(svc).withOverride(s.chosenIcons(r.Context())[serviceKey(svc.ID)], svc.IconFromFile), d.Icon)
 	s.pages.render(w, s.logger, "service", pageData{
 		Title: svc.Name, Active: "services", ShowNav: true, Svc: &d, Tab: "metrics", Charts: serviceCharts(svc),
 	})
@@ -153,7 +153,7 @@ func (s *server) liveFragment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d := detail(svc, s.mon.Status(svc.ID))
-	d.Logo, d.Icon = logoFor(s.icons, serviceHint(svc), d.Icon)
+	d.Logo, d.Icon = logoFor(s.icons, serviceHint(svc).withOverride(s.chosenIcons(r.Context())[serviceKey(svc.ID)], svc.IconFromFile), d.Icon)
 	d.OOB = true
 	s.pages.renderFragmentData(w, s.logger, "service", "live", d)
 }

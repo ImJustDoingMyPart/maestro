@@ -12,6 +12,7 @@ import (
 
 	"github.com/ImJustDoingMyPart/maestro/internal/agent"
 	"github.com/ImJustDoingMyPart/maestro/internal/catalog"
+	"github.com/ImJustDoingMyPart/maestro/internal/icons"
 )
 
 // chartSpec es un gráfico de la página: sus series y en qué unidad.
@@ -40,16 +41,36 @@ func (c chartSpec) withID(id string) chartSpec {
 	return c
 }
 
-// tile es un valor grande arriba de cada host.
-type tile struct {
-	ID          string // "tile:cpu": su clave en el modo edición
-	Hidden      bool   // oculto desde el modo edición
-	Label, Icon string
-	Value, Unit string // "129" y "MB": el número va grande y la unidad chica
-	Sub         string
-	Pct         float64 // para la barra, de 0 a 100
-	Warn        bool    // pasa del 90 % (o 80 °C)
+// hwCard es una tarjeta de Hardware: los mosaicos de arriba, los sistemas
+// de archivos, los discos y las LXC y VMs tienen todos las mismas partes en
+// el mismo lugar. Arriba, un ícono, el título, un dato al lado y, si tiene,
+// el estado (el punto y la palabra, como en la portada); en el medio, un
+// número grande con su unidad; abajo, una barra (vacía si no aplica, para
+// que midan lo mismo) y una línea de detalle.
+type hwCard struct {
+	ID     string // "tile:cpu": su clave en el modo edición; vacío si no se ordena
+	Hidden bool   // oculto desde el modo edición
+	Icon   string // de Material Symbols
+	Logo   *icons.Ref
+	Title  string
+	Aside  string // al lado del título: "LXC 102"
+	Value  string
+	Unit   string // "129" y "MB": el número va grande y la unidad chica
+	HasBar bool
+	Pct    float64 // para la barra, de 0 a 100
+	Warn   bool    // pasa del 90 % (o 80 °C)
+	Sub    string
+	// State y StateLabel: el estado, si tiene ("" si no).
+	State      State
+	StateLabel string
+	StateTitle string
+	Href       string
+	// Key e IconSet: para "Cambiar ícono" (LXC y VMs).
+	Key, IconSet string
 }
+
+// tile es un mosaico de arriba: una hwCard que se ordena y se oculta.
+type tile = hwCard
 
 // splitUnit separa "129 MB" en "129" y "MB".
 func splitUnit(s string) (value, unit string) {
@@ -61,7 +82,52 @@ func splitUnit(s string) (value, unit string) {
 
 func newTile(id, label, icon, value, sub string, p float64, warn bool) tile {
 	v, u := splitUnit(value)
-	return tile{ID: "tile:" + id, Label: label, Icon: icon, Value: v, Unit: u, Sub: sub, Pct: p, Warn: warn}
+	return tile{ID: "tile:" + id, Title: label, Icon: icon, Value: v, Unit: u, Sub: sub, HasBar: true, Pct: p, Warn: warn}
+}
+
+func (f fsRow) card() hwCard {
+	return hwCard{Icon: "folder_open", Title: f.Mount, Value: strings.TrimSuffix(f.PctText, " %"), Unit: "%",
+		HasBar: true, Pct: f.Pct, Warn: f.Warn, Sub: f.Used + " de " + f.Total + " · " + f.Device + " · " + f.FSType}
+}
+
+func (d smartRow) card() hwCard {
+	c := hwCard{Icon: "hard_drive", Title: d.Device, Value: "–", State: d.State, StateTitle: "Autoevaluación SMART: " + d.Verdict}
+	switch d.State {
+	case StateUp:
+		c.StateLabel = "Sano"
+	case StateDegraded:
+		c.StateLabel = "Sectores malos"
+	case StateDown:
+		c.StateLabel = "Falla"
+	default:
+		c.StateLabel = "Sin datos"
+	}
+	if d.TempC != nil {
+		c.Value, c.Unit = fmt.Sprintf("%.0f", *d.TempC), "°C"
+		c.HasBar, c.Pct, c.Warn = true, math.Min(100, math.Max(0, *d.TempC)), *d.TempC >= 60
+	}
+	var sub []string
+	for _, s := range []string{d.Model, d.Hours, d.Sectors, d.Note} {
+		if s != "" {
+			sub = append(sub, s)
+		}
+	}
+	c.Sub = strings.Join(sub, " · ")
+	return c
+}
+
+func (g guestRow) card() hwCard {
+	c := hwCard{Icon: g.Icon, Title: g.Name, Aside: fmt.Sprintf("%s %d", g.Kind, g.VMID), Value: "–",
+		State: g.State, StateLabel: g.Status, Href: g.Href, Key: g.Key, Logo: g.Logo, IconSet: g.IconSet}
+	if g.Mem != "" {
+		used, total, _ := strings.Cut(g.Mem, " de ")
+		c.Value, c.Unit = splitUnit(used)
+		c.HasBar, c.Pct, c.Warn = true, g.MemPct, g.MemPct >= 90
+		c.Sub = "RAM de " + total + " · CPU " + g.CPU
+	} else {
+		c.Sub = "sin datos de uso"
+	}
+	return c
 }
 
 type fsRow struct {
@@ -73,6 +139,7 @@ type fsRow struct {
 }
 
 type smartRow struct {
+	TempC                 *float64
 	Device, Model, Serial string
 	State                 State // up: pasó; down: falló o sectores malos; unknown: sin dato
 	Verdict               string
@@ -84,6 +151,8 @@ type smartRow struct {
 type guestRow struct {
 	Kind, Name, Status string
 	Icon               string
+	Logo               *icons.Ref
+	Key, IconSet       string // clave del descubierto e ícono elegido
 	VMID               int
 	Href               string // su página (descubierto)
 	State              State
@@ -117,6 +186,11 @@ type hostHardware struct {
 	GuestCharts []chartSpec
 	Containers  []containerUse // los que más memoria usan
 	MoreCount   int            // cuántos contenedores más corren
+	// Storage son los sistemas de archivos y los discos; GuestCards, las LXC
+	// y VMs: como tarjetas, igual que los mosaicos.
+	Storage    []hwCard
+	GuestCards []hwCard
+	Pinned     bool // es el host que Hardware muestra primero
 	// Hidden son las secciones ocultas desde el modo edición
 	// ("section:storage", "section:guests", "section:containers").
 	Hidden map[string]bool
@@ -134,6 +208,29 @@ const maxContainerRows = 10
 func (s *server) hardwarePage(w http.ResponseWriter, r *http.Request) {
 	snap := s.poller.Snapshot()
 	hw := buildHardware(snap, time.Now())
+	// El host fijado va primero en las pestañas y es el que se ve sin ?host=.
+	if st, ok := s.prefs.(hwLayoutStore); ok {
+		pinned, err := st.HWPinned(r.Context())
+		if err != nil {
+			s.logger.Error("leer el host fijado", "err", err)
+		}
+		for i := range hw {
+			hw[i].Pinned = hw[i].Name == pinned
+		}
+		slices.SortStableFunc(hw, func(a, b hostHardware) int {
+			switch {
+			case a.Pinned == b.Pinned:
+				return 0
+			case a.Pinned:
+				return -1
+			}
+			return 1
+		})
+	}
+	chosen := s.chosenIcons(r.Context())
+	for i := range hw {
+		hw[i].cards(s.icons, chosen)
+	}
 	sel := r.URL.Query().Get("host")
 	if !slices.ContainsFunc(hw, func(h hostHardware) bool { return h.Name == sel }) && len(hw) > 0 {
 		sel = hw[0].Name
@@ -155,6 +252,46 @@ func (s *server) hardwarePage(w http.ResponseWriter, r *http.Request) {
 		Title: "Hardware", Active: "hardware", ShowNav: true,
 		Hardware: hw, HWHost: sel, Live: editable,
 	})
+}
+
+// cards arma las tarjetas de almacenamiento y de LXC y VMs, con el logo de
+// cada LXC o VM: el elegido desde la interfaz o el que se adivina por su
+// nombre.
+func (h *hostHardware) cards(r *icons.Resolver, chosen map[string]string) {
+	for _, f := range h.FS {
+		h.Storage = append(h.Storage, f.card())
+	}
+	for _, d := range h.SMART {
+		h.Storage = append(h.Storage, d.card())
+	}
+	for _, g := range h.Guests {
+		g.IconSet = chosen[g.Key]
+		g.Logo, g.Icon = logoFor(r, iconHint{spec: g.IconSet, hints: []string{g.Name}}, g.Icon)
+		h.GuestCards = append(h.GuestCards, g.card())
+	}
+}
+
+// hwPin atiende POST /hardware/pin: fija (pin=1) el host que Hardware
+// muestra primero, o lo saca (pin=0).
+func (s *server) hwPin(w http.ResponseWriter, r *http.Request) {
+	st, host, ok := s.hwHost(w, r)
+	if !ok {
+		return
+	}
+	switch r.PostFormValue("pin") {
+	case "1":
+	case "0":
+		host = ""
+	default:
+		http.Error(w, "pin inválido", http.StatusBadRequest)
+		return
+	}
+	if err := st.SetHWPinned(r.Context(), host); err != nil {
+		s.logger.Error("fijar host de Hardware", "err", err)
+		http.Error(w, "error interno", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // buildHardware arma la página con la última foto.
@@ -310,11 +447,12 @@ func smartRows(disks []agent.SMARTDisk) []smartRow {
 				r.State, r.Verdict = StateDown, "falló"
 			}
 		}
+		r.TempC = d.TempC
 		if d.TempC != nil {
 			r.Temp = fmt.Sprintf("%.0f °C", *d.TempC)
 		}
 		if d.PowerOnHours != nil {
-			r.Hours = fmt.Sprintf("%d h (%s)", *d.PowerOnHours, ago(time.Duration(*d.PowerOnHours)*time.Hour))
+			r.Hours = ago(time.Duration(*d.PowerOnHours)*time.Hour) + " encendido"
 		}
 		var bad []string
 		add := func(label string, v *int64) {
@@ -330,8 +468,9 @@ func smartRows(disks []agent.SMARTDisk) []smartRow {
 			if r.State == StateUp {
 				r.State = StateDegraded
 			}
+			r.Sectors = "sectores " + r.Sectors
 		} else if d.Reallocated != nil || d.Uncorrectable != nil {
-			r.Sectors = "ninguno malo"
+			r.Sectors = "sin sectores malos"
 		}
 		out = append(out, r)
 	}
@@ -343,15 +482,15 @@ func guestRows(host string, guests []agent.Guest, shown map[string]bool) ([]gues
 	var cpu, mem []chartLine
 	for _, g := range guests {
 		d := Discovered{Host: host, Kind: g.Kind, Name: fmt.Sprint(g.VMID)}
-		r := guestRow{Kind: foundKindLabel(g.Kind), Name: g.Name, VMID: g.VMID, Status: g.Status, Icon: kindIcon(g.Kind), Href: servicePath(d.Key())}
+		r := guestRow{Kind: foundKindLabel(g.Kind), Name: g.Name, VMID: g.VMID, Status: g.Status, Icon: kindIcon(g.Kind), Href: servicePath(d.Key()), Key: d.Key()}
 		switch g.Status {
 		case "running":
-			r.State, r.Status = StateUp, "encendida"
+			r.State, r.Status = StateUp, "Encendida"
 			r.CPU = fmtPct(g.CPU)
 			r.Mem = humanBytes(float64(g.Mem)) + " de " + humanBytes(float64(g.MaxMem))
 			r.MemPct = pct(float64(g.Mem), float64(g.MaxMem))
 		case "stopped":
-			r.State, r.Status = StateDown, "apagada"
+			r.State, r.Status = StateDown, "Apagada"
 		default:
 			r.State = StateDegraded
 		}

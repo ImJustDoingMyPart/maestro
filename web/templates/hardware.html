@@ -24,14 +24,15 @@
 <nav class="host-tabs" aria-label="Hosts">
   {{range .Hardware}}
   <a class="host-tab{{if eq .Name $.HWHost}} active{{end}}" href="/hardware?host={{.Name}}"{{if eq .Name $.HWHost}} aria-current="page"{{end}}>
-    <span class="dot {{if .OK}}up{{else}}down{{end}}"></span><span>{{.Name}}</span>
+    <span class="dot {{if .OK}}up{{else}}down{{end}}"></span><span>{{.Name}}</span>{{if .Pinned}}<i class="pin" title="Se muestra primero">keep</i>{{end}}
   </a>
   {{end}}
 </nav>
 {{end}}
+{{if .Live}}{{template "icondialog"}}{{end}}
 {{range .Hardware}}{{if eq .Name $.HWHost}}
 <section class="hw-host" id="host-{{.Name}}" data-hw-host="{{.Name}}">
-  <p class="edit-only edit-hint"><i>info</i>Arrastrá los mosaicos y los gráficos para ordenarlos y usá el ojo para ocultarlos. Vale solo para {{.Name}}.</p>
+  <p class="edit-only edit-hint"><i>info</i>Arrastrá los mosaicos y los gráficos para ordenarlos y usá el ojo para ocultarlos; vale solo para {{.Name}}. "Mostrar primero" lo deja como el host de entrada.</p>
   <div class="hw-host-head">
     <span class="svc-icon"><i>dns</i></span>
     <div class="hw-host-text">
@@ -42,6 +43,9 @@
       </div>
     </div>
     {{if not .OK}}<span class="state-pill down"><span class="dot down"></span>Sin respuesta</span>{{end}}
+    {{if $.Live}}<button type="button" class="btn outlined edit-only" data-hw-pin aria-pressed="{{if .Pinned}}true{{else}}false{{end}}" title="El host fijado es el que Hardware muestra primero">
+      <i class="when-off">push_pin</i><i class="when-on">keep_off</i><span class="when-off m l">Mostrar primero</span><span class="when-on m l">No mostrar primero</span>
+    </button>{{end}}
   </div>
 
   {{if .NoSystem}}
@@ -56,14 +60,7 @@
   </article>
   {{else}}
   <div class="hw-tiles balanced" data-hw-sort>
-    {{range .Tiles}}
-    <article class="hw-tile{{if .Warn}} warn{{end}}{{if .Hidden}} is-hidden{{end}}" data-hw-item="{{.ID}}">
-      <div class="hw-label"><i>{{.Icon}}</i><span>{{.Label}}</span>{{template "hweye" .}}</div>
-      <div class="hw-value">{{.Value}}{{with .Unit}}<small>{{.}}</small>{{end}}</div>
-      <div class="meter"><span style="inline-size: {{printf "%.1f" .Pct}}%"></span></div>
-      <div class="hw-sub" title="{{.Sub}}">{{.Sub}}</div>
-    </article>
-    {{end}}
+    {{range .Tiles}}{{template "hwcard" .}}{{end}}
   </div>
 
   <h2 class="section-title">En el tiempo</h2>
@@ -75,38 +72,7 @@
   <div class="hw-section{{if index .Hidden "section:storage"}} is-hidden{{end}}" data-hw-item="section:storage">
     <h2 class="section-title">Almacenamiento{{template "hweye" (hiddenArg (index .Hidden "section:storage"))}}</h2>
     <div class="hw-cards balanced">
-      {{range .FS}}
-      <article class="hw-card{{if .Warn}} warn{{end}}">
-        <div class="hw-card-head">
-          <span class="hw-card-icon"><i>folder_open</i></span>
-          <div class="hw-card-text">
-            <div class="hw-card-title" title="{{.Mount}}">{{.Mount}}</div>
-            <div class="hw-card-sub" title="{{.Device}} · {{.FSType}}">{{.Device}} · {{.FSType}}</div>
-          </div>
-          <span class="hw-card-figure">{{.PctText}}</span>
-        </div>
-        <div class="meter"><span style="inline-size: {{printf "%.1f" .Pct}}%"></span></div>
-        <div class="hw-card-foot">{{.Used}} de {{.Total}}</div>
-      </article>
-      {{end}}
-      {{range .SMART}}
-      <article class="hw-card" data-state="{{.State}}">
-        <div class="hw-card-head">
-          <span class="hw-card-icon"><i>hard_drive</i></span>
-          <div class="hw-card-text">
-            <div class="hw-card-title">{{.Device}}</div>
-            <div class="hw-card-sub" title="{{.Model}}{{with .Serial}} · {{.}}{{end}}">{{or .Model "Disco"}}</div>
-          </div>
-          <span class="state-pill {{.State}}" title="Autoevaluación SMART"><span class="dot {{.State}}"></span>SMART {{.Verdict}}</span>
-        </div>
-        <div class="hw-facts">
-          {{with .Temp}}<span><i>thermostat</i>{{.}}</span>{{end}}
-          {{with .Hours}}<span><i>schedule</i>{{.}}</span>{{end}}
-          {{with .Sectors}}<span><i>grid_on</i>sectores: {{.}}</span>{{end}}
-        </div>
-        {{with .Note}}<div class="hw-card-foot">{{.}}</div>{{end}}
-      </article>
-      {{end}}
+      {{range .Storage}}{{template "hwcard" .}}{{end}}
     </div>
     {{with .FSChart}}<div class="hw-charts">{{template "chart" .}}</div>{{end}}
   </div>
@@ -117,20 +83,7 @@
   <div class="hw-section{{if index .Hidden "section:guests"}} is-hidden{{end}}" data-hw-item="section:guests">
     <h2 class="section-title">LXC y VMs{{template "hweye" (hiddenArg (index .Hidden "section:guests"))}}</h2>
     <div class="hw-cards balanced">
-      {{range .Guests}}
-      <a class="hw-card link" href="{{.Href}}" data-state="{{.State}}">
-        <div class="hw-card-head">
-          <span class="hw-card-icon"><i>{{.Icon}}</i></span>
-          <div class="hw-card-text">
-            <div class="hw-card-title" title="{{.Name}}">{{.Name}}</div>
-            <div class="hw-card-sub">{{.Kind}} {{.VMID}}</div>
-          </div>
-          <span class="state-pill {{.State}}"><span class="dot {{.State}}"></span>{{.Status}}</span>
-        </div>
-        <div class="meter"><span style="inline-size: {{printf "%.1f" .MemPct}}%"></span></div>
-        <div class="hw-card-foot"><span>CPU {{or .CPU "–"}}</span><span>RAM {{or .Mem "–"}}</span></div>
-      </a>
-      {{end}}
+      {{range .GuestCards}}{{template "hwcard" .}}{{end}}
     </div>
     <div class="hw-charts">{{range .GuestCharts}}{{template "chart" .}}{{end}}</div>
   </div>

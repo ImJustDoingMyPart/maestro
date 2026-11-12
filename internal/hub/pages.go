@@ -49,12 +49,16 @@ type serviceCard struct {
 	Description string
 	Icon        string // nombre de un ícono de Material Symbols, si no hay logo
 	// Logo es el de la aplicación (internal/icons); nil usa Icon.
-	Logo   *icons.Ref
-	icon   iconHint // de dónde sale Logo
-	URL    string
-	State  State
-	Reason string // motivo principal del estado; vacío si está arriba
-	Group  string // "" va a "Otros"
+	Logo *icons.Ref
+	icon iconHint // de dónde sale Logo
+	// IconSet es el ícono elegido desde la interfaz ("" si no hay);
+	// IconLocked: el ícono viene de maestro.yaml y no se cambia desde acá.
+	IconSet    string
+	IconLocked bool
+	URL        string
+	State      State
+	Reason     string // motivo principal del estado; vacío si está arriba
+	Group      string // "" va a "Otros"
 	// Key es la clave para ocultarla ("service:<id>" o "stack:<host>/<proyecto>");
 	// vacía en el demo, que no oculta nada.
 	Key string

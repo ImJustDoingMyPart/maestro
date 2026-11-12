@@ -14,6 +14,13 @@ import (
 	"time"
 )
 
+const testSelfhst = `[
+  {"Name": "AIOStreams", "Reference": "aiostreams", "SVG": "Yes", "PNG": "Yes", "WebP": "Yes", "Light": "Yes", "Dark": "Yes"},
+  {"Name": "NetBird", "Reference": "netbird", "SVG": "Yes", "PNG": "Yes", "WebP": "Yes"},
+  {"Name": "Immich", "Reference": "immich", "SVG": "Yes", "PNG": "Yes", "WebP": "Yes"},
+  {"Name": "Solo PNG", "Reference": "solo-png", "SVG": "No", "PNG": "Yes", "WebP": "Yes"}
+]`
+
 const testMeta = `{
   "immich": {"base": "svg", "aliases": []},
   "syncthing": {"base": "svg", "aliases": [], "colors": {"dark": "syncthing-dark", "light": "syncthing"}},
@@ -30,8 +37,11 @@ func testResolver(t *testing.T) *Resolver {
 	t.Helper()
 	r := New(t.TempDir(), slog.New(slog.NewTextHandler(io.Discard, nil)))
 	// Sin red: medir variantes no tiene que salir a Internet.
-	r.upstream = map[string]string{"di": "http://127.0.0.1:1", "mdi": "http://127.0.0.1:1", "si": "http://127.0.0.1:1"}
-	if err := r.setIndex([]byte(testMeta), time.Now()); err != nil {
+	r.upstream = map[string][]string{"di": {"http://127.0.0.1:1"}, "sh": {"http://127.0.0.1:1"}, "mdi": {"http://127.0.0.1:1"}, "si": {"http://127.0.0.1:1"}}
+	if err := r.setIndex(r.col("di"), []byte(testMeta), time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if err := r.setIndex(r.col("sh"), []byte(testSelfhst), time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	return r
@@ -52,7 +62,7 @@ func TestResolveHints(t *testing.T) {
 		{[]string{"ollama"}, Ref{Src: "/icons/di/ollama-dark.svg", SrcDark: "/icons/di/ollama.svg"}, true},
 		{[]string{"restic-backup.timer"}, Ref{Src: "/icons/di/restic.png"}, true},
 		{[]string{"dns"}, Ref{}, false},
-		{[]string{"aiostreams", "frigate"}, Ref{Src: "/icons/di/frigate.svg", SrcDark: "/icons/di/frigate-light.svg"}, true},
+		{[]string{"nada-que-ver", "frigate"}, Ref{Src: "/icons/di/frigate.svg", SrcDark: "/icons/di/frigate-light.svg"}, true},
 		// Los alias no cuentan para adivinar: son genéricos ("NVR").
 		{[]string{"nvr"}, Ref{}, false},
 		{nil, Ref{}, false},
@@ -131,7 +141,7 @@ func TestServe(t *testing.T) {
 	}))
 	defer up.Close()
 	r := testResolver(t)
-	r.upstream = map[string]string{"di": up.URL + "/di", "mdi": up.URL + "/mdi", "si": up.URL + "/si"}
+	r.upstream = map[string][]string{"di": {up.URL + "/cdn-di", up.URL + "/di"}, "sh": {up.URL + "/sh"}, "mdi": {up.URL + "/mdi"}, "si": {up.URL + "/si"}}
 
 	get := func(path string) *httptest.ResponseRecorder {
 		rec := httptest.NewRecorder()
@@ -144,8 +154,10 @@ func TestServe(t *testing.T) {
 			t.Fatalf("immich: %d %v", rec.Code, rec.Header())
 		}
 	}
-	if hits.Load() != 1 {
-		t.Errorf("la segunda vez tenía que salir del disco: %d pedidos", hits.Load())
+	// El primer origen (el CDN) responde 404: se baja del segundo. La
+	// segunda vez sale del disco.
+	if hits.Load() != 2 {
+		t.Errorf("tenían que ser 2 pedidos (CDN y GitHub): %d", hits.Load())
 	}
 	if _, err := os.Stat(filepath.Join(r.dir, "di", "immich.svg")); err != nil {
 		t.Error(err)
@@ -154,43 +166,47 @@ func TestServe(t *testing.T) {
 		t.Errorf("mdi: %d", rec.Code)
 	}
 	// Variantes de uno que está en el índice: se piden.
-	if rec := get("/di/syncthing-dark.svg"); rec.Code != 404 || hits.Load() != 3 {
+	if rec := get("/di/syncthing-dark.svg"); rec.Code != 404 || hits.Load() != 5 {
 		t.Errorf("variante: %d, %d pedidos", rec.Code, hits.Load())
 	}
 	// Una falla no se vuelve a pedir enseguida.
 	get("/di/syncthing-dark.svg")
-	if hits.Load() != 3 {
+	if hits.Load() != 5 {
 		t.Errorf("reintentó enseguida: %d pedidos", hits.Load())
 	}
 	// Lo que no está en el índice, lo que no tiene formato válido y las
 	// colecciones que no existen no salen a la red.
-	for _, p := range []string{"/di/nada.svg", "/di/immich.exe", "/x/immich.svg", "/di/..%2Fx.svg", "/mdi/x.png"} {
+	for _, p := range []string{"/di/nada.svg", "/sh/nada.svg", "/di/immich.exe", "/x/immich.svg", "/di/..%2Fx.svg", "/mdi/x.png"} {
 		if rec := get(p); rec.Code != 404 {
 			t.Errorf("%s: %d", p, rec.Code)
 		}
 	}
-	if hits.Load() != 3 {
+	if hits.Load() != 5 {
 		t.Errorf("salió a la red por algo inválido: %d pedidos", hits.Load())
 	}
 }
 
 func TestRunFetchesAndCachesIndex(t *testing.T) {
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/di/metadata.json" {
+		switch r.URL.Path {
+		case "/di/metadata.json":
+			io.WriteString(w, testMeta)
+		case "/sh/index.json":
+			io.WriteString(w, testSelfhst)
+		default:
 			http.NotFound(w, r)
-			return
 		}
-		io.WriteString(w, testMeta)
 	}))
 	defer up.Close()
 	dir := t.TempDir()
 	r := New(dir, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	r.upstream["di"] = up.URL + "/di"
+	r.upstream["di"] = []string{up.URL + "/di"}
+	r.upstream["sh"] = []string{up.URL + "/sh"}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 	go func() { r.Run(ctx); close(done) }()
 	deadline := time.Now().Add(5 * time.Second)
-	for r.loadedAt().IsZero() && time.Now().Before(deadline) {
+	for (r.loadedAt(r.col("di")).IsZero() || r.loadedAt(r.col("sh")).IsZero()) && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	cancel()
@@ -201,11 +217,11 @@ func TestRunFetchesAndCachesIndex(t *testing.T) {
 	// Otro Resolver sobre la misma carpeta lo lee del disco, sin red.
 	up.Close()
 	r2 := New(dir, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	raw, mod, err := r2.readIndex()
+	raw, mod, err := r2.readIndex(r2.col("di"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := r2.setIndex(raw, mod); err != nil {
+	if err := r2.setIndex(r2.col("di"), raw, mod); err != nil {
 		t.Fatal(err)
 	}
 	if _, ok := r2.Resolve("", "immich"); !ok {
@@ -240,5 +256,50 @@ func TestSVGLuminance(t *testing.T) {
 		if got := svgLuminance([]byte(in)); got < want-0.01 || got > want+0.01 {
 			t.Errorf("svgLuminance(%s) = %v; quería %v", in, got, want)
 		}
+	}
+}
+
+// selfh.st completa lo que dashboard-icons no tiene; si los dos tienen un
+// logo, gana dashboard-icons.
+func TestSelfhst(t *testing.T) {
+	r := testResolver(t)
+	cases := []struct {
+		spec  string
+		hints []string
+		want  Ref
+	}{
+		{"", []string{"aiostreams"}, Ref{Src: "/icons/sh/aiostreams.svg"}},
+		{"", []string{"immich"}, Ref{Src: "/icons/di/immich.svg"}},
+		{"sh-immich", nil, Ref{Src: "/icons/sh/immich.svg"}},
+		{"netbird", nil, Ref{Src: "/icons/sh/netbird.svg"}},
+		{"NetBird", nil, Ref{Src: "/icons/sh/netbird.svg"}},
+		{"sh-solo-png", nil, Ref{Src: "/icons/sh/solo-png.png"}},
+	}
+	for _, c := range cases {
+		if got, ok := r.Resolve(c.spec, c.hints...); !ok || got != c.want {
+			t.Errorf("Resolve(%q, %q) = %+v, %v; quería %+v", c.spec, c.hints, got, ok, c.want)
+		}
+	}
+}
+
+func TestSearch(t *testing.T) {
+	r := testResolver(t)
+	var got []string
+	for _, h := range r.Search("Imm", 10) {
+		got = append(got, h.Spec)
+	}
+	// immich está en las dos: una sola vez, la de dashboard-icons.
+	if want := []string{"immich"}; !slices.Equal(got, want) {
+		t.Errorf("Search(Imm) = %q; quería %q", got, want)
+	}
+	got = nil
+	for _, h := range r.Search("bird", 10) {
+		got = append(got, h.Spec)
+	}
+	if want := []string{"sh-netbird"}; !slices.Equal(got, want) {
+		t.Errorf("Search(bird) = %q; quería %q", got, want)
+	}
+	if len(r.Search("o", 2)) != 2 || r.Search("", 5) != nil {
+		t.Error("Search no respeta el límite o busca vacío")
 	}
 }

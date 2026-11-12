@@ -12,11 +12,12 @@ import (
 )
 
 // decorateFound pone los logos de la bandeja.
-func decorateFound(r *icons.Resolver, hosts []foundHost) {
+func decorateFound(r *icons.Resolver, hosts []foundHost, chosen map[string]string) {
 	for hi := range hosts {
 		for ri := range hosts[hi].Rows {
 			row := &hosts[hi].Rows[ri]
-			row.Logo, row.Icon = logoFor(r, iconHint{hints: []string{row.Label, row.Name}}, row.Icon)
+			row.IconSet = chosen[row.Key]
+			row.Logo, row.Icon = logoFor(r, iconHint{spec: row.IconSet, hints: []string{row.Label, row.Name}}, row.Icon)
 		}
 	}
 }
@@ -24,12 +25,14 @@ func decorateFound(r *icons.Resolver, hosts []foundHost) {
 // foundRow es un descubierto en la página de la bandeja.
 type foundRow struct {
 	Discovered
-	Key   string
-	Href  string // su página
-	Icon  string
-	Logo  *icons.Ref
-	Sub   string // la segunda línea: tipo y motivo o detalle
-	Shown bool
+	Key  string
+	Href string // su página
+	Icon string
+	Logo *icons.Ref
+	// IconSet es el ícono elegido desde la interfaz ("" si no hay).
+	IconSet string
+	Sub     string // la segunda línea: tipo y motivo o detalle
+	Shown   bool
 }
 
 // foundHost son los descubiertos de un host.
@@ -130,7 +133,7 @@ func (s *server) discoveredPage(w http.ResponseWriter, r *http.Request) {
 	}
 	snap := s.poller.Snapshot()
 	found := foundRows(snap.Discovered, shown)
-	decorateFound(s.icons, found)
+	decorateFound(s.icons, found, s.chosenIcons(r.Context()))
 	s.pages.render(w, s.logger, "discovered", pageData{
 		Title: "Descubiertos", Active: "services", ShowNav: true,
 		Found: found, FoundPending: pending(snap.Discovered, shown),

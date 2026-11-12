@@ -74,7 +74,7 @@ func newDemoHandler(logger *slog.Logger, ic *icons.Resolver) (http.Handler, erro
 		for i := range groups {
 			groups[i].Services = slices.Clone(groups[i].Services)
 		}
-		decorateGroups(ic, groups)
+		decorateGroups(ic, groups, nil)
 		p.render(w, logger, "services", pageData{
 			Title:        "Servicios",
 			Active:       "services",
@@ -88,7 +88,7 @@ func newDemoHandler(logger *slog.Logger, ic *icons.Resolver) (http.Handler, erro
 	})
 	mux.HandleFunc("GET /discovered", func(w http.ResponseWriter, r *http.Request) {
 		found := foundRows(demoFound, map[string]bool{demoFound[4].Key(): true})
-		decorateFound(ic, found)
+		decorateFound(ic, found, nil)
 		p.render(w, logger, "discovered", pageData{
 			Title: "Descubiertos", Active: "services", ShowNav: true, Demo: true,
 			Found: found,

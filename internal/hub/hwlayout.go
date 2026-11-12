@@ -17,6 +17,8 @@ type hwLayoutStore interface {
 	HWLayout(ctx context.Context, host string) (map[string]store.HWItem, error)
 	SetHWOrder(ctx context.Context, host string, items []string) error
 	SetHWHidden(ctx context.Context, host, item string, hidden bool) error
+	HWPinned(ctx context.Context) (string, error)
+	SetHWPinned(ctx context.Context, host string) error
 }
 
 // hwItem es la clave de un elemento de Hardware: "tile:cpu", "chart:mem",

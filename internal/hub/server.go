@@ -205,9 +205,12 @@ func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon moni
 	private.HandleFunc("GET /hardware", s.hardwarePage)
 	private.HandleFunc("POST /hardware/order", s.hwOrder)
 	private.HandleFunc("POST /hardware/hidden", s.hwHidden)
+	private.HandleFunc("POST /hardware/pin", s.hwPin)
 	if s.icons != nil {
 		private.Handle("GET /icons/", http.StripPrefix("/icons", s.icons))
 	}
+	private.HandleFunc("GET /icons/search", s.searchIcons)
+	private.HandleFunc("POST /icons/set", s.setIcon)
 	private.HandleFunc("GET /data/metrics", s.metricsHandler)
 	private.HandleFunc("GET /hidden", s.hiddenPage)
 	private.HandleFunc("POST /hidden", s.hide)
@@ -284,7 +287,7 @@ func (s *server) servicesData(ctx context.Context) pageData {
 
 	p := s.loadPrefs(ctx)
 	data.Groups, data.HiddenCount = buildGroups(applyNames(withShown(snap, p.Shown), p.Names), s.mon.Status, p)
-	decorateGroups(s.icons, data.Groups)
+	decorateGroups(s.icons, data.Groups, s.chosenIcons(ctx))
 	data.Summary = summarize(data.Groups)
 	data.FoundPending = pending(snap.Discovered, p.Shown)
 	data.FoundFailing = failingHidden(snap.Discovered, p.Shown)

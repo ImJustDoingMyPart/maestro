@@ -56,7 +56,7 @@ func (s *server) checksFragment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	d := detail(svc, s.mon.Status(svc.ID))
-	d.Logo, d.Icon = logoFor(s.icons, serviceHint(svc), d.Icon)
+	d.Logo, d.Icon = logoFor(s.icons, serviceHint(svc).withOverride(s.chosenIcons(r.Context())[serviceKey(svc.ID)], svc.IconFromFile), d.Icon)
 	d.ChecksURL = "/fragments/checks/" + escapeID(svc.ID)
 	d.Checks, _ = s.checkPanels(r, svc)
 	s.pages.renderFragment(w, s.logger, "service", "checks", pageData{Svc: &d})

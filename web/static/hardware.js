@@ -45,6 +45,19 @@
     });
   });
 
+  // "Mostrar primero": fija este host como el de entrada (o lo saca).
+  document.addEventListener("click", function (e) {
+    var btn = e.target.closest("[data-hw-pin]");
+    if (!btn) return;
+    var pin = btn.getAttribute("aria-pressed") !== "true";
+    btn.setAttribute("aria-pressed", pin ? "true" : "false");
+    var body = new URLSearchParams();
+    body.append("pin", pin ? "1" : "0");
+    send("/hardware/pin", body).catch(function () {
+      btn.setAttribute("aria-pressed", pin ? "false" : "true");
+    });
+  });
+
   // Arrastrar (SortableJS, el mismo camino en la computadora y el celular;
   // en pantallas táctiles hay que mantener apretado un momento).
   var sortables = [];

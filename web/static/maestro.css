@@ -60,7 +60,7 @@ main.responsive {
    (:not(.grid, nav, .row) > :not(progress.max) + :is(…)). En los
    componentes propios el espacio lo da el gap del contenedor: ese margen
    desalinea (el pie de una tarjeta, el segundo gráfico de una fila). */
-:is(.topbar, .svc-card, .svc-foot, .svc-head, .cards, .card-slot, .groups, .group, .group-head, .page-head, .summary, .hw-tiles, .hw-charts, .hw-cards, .hw-card, .hw-card-head, .chart, .chart-head, .hw-host, .hw-host-head, .hw-table, .card-menu-list, .member-row) > * {
+:is(.topbar, .svc-card, .svc-foot, .svc-head, .cards, .card-slot, .groups, .group, .group-head, .page-head, .summary, .hw-tiles, .hw-charts, .hw-cards, .hw-tile, .chart, .chart-head, .hw-host, .hw-host-head, .hw-table, .card-menu-list, .member-row) > * {
   margin-block-start: 0 !important;
 }
 .section-title {
@@ -591,14 +591,26 @@ header.page-head {
   background: var(--surface-container-highest);
   overflow: hidden;
 }
+/* El logo se dibuja en un cuadrado de 2.125rem; web/static/icons.js lo
+   corre y escala para que el dibujo quede centrado y ocupe el 86 %. */
 .svc-icon img {
   display: block;
-  inline-size: 1.875rem;
-  block-size: 1.875rem;
+  inline-size: 2.125rem;
+  block-size: 2.125rem;
   object-fit: contain;
 }
+/* El <picture> de los logos con variante clara y oscura ocupa todo el
+   cuadrado y centra al logo; su <source> no tiene que ocupar lugar (con
+   display: contents se volvía una fila más de la grilla y bajaba el logo
+   4 px). */
 .svc-icon picture {
-  display: contents;
+  display: grid;
+  place-items: center;
+  inline-size: 100%;
+  block-size: 100%;
+}
+.svc-icon source {
+  display: none;
 }
 .svc-icon > i {
   font-size: 1.625rem;
@@ -613,8 +625,8 @@ header.page-head {
   border-radius: 1rem;
 }
 .svc-icon.large img {
-  inline-size: 2.25rem;
-  block-size: 2.25rem;
+  inline-size: 2.5rem;
+  block-size: 2.5rem;
 }
 /* Los glifos de un color (mdi-, si-) vienen en negro. */
 .svc-icon img.mono {
@@ -1363,19 +1375,89 @@ nav.segmented > button.active {
   border-radius: 0.75rem;
   background: var(--surface-container-low);
 }
+.hw-tile {
+  position: relative;
+}
+/* Fila de arriba de una tarjeta de Hardware: ícono, título, dato al lado,
+   estado y, en el modo edición, sus botones. Siempre 2rem de alto. */
 .hw-label {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  min-block-size: 2rem;
+  min-inline-size: 0;
   color: var(--on-surface-variant);
   font: 500 0.8125rem/1.25rem var(--font);
 }
-.hw-label > i {
-  font-size: 1.125rem;
-  inline-size: 1.125rem;
-  block-size: 1.125rem;
-  line-height: 1;
-  color: var(--primary);
+.hw-label > .svc-icon {
+  inline-size: 1.5rem;
+  block-size: 1.5rem;
+  border-radius: 0;
+  background: none;
+  overflow: visible;
+}
+.hw-label > .svc-icon img {
+  inline-size: 1.375rem;
+  block-size: 1.375rem;
+}
+.hw-label > .svc-icon > i {
+  font-size: 1.25rem;
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+}
+.hw-title {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--on-surface);
+  font: 500 0.875rem/1.25rem var(--font);
+}
+.hw-title > a {
+  color: inherit;
+  text-decoration: none;
+}
+.hw-tile .hw-label,
+.hw-tile .hw-title {
+  position: static;
+}
+.hw-title > a.stretched::after {
+  content: "";
+  display: block;
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+.hw-tile:has(a.stretched):hover {
+  background: var(--surface-container);
+}
+.hw-tile .above,
+.hw-tile .hw-eye {
+  position: relative;
+  z-index: 1;
+}
+.hw-aside {
+  flex: none;
+  color: var(--on-surface-variant);
+  font: 400 0.75rem/1rem var(--font);
+  white-space: nowrap;
+}
+.hw-label > .state-pill {
+  min-inline-size: 0;
+  block-size: auto;
+  margin-inline-start: auto;
+  padding-inline-start: 0.5rem;
+}
+.hw-label > .state-pill ~ .hw-eye,
+.hw-label > .state-pill ~ [data-icon-pick] {
+  margin-inline-start: 0;
+}
+.hw-label > [data-icon-pick] {
+  margin-inline-start: auto;
+  margin-block: -0.25rem;
+}
+.meter.empty > span {
+  display: none;
 }
 .hw-value {
   font: 400 1.75rem/2.25rem var(--font);
@@ -1492,9 +1574,14 @@ article.chart {
   white-space: nowrap;
 }
 
-/* Tarjetas chicas de Hardware: sistemas de archivos, discos, LXC y VMs. */
+/* Almacenamiento y LXC/VMs: las mismas tarjetas que los mosaicos. A
+   diferencia de los mosaicos, la que queda sola en su fila se estira hasta
+   cubrir el ancho, como un gráfico. */
 .hw-cards {
   margin-block-end: 0.75rem;
+}
+.hw-cards.balanced > * {
+  flex-grow: 1;
 }
 @media (min-width: 700px) {
   .hw-cards { --cols: 2; }
@@ -1502,98 +1589,6 @@ article.chart {
 @media (min-width: 1100px) {
   .hw-cards { --cols: 3; }
 }
-.hw-card {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  min-inline-size: 0;
-  margin: 0;
-  padding: 1rem;
-  border-radius: 0.75rem;
-  background: var(--surface-container-low);
-  color: inherit;
-  text-decoration: none;
-}
-a.hw-card:hover {
-  background: var(--surface-container);
-}
-.hw-card-head {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-.hw-card-icon {
-  display: grid;
-  place-items: center;
-  flex: none;
-  inline-size: 2.5rem;
-  block-size: 2.5rem;
-  border-radius: 0.75rem;
-  background: var(--surface-container-highest);
-  color: var(--primary);
-}
-.hw-card-icon > i {
-  font-size: 1.375rem;
-  inline-size: 1.375rem;
-  block-size: 1.375rem;
-  line-height: 1;
-}
-.hw-card-text {
-  flex: 1;
-  min-inline-size: 0;
-}
-.hw-card-title,
-.hw-card-sub {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.hw-card-title {
-  font: 500 0.9375rem/1.375rem var(--font);
-  color: var(--on-surface);
-}
-.hw-card-sub {
-  font: 400 0.75rem/1rem var(--font);
-  color: var(--on-surface-variant);
-}
-.hw-card-figure {
-  font: 400 1.25rem/1.75rem var(--font);
-  color: var(--on-surface);
-  font-variant-numeric: tabular-nums;
-}
-.hw-card.warn .hw-card-figure {
-  color: var(--error);
-}
-.hw-card .state-pill {
-  min-inline-size: 0;
-}
-.hw-card-foot {
-  display: flex;
-  justify-content: space-between;
-  gap: 1rem;
-  color: var(--on-surface-variant);
-  font: 400 0.8125rem/1.25rem var(--font);
-  font-variant-numeric: tabular-nums;
-}
-.hw-facts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.375rem 1rem;
-  color: var(--on-surface-variant);
-  font: 400 0.8125rem/1.25rem var(--font);
-}
-.hw-facts > span {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.375rem;
-}
-.hw-facts i {
-  font-size: 1rem;
-  inline-size: 1rem;
-  block-size: 1rem;
-  line-height: 1;
-}
-
 /* Contenedores: una tabla con columnas fijas. */
 .hw-table {
   border-radius: 0.75rem;
@@ -1684,8 +1679,8 @@ a.hw-row:hover {
   border-radius: 1rem;
 }
 .service-header .svc-icon img {
-  inline-size: 2.25rem;
-  block-size: 2.25rem;
+  inline-size: 2.5rem;
+  block-size: 2.5rem;
 }
 .service-header h5 {
   font: 400 1.5rem/2rem var(--font);
@@ -1740,8 +1735,8 @@ a.hw-row:hover {
   border-radius: 0.75rem;
 }
 .rows .svc-icon img {
-  inline-size: 1.5rem;
-  block-size: 1.5rem;
+  inline-size: 1.75rem;
+  block-size: 1.75rem;
 }
 .rows .svc-icon > i {
   font-size: 1.375rem;
@@ -1864,4 +1859,85 @@ body.editing [data-hw-sort] > [data-hw-item] {
 }
 body:not(.editing) .edit-hint {
   display: none;
+}
+
+/* Host fijado: el botón cambia de texto y la pestaña lleva un alfiler. */
+[data-hw-pin] .when-on,
+[data-hw-pin][aria-pressed="true"] .when-off {
+  display: none;
+}
+[data-hw-pin][aria-pressed="true"] .when-on {
+  display: inline;
+}
+.hw-host-head > [data-hw-pin] {
+  flex: none;
+}
+.host-tab > .pin {
+  font-size: 1rem;
+  inline-size: 1rem;
+  block-size: 1rem;
+  margin-inline-start: -0.125rem;
+  font-variation-settings: "FILL" 1;
+}
+
+/* Diálogo "Cambiar ícono": una grilla de logos para elegir. */
+.icon-dialog {
+  inline-size: min(34rem, 94vw);
+}
+.icon-results {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr));
+  gap: 0.5rem;
+  max-block-size: 18rem;
+  overflow: auto;
+  margin-block: 0.5rem;
+}
+.icon-results:empty {
+  display: none;
+}
+button.icon-choice {
+  display: grid;
+  justify-items: center;
+  gap: 0.375rem;
+  block-size: auto;
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0.625rem 0.25rem 0.5rem;
+  border: 0;
+  border-radius: 0.75rem;
+  background: transparent;
+  color: var(--on-surface-variant);
+  box-shadow: none;
+  cursor: pointer;
+}
+button.icon-choice:hover {
+  background: var(--surface-container-high);
+}
+button.icon-choice.selected {
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+}
+.icon-choice-label {
+  max-inline-size: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 400 0.6875rem/1rem var(--font);
+}
+.icon-empty {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--on-surface-variant);
+  font: 400 0.8125rem/1.25rem var(--font);
+}
+.dialog-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-block-start: 1rem !important;
+}
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
 }

@@ -1,19 +1,21 @@
 // Package icons da a cada servicio el logo de su aplicación.
 //
 // Los logos salen de dashboard-icons (github.com/homarr-labs/dashboard-icons,
-// los mismos que usa Homepage), y para íconos monocromos de Material Design
-// Icons (prefijo "mdi-") y Simple Icons ("si-"). El navegador nunca habla
+// los mismos que usa Homepage) y, para lo que no tiene, de selfh.st/icons
+// (prefijo "sh-"); para íconos monocromos, de Material Design Icons
+// ("mdi-") y Simple Icons ("si-"). El navegador nunca habla
 // con un tercero: pide /icons/<colección>/<archivo> al hub, que lo baja de
 // jsDelivr la primera vez y lo guarda en disco al lado de la base. Después
 // de eso anda sin Internet.
 //
 // Un servicio sin ícono declarado igual lo consigue: Resolve prueba con su
-// nombre, su proyecto de compose, su imagen o su unidad contra el índice de
-// dashboard-icons (metadata.json, que también se guarda en disco y se
-// renueva una vez por semana).
+// nombre, su proyecto de compose, su imagen o su unidad contra los índices
+// de las dos colecciones (que también se guardan en disco y se renuevan una
+// vez por semana).
 package icons
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -24,24 +26,27 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
-// Orígenes. Los paquetes de npm van con versión fija; dashboard-icons no
-// publica versiones y se usa su rama principal, como hace Homepage.
-const (
-	diBase   = "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons"
-	mdiBase  = "https://cdn.jsdelivr.net/npm/@mdi/svg@7.4.47/svg"
-	siBase   = "https://cdn.jsdelivr.net/npm/simple-icons@16.37.0/icons"
-	maxFile  = 2 << 20  // un logo pesa unos KB; el PNG más grande, cientos
-	maxIndex = 16 << 20 // metadata.json ronda 1,3 MB
-)
+// Orígenes: jsDelivr y, si falla (corta los archivos de repos muy grandes
+// con un 403), GitHub directo. Los paquetes de npm van con versión fija;
+// dashboard-icons y selfh.st no publican versiones y se usa su rama
+// principal, como hace Homepage.
+var defaultUpstream = map[string][]string{
+	"di":  {"https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons", "https://raw.githubusercontent.com/homarr-labs/dashboard-icons/main"},
+	"sh":  {"https://cdn.jsdelivr.net/gh/selfhst/icons", "https://raw.githubusercontent.com/selfhst/icons/main"},
+	"mdi": {"https://cdn.jsdelivr.net/npm/@mdi/svg@7.4.47/svg"},
+	"si":  {"https://cdn.jsdelivr.net/npm/simple-icons@16.37.0/icons"},
+}
 
 const (
-	indexFile    = "dashboard-icons.json"
+	maxFile      = 2 << 20  // un logo pesa unos KB; el PNG más grande, cientos
+	maxIndex     = 16 << 20 // los índices rondan 1 MB
 	indexMaxAge  = 7 * 24 * time.Hour
 	retryAfter   = time.Hour // tras una falla, ni el índice ni un archivo se piden de nuevo antes
 	fetchTimeout = 20 * time.Second
@@ -57,13 +62,38 @@ type Ref struct {
 	Mono bool
 }
 
-// entry es un logo del índice.
+// entry es un logo de una colección.
 type entry struct {
+	set    string // di o sh
 	name   string
+	title  string // nombre para mostrar en la búsqueda
 	format string // svg, png o webp
 	// onLight y onDark son las variantes para fondo claro y oscuro ("" si
 	// no tiene).
 	onLight, onDark string
+}
+
+// spec es cómo se declara el logo en un label o en el archivo.
+func (e entry) spec() string {
+	if e.set == "sh" {
+		return "sh-" + e.name
+	}
+	return e.name
+}
+
+// collection es un catálogo de logos con índice: dashboard-icons (di) o
+// selfh.st (sh). di va primero: si las dos tienen un logo, gana di.
+type collection struct {
+	set       string
+	indexPath string // dentro del repo
+	indexFile string // en disco
+	parse     func([]byte) ([]entry, map[string][]string, error)
+
+	byName  map[string]entry
+	byKey   map[string]entry
+	byAlias map[string]entry
+	all     []entry // para buscar, en orden de nombre
+	loaded  time.Time
 }
 
 // Resolver resuelve y sirve los íconos. El cero no sirve: usar New.
@@ -71,53 +101,70 @@ type Resolver struct {
 	dir    string
 	client *http.Client
 	logger *slog.Logger
-	// upstream es el origen de cada colección (di, mdi, si); los tests lo
-	// cambian por un servidor local.
-	upstream map[string]string
+	// upstream son los orígenes de cada colección; los tests los cambian
+	// por un servidor local.
+	upstream map[string][]string
 
-	mu      sync.RWMutex
-	byName  map[string]entry // nombre exacto ("adguard-home")
-	byKey   map[string]entry // nombre normalizado ("adguardhome")
-	byAlias map[string]entry // alias normalizado; solo para íconos declarados
-	failed  map[string]time.Time
-	loaded  time.Time // cuándo se bajó el índice que está en memoria
+	mu     sync.RWMutex
+	cols   []*collection
+	failed map[string]time.Time
 
 	lumaMu   sync.Mutex
-	luma     map[string]float64 // luminancia media de un SVG en disco, por nombre
+	luma     map[string]float64 // luminancia media de un SVG en disco, por "set/nombre"
 	fetching map[string]bool    // variantes que se están bajando para medirlas
 }
 
 // New crea un Resolver que guarda en dir. No toca la red: eso lo hace Run.
 func New(dir string, logger *slog.Logger) *Resolver {
+	up := map[string][]string{}
+	for k, v := range defaultUpstream {
+		up[k] = slices.Clone(v)
+	}
 	return &Resolver{
 		dir:      dir,
 		client:   &http.Client{Timeout: fetchTimeout},
 		logger:   logger,
+		upstream: up,
 		failed:   map[string]time.Time{},
 		luma:     map[string]float64{},
 		fetching: map[string]bool{},
-		upstream: map[string]string{"di": diBase, "mdi": mdiBase, "si": siBase},
+		cols: []*collection{
+			{set: "di", indexPath: "/metadata.json", indexFile: "dashboard-icons.json", parse: parseDashboardIcons},
+			{set: "sh", indexPath: "/index.json", indexFile: "selfhst-icons.json", parse: parseSelfhst},
+		},
 	}
 }
 
-// Run carga el índice (del disco si está, si no de la red) y lo renueva una
-// vez por semana, hasta que se cancele ctx. Sin índice, Resolve solo
+// Run carga los índices (del disco si están, si no de la red) y los renueva
+// una vez por semana, hasta que se cancele ctx. Sin índices, Resolve solo
 // resuelve los "mdi-", "si-" y las URLs.
 func (r *Resolver) Run(ctx context.Context) {
 	if err := os.MkdirAll(r.dir, 0o755); err != nil {
 		r.logger.Warn("íconos: no se pudo crear la carpeta", "dir", r.dir, "err", err)
 		return
 	}
-	if raw, mod, err := r.readIndex(); err == nil {
-		if err := r.setIndex(raw, mod); err != nil {
-			r.logger.Warn("íconos: índice en disco ilegible", "err", err)
+	var wg sync.WaitGroup
+	for _, c := range r.cols {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			r.runCollection(ctx, c)
+		}()
+	}
+	wg.Wait()
+}
+
+func (r *Resolver) runCollection(ctx context.Context, c *collection) {
+	if raw, mod, err := r.readIndex(c); err == nil {
+		if err := r.setIndex(c, raw, mod); err != nil {
+			r.logger.Warn("íconos: índice en disco ilegible", "set", c.set, "err", err)
 		}
 	}
 	for {
-		wait := time.Until(r.loadedAt().Add(indexMaxAge))
+		wait := time.Until(r.loadedAt(c).Add(indexMaxAge))
 		if wait <= 0 {
-			if err := r.fetchIndex(ctx); err != nil {
-				r.logger.Warn("íconos: no se pudo bajar el índice de dashboard-icons", "err", err)
+			if err := r.fetchIndex(ctx, c); err != nil {
+				r.logger.Warn("íconos: no se pudo bajar el índice", "set", c.set, "err", err)
 				wait = retryAfter
 			} else {
 				wait = indexMaxAge
@@ -131,14 +178,23 @@ func (r *Resolver) Run(ctx context.Context) {
 	}
 }
 
-func (r *Resolver) loadedAt() time.Time {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-	return r.loaded
+func (r *Resolver) col(set string) *collection {
+	for _, c := range r.cols {
+		if c.set == set {
+			return c
+		}
+	}
+	return nil
 }
 
-func (r *Resolver) readIndex() ([]byte, time.Time, error) {
-	p := filepath.Join(r.dir, indexFile)
+func (r *Resolver) loadedAt(c *collection) time.Time {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return c.loaded
+}
+
+func (r *Resolver) readIndex(c *collection) ([]byte, time.Time, error) {
+	p := filepath.Join(r.dir, c.indexFile)
 	fi, err := os.Stat(p)
 	if err != nil {
 		return nil, time.Time{}, err
@@ -147,20 +203,65 @@ func (r *Resolver) readIndex() ([]byte, time.Time, error) {
 	return raw, fi.ModTime(), err
 }
 
-func (r *Resolver) fetchIndex(ctx context.Context) error {
-	raw, err := r.get(ctx, r.upstream["di"]+"/metadata.json", maxIndex)
+func (r *Resolver) fetchIndex(ctx context.Context, c *collection) error {
+	var raw []byte
+	var err error
+	for _, base := range r.upstream[c.set] {
+		if raw, err = r.get(ctx, base+c.indexPath, maxIndex); err == nil {
+			break
+		}
+	}
 	if err != nil {
 		return err
 	}
-	if err := r.setIndex(raw, time.Now()); err != nil {
+	if err := r.setIndex(c, raw, time.Now()); err != nil {
 		return err
 	}
-	return writeAtomic(filepath.Join(r.dir, indexFile), raw)
+	return writeAtomic(filepath.Join(r.dir, c.indexFile), raw)
 }
 
-// setIndex lee metadata.json: {"<nombre>": {"base": "svg", "aliases": [...],
-// "colors": {"dark": "<variante para fondo claro>", "light": "<para oscuro>"}}}.
-func (r *Resolver) setIndex(raw []byte, at time.Time) error {
+func (r *Resolver) setIndex(c *collection, raw []byte, at time.Time) error {
+	entries, aliases, err := c.parse(raw)
+	if err != nil {
+		return err
+	}
+	if len(entries) == 0 {
+		return errors.New("índice vacío")
+	}
+	byName := make(map[string]entry, len(entries))
+	byKey := make(map[string]entry, len(entries))
+	byAlias := map[string]entry{}
+	slices.SortFunc(entries, func(a, b entry) int { return strings.Compare(a.name, b.name) })
+	for _, e := range entries {
+		e.set = c.set
+		byName[e.name] = e
+		k := key(e.name)
+		// Si dos nombres se normalizan igual, gana el que ya era la clave
+		// ("jdownloader2" sobre un hipotético "jdownloader-2").
+		if old, ok := byKey[k]; !ok || old.name != k && e.name == k {
+			byKey[k] = e
+		}
+		for _, a := range aliases[e.name] {
+			if ak := key(a); ak != "" {
+				if _, ok := byAlias[ak]; !ok {
+					byAlias[ak] = e
+				}
+			}
+		}
+	}
+	all := make([]entry, 0, len(byName))
+	for _, e := range entries {
+		all = append(all, byName[e.name])
+	}
+	r.mu.Lock()
+	c.byName, c.byKey, c.byAlias, c.all, c.loaded = byName, byKey, byAlias, all, at
+	r.mu.Unlock()
+	return nil
+}
+
+// parseDashboardIcons lee metadata.json de dashboard-icons: {"<nombre>":
+// {"base": "svg", "aliases": [...], "colors": {"dark": …, "light": …}}}.
+func parseDashboardIcons(raw []byte) ([]entry, map[string][]string, error) {
 	var meta map[string]struct {
 		Base    string   `json:"base"`
 		Aliases []string `json:"aliases"`
@@ -170,44 +271,58 @@ func (r *Resolver) setIndex(raw []byte, at time.Time) error {
 		} `json:"colors"`
 	}
 	if err := json.Unmarshal(raw, &meta); err != nil {
-		return err
+		return nil, nil, err
 	}
-	if len(meta) == 0 {
-		return errors.New("índice vacío")
-	}
-	byName := make(map[string]entry, len(meta))
-	byKey := make(map[string]entry, len(meta))
-	byAlias := map[string]entry{}
+	var out []entry
+	aliases := map[string][]string{}
 	for name, m := range meta {
 		if !validName.MatchString(name) {
 			continue
 		}
-		e := entry{name: name, format: m.Base}
+		e := entry{name: name, title: name, format: m.Base}
 		if e.format != "png" && e.format != "webp" {
 			e.format = "svg"
 		}
 		if validName.MatchString(m.Colors.Dark) && validName.MatchString(m.Colors.Light) {
 			e.onLight, e.onDark = variants2(m.Colors.Dark, m.Colors.Light)
 		}
-		byName[name] = e
-		k := key(name)
-		// Si dos nombres se normalizan igual, gana el que ya era la clave
-		// ("jdownloader2" sobre un hipotético "jdownloader-2").
-		if old, ok := byKey[k]; !ok || old.name != k && name == k {
-			byKey[k] = e
-		}
-		for _, a := range m.Aliases {
-			if ak := key(a); ak != "" {
-				if _, ok := byAlias[ak]; !ok {
-					byAlias[ak] = e
-				}
-			}
-		}
+		out = append(out, e)
+		aliases[name] = append(m.Aliases, name)
 	}
-	r.mu.Lock()
-	r.byName, r.byKey, r.byAlias, r.loaded = byName, byKey, byAlias, at
-	r.mu.Unlock()
-	return nil
+	return out, aliases, nil
+}
+
+// parseSelfhst lee index.json de selfh.st/icons: [{"Name": "AIOStreams",
+// "Reference": "aiostreams", "SVG": "Yes", "PNG": "Yes", …}]. Sus
+// variantes "-light" y "-dark" son monocromas: se usa la de colores.
+func parseSelfhst(raw []byte) ([]entry, map[string][]string, error) {
+	var list []struct {
+		Name, Reference, SVG, PNG, WebP string
+	}
+	if err := json.Unmarshal(raw, &list); err != nil {
+		return nil, nil, err
+	}
+	var out []entry
+	aliases := map[string][]string{}
+	for _, m := range list {
+		if !validName.MatchString(m.Reference) {
+			continue
+		}
+		e := entry{name: m.Reference, title: m.Name}
+		switch {
+		case m.SVG == "Yes":
+			e.format = "svg"
+		case m.PNG == "Yes":
+			e.format = "png"
+		case m.WebP == "Yes":
+			e.format = "webp"
+		default:
+			continue
+		}
+		out = append(out, e)
+		aliases[m.Reference] = []string{m.Name}
+	}
+	return out, aliases, nil
 }
 
 // variants2 ordena las dos variantes de un logo: cuál va sobre fondo claro
@@ -215,6 +330,7 @@ func (r *Resolver) setIndex(raw []byte, at time.Time) error {
 // significan lo mismo en todas las entradas (en frigate "light" es la
 // blanca; en ollama, la negra), así que manda el nombre del archivo, como
 // dice el README: "-light" es para fondo oscuro y "-dark" para fondo claro.
+// Si las dos están en disco, manda la medición (ver ref).
 func variants2(dark, light string) (onLight, onDark string) {
 	switch {
 	case strings.HasSuffix(dark, "-light") || strings.HasSuffix(light, "-dark"):
@@ -240,15 +356,15 @@ func key(s string) string {
 }
 
 // Resolve devuelve el ícono de un servicio. spec es el declarado (label
-// maestro.icon u homepage.icon, o icon en maestro.yaml) y manda si se
-// encuentra; hints son nombres para adivinarlo (el del servicio, su
-// proyecto, su imagen), en orden de preferencia. ok es false si no hay
-// logo: la interfaz pone el ícono genérico.
+// maestro.icon u homepage.icon, icon en maestro.yaml o el elegido en la
+// interfaz) y manda si se encuentra; hints son nombres para adivinarlo (el
+// del servicio, su proyecto, su imagen), en orden de preferencia. ok es
+// false si no hay logo: la interfaz pone el ícono genérico.
 //
 // Formatos de spec, los mismos que Homepage: "immich" o "immich.png"
-// (dashboard-icons), "mdi-dumbbell", "si-github" y una URL. Un nombre que
-// no está en dashboard-icons no resuelve: el hub lo prueba como Material
-// Symbol.
+// (dashboard-icons, y si no está, selfh.st), "sh-aiostreams" (selfh.st),
+// "mdi-dumbbell", "si-github" y una URL. Un nombre que no está en ninguna
+// colección no resuelve: el hub lo prueba como Material Symbol.
 func (r *Resolver) Resolve(spec string, hints ...string) (ref Ref, ok bool) {
 	if r == nil {
 		return Ref{}, false
@@ -261,8 +377,10 @@ func (r *Resolver) Resolve(spec string, hints ...string) (ref Ref, ok bool) {
 	var found *entry
 	for _, h := range hints {
 		for _, k := range variants(h) {
-			if e, ok := r.byKey[k]; ok && found == nil {
-				found = &e
+			for _, c := range r.cols {
+				if e, ok := c.byKey[k]; ok && found == nil {
+					found = &e
+				}
 			}
 		}
 	}
@@ -287,6 +405,10 @@ func (r *Resolver) resolveSpec(spec string) (Ref, bool) {
 	if name, ok := strings.CutPrefix(lower, "si-"); ok && validName.MatchString(name) {
 		return Ref{Src: "/icons/si/" + strings.TrimSuffix(name, ".svg") + ".svg", Mono: true}, true
 	}
+	sets := []string{"di", "sh"}
+	if name, ok := strings.CutPrefix(lower, "sh-"); ok {
+		lower, sets = name, []string{"sh"}
+	}
 	name, format := lower, ""
 	for _, ext := range []string{".svg", ".png", ".webp"} {
 		if n, ok := strings.CutSuffix(lower, ext); ok {
@@ -294,23 +416,85 @@ func (r *Resolver) resolveSpec(spec string) (Ref, bool) {
 		}
 	}
 	r.mu.RLock()
-	e, ok := r.byName[name]
-	if !ok {
-		e, ok = r.byKey[key(name)]
-	}
-	if !ok {
-		e, ok = r.byAlias[key(name)]
+	var (
+		e  entry
+		ok bool
+	)
+	for _, set := range sets {
+		c := r.col(set)
+		if e, ok = c.byName[name]; ok {
+			break
+		}
+		if e, ok = c.byKey[key(name)]; ok {
+			break
+		}
+		if e, ok = c.byAlias[key(name)]; ok {
+			break
+		}
 	}
 	r.mu.RUnlock()
 	if !ok {
 		return Ref{}, false
 	}
 	if format != "" && format != e.format {
-		// Pidió otro formato: dashboard-icons publica PNG y WebP de todos,
-		// así que se respeta, sin variantes.
-		return Ref{Src: diPath(e.name, format)}, true
+		// Pidió otro formato: las dos colecciones publican PNG y WebP de
+		// casi todos, así que se respeta, sin variantes.
+		return Ref{Src: path(e.set, e.name, format)}, true
 	}
 	return r.ref(e), true
+}
+
+// Hit es un resultado de Search.
+type Hit struct {
+	Spec  string // lo que se guarda ("adguard-home", "sh-aiostreams")
+	Title string
+	Ref   Ref
+}
+
+// Search busca logos por nombre o alias para el selector de la interfaz:
+// primero los que empiezan con q, después los que lo contienen; como mucho
+// n. dashboard-icons va primero y de selfh.st solo los que no tiene.
+func (r *Resolver) Search(q string, n int) []Hit {
+	if r == nil {
+		return nil
+	}
+	k := key(q)
+	if k == "" {
+		return nil
+	}
+	r.mu.RLock()
+	var prefix, inside []entry
+	seen := map[string]bool{}
+	for _, c := range r.cols {
+		for _, e := range c.all {
+			ek := key(e.name)
+			if seen[ek] {
+				continue
+			}
+			switch {
+			case strings.HasPrefix(ek, k) || strings.HasPrefix(key(e.title), k):
+				prefix = append(prefix, e)
+				seen[ek] = true
+			case strings.Contains(ek, k) || strings.Contains(key(e.title), k):
+				inside = append(inside, e)
+				seen[ek] = true
+			}
+		}
+	}
+	r.mu.RUnlock()
+	byLen := func(a, b entry) int {
+		return cmp.Or(cmp.Compare(len(a.name), len(b.name)), strings.Compare(a.name, b.name))
+	}
+	slices.SortStableFunc(prefix, byLen)
+	slices.SortStableFunc(inside, byLen)
+	var out []Hit
+	for _, e := range append(prefix, inside...) {
+		if len(out) == n {
+			break
+		}
+		out = append(out, Hit{Spec: e.spec(), Title: e.title, Ref: r.ref(e)})
+	}
+	return out
 }
 
 // ref arma el Ref de un logo. Con variantes clara y oscura, la más clara va
@@ -318,46 +502,56 @@ func (r *Resolver) resolveSpec(spec string) (Ref, bool) {
 // usa el nombre (variants2) y se bajan para la próxima vez.
 func (r *Resolver) ref(e entry) Ref {
 	if e.onLight == "" {
-		return Ref{Src: diPath(e.name, e.format)}
+		return Ref{Src: path(e.set, e.name, e.format)}
 	}
 	onLight, onDark := e.onLight, e.onDark
 	if e.format == "svg" {
-		la, oka := r.svgLuma(onLight)
-		lb, okb := r.svgLuma(onDark)
+		la, oka := r.svgLuma(e.set, onLight)
+		lb, okb := r.svgLuma(e.set, onDark)
 		if oka && okb && la > lb+0.05 {
 			onLight, onDark = onDark, onLight
 		}
 	}
-	return Ref{Src: diPath(onLight, e.format), SrcDark: diPath(onDark, e.format)}
+	return Ref{Src: path(e.set, onLight, e.format), SrcDark: path(e.set, onDark, e.format)}
 }
 
 // svgLuma devuelve la luminancia media (0 negro, 1 blanco) de los colores
-// de un SVG de dashboard-icons que está en disco. Si no está, lo baja en
-// segundo plano y devuelve false.
-func (r *Resolver) svgLuma(name string) (float64, bool) {
+// de un SVG que está en disco. Si no está, lo baja en segundo plano y
+// devuelve false.
+func (r *Resolver) svgLuma(set, name string) (float64, bool) {
+	id := set + "/" + name
 	r.lumaMu.Lock()
 	defer r.lumaMu.Unlock()
-	if l, ok := r.luma[name]; ok {
+	if l, ok := r.luma[id]; ok {
 		return l, true
 	}
-	local := filepath.Join(r.dir, "di", name+".svg")
+	local := filepath.Join(r.dir, set, name+".svg")
 	if raw, err := os.ReadFile(local); err == nil {
 		l := svgLuminance(raw)
-		r.luma[name] = l
+		r.luma[id] = l
 		return l, true
 	}
-	if !r.fetching[name] {
-		r.fetching[name] = true
+	if !r.fetching[id] {
+		r.fetching[id] = true
 		go func() {
 			ctx, cancel := context.WithTimeout(context.Background(), fetchTimeout)
 			defer cancel()
-			_ = r.download(ctx, r.upstream["di"]+"/svg/"+name+".svg", local)
+			_ = r.download(ctx, r.urls(set, "svg/"+name+".svg"), local)
 			r.lumaMu.Lock()
-			delete(r.fetching, name)
+			delete(r.fetching, id)
 			r.lumaMu.Unlock()
 		}()
 	}
 	return 0, false
+}
+
+// urls son los orígenes de un archivo de una colección, en orden.
+func (r *Resolver) urls(set, rel string) []string {
+	var out []string
+	for _, base := range r.upstream[set] {
+		out = append(out, base+"/"+rel)
+	}
+	return out
 }
 
 var svgColor = regexp.MustCompile(`(?i)(?:fill|stroke|stop-color)\s*[=:]\s*["']?\s*(#[0-9a-f]{6}\b|#[0-9a-f]{3}\b|white|black)`)
@@ -392,7 +586,7 @@ func svgLuminance(raw []byte) float64 {
 	return sum / float64(n)
 }
 
-func diPath(name, format string) string { return "/icons/di/" + name + "." + format }
+func path(set, name, format string) string { return "/icons/" + set + "/" + name + "." + format }
 
 // noise son palabras que las imágenes y los nombres agregan al de la
 // aplicación: "immich-server", "debian-server", "paperless-ngx-app".
@@ -478,16 +672,16 @@ func (r *Resolver) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		http.NotFound(w, req)
 		return
 	}
-	var upstream string
+	var urls []string
 	switch {
-	case set == "di" && (ext == ".svg" || ext == ".png" || ext == ".webp"):
-		if !r.known(name) {
+	case (set == "di" || set == "sh") && (ext == ".svg" || ext == ".png" || ext == ".webp"):
+		if !r.known(set, name) {
 			http.NotFound(w, req)
 			return
 		}
-		upstream = r.upstream[set] + "/" + ext[1:] + "/" + file
+		urls = r.urls(set, ext[1:]+"/"+file)
 	case (set == "mdi" || set == "si") && ext == ".svg":
-		upstream = r.upstream[set] + "/" + file
+		urls = r.urls(set, file)
 	default:
 		http.NotFound(w, req)
 		return
@@ -496,7 +690,7 @@ func (r *Resolver) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	local := filepath.Join(r.dir, set, file)
 	f, err := os.Open(local)
 	if errors.Is(err, os.ErrNotExist) {
-		err = r.download(req.Context(), upstream, local)
+		err = r.download(req.Context(), urls, local)
 		if err == nil {
 			f, err = os.Open(local)
 		}
@@ -529,21 +723,25 @@ func (r *Resolver) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	http.ServeContent(w, req, "", fi.ModTime(), f)
 }
 
-// known dice si name es un logo de dashboard-icons o una de sus variantes.
-// Sin índice todavía, cualquiera que cumpla el formato: jsDelivr responde
+// known dice si name es un logo de la colección o una de sus variantes.
+// Sin índice todavía, cualquiera que cumpla el formato: el origen responde
 // 404 al que no existe.
-func (r *Resolver) known(name string) bool {
+func (r *Resolver) known(set, name string) bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	if r.byName == nil {
+	c := r.col(set)
+	if c == nil {
+		return false
+	}
+	if c.byName == nil {
 		return true
 	}
-	if _, ok := r.byName[name]; ok {
+	if _, ok := c.byName[name]; ok {
 		return true
 	}
 	for _, suf := range []string{"-light", "-dark"} {
 		if base, ok := strings.CutSuffix(name, suf); ok {
-			if _, ok := r.byName[base]; ok {
+			if _, ok := c.byName[base]; ok {
 				return true
 			}
 		}
@@ -551,14 +749,28 @@ func (r *Resolver) known(name string) bool {
 	return false
 }
 
-func (r *Resolver) download(ctx context.Context, url, local string) error {
+// download baja un archivo probando los orígenes en orden y lo guarda en
+// local. Si fallan todos, no se vuelve a intentar antes de retryAfter.
+func (r *Resolver) download(ctx context.Context, urls []string, local string) error {
+	if len(urls) == 0 {
+		return errors.New("sin origen")
+	}
+	id := urls[0]
 	r.mu.Lock()
-	if t, ok := r.failed[url]; ok && time.Since(t) < retryAfter {
+	if t, ok := r.failed[id]; ok && time.Since(t) < retryAfter {
 		r.mu.Unlock()
 		return errors.New("falló hace poco")
 	}
 	r.mu.Unlock()
-	raw, err := r.get(ctx, url, maxFile)
+	var (
+		raw []byte
+		err error
+	)
+	for _, u := range urls {
+		if raw, err = r.get(ctx, u, maxFile); err == nil {
+			break
+		}
+	}
 	if err == nil {
 		if err = os.MkdirAll(filepath.Dir(local), 0o755); err == nil {
 			err = writeAtomic(local, raw)
@@ -566,7 +778,7 @@ func (r *Resolver) download(ctx context.Context, url, local string) error {
 	}
 	if err != nil && ctx.Err() == nil {
 		r.mu.Lock()
-		r.failed[url] = time.Now()
+		r.failed[id] = time.Now()
 		r.mu.Unlock()
 	}
 	return err

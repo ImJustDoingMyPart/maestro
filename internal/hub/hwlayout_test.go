@@ -75,3 +75,40 @@ func TestModoEdicionDeHardware(t *testing.T) {
 		t.Errorf("orden vacío = %d", code)
 	}
 }
+
+func TestHostFijadoEnHardware(t *testing.T) {
+	m := &agent.HostMetrics{CPU: 5, MemTotal: 1 << 30}
+	snap := Snapshot{
+		Hosts:   []HostStatus{{Name: "adguard", OK: true}, {Name: "pve", OK: true}, {Name: "vm", OK: true}},
+		Systems: map[string]agent.System{"adguard": {Metrics: m}, "pve": {Metrics: m}, "vm": {Metrics: m}},
+	}
+	srv := testServer(t, snap)
+	c := loggedIn(t, srv)
+	page := func() string {
+		t.Helper()
+		res, _ := c.Get(srv.URL + "/hardware")
+		return body(t, res)
+	}
+	if b := page(); !strings.Contains(b, `data-hw-host="adguard"`) {
+		t.Fatal("sin fijar, tenía que mostrar el primero")
+	}
+	res := postForm(t, c, srv.URL+"/hardware/pin", url.Values{"host": {"vm"}, "pin": {"1"}}, srv.URL)
+	res.Body.Close()
+	if res.StatusCode != http.StatusNoContent {
+		t.Fatalf("fijar = %d", res.StatusCode)
+	}
+	b := page()
+	if !strings.Contains(b, `data-hw-host="vm"`) || strings.Index(b, `?host=vm"`) > strings.Index(b, `?host=adguard"`) {
+		t.Error("el fijado no es el primero ni el que se muestra")
+	}
+	// Con ?host= se ve el pedido aunque haya uno fijado.
+	r2, _ := c.Get(srv.URL + "/hardware?host=pve")
+	if !strings.Contains(body(t, r2), `data-hw-host="pve"`) {
+		t.Error("?host= no manda")
+	}
+	res = postForm(t, c, srv.URL+"/hardware/pin", url.Values{"host": {"vm"}, "pin": {"0"}}, srv.URL)
+	res.Body.Close()
+	if b := page(); !strings.Contains(b, `data-hw-host="adguard"`) {
+		t.Error("al sacarlo vuelve el primero")
+	}
+}

@@ -1,6 +1,7 @@
 {{define "scripts"}}<script src="/static/discovered.js" defer></script>{{end}}
 
 {{define "content"}}
+{{if not .Demo}}{{template "icondialog"}}{{end}}
 <header class="page-head">
   <a class="icon-btn" href="/" title="Volver" aria-label="Volver a Servicios"><i>arrow_back</i></a>
   <h1 class="page-title">Descubiertos</h1>
@@ -28,6 +29,8 @@
         <span class="row-title"><span class="dot {{.State}}" title="{{.State.Label}}"></span><span>{{.Label}}</span></span>
         <span class="row-sub" title="{{.Sub}}">{{.Sub}}</span>
       </a>
+      <div class="row-actions">
+      <button type="button" class="icon-btn" data-icon-pick data-key="{{.Key}}" data-icon="{{.IconSet}}" data-name="{{.Label}}" title="Cambiar ícono" aria-label="Cambiar el ícono de {{.Label}}"{{if $.Demo}} disabled{{end}}><i>imagesmode</i></button>
       {{if .Shown}}
       <form method="post" action="/discovered/unshow">
         <input type="hidden" name="key" value="{{.Key}}">
@@ -39,6 +42,7 @@
         <button class="btn tonal" title="Pasarlo a la portada"{{if $.Demo}} disabled{{end}}><i>visibility</i><span class="m l">Mostrar</span></button>
       </form>
       {{end}}
+      </div>
     </li>
     {{end}}
   </ul>

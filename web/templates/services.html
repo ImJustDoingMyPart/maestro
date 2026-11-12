@@ -23,6 +23,7 @@
      elementos data-text="<campo>" del diálogo. Mientras hay uno abierto la
      grilla no se refresca. */}}
 <div id="layout-error" class="snackbar error" role="alert"></div>
+{{template "icondialog"}}
 <dialog id="rename-dialog" class="small-round form-dialog">
   <h6>Cambiar nombre</h6>
   <form method="post" action="/names" hx-post="/names" hx-target="#services" hx-swap="outerHTML">
@@ -262,6 +263,9 @@
   <div class="card-menu-list">
     <button type="button" data-dialog="rename-dialog" data-set-key="{{.Key}}" data-set-name="{{.Name}}"{{if .NameLocked}} disabled title="El nombre viene de maestro.yaml"{{end}}>
       <i>edit</i><span>Cambiar nombre</span>
+    </button>
+    <button type="button" data-icon-pick data-key="{{.Key}}" data-icon="{{.IconSet}}" data-name="{{.Name}}"{{if .IconLocked}} disabled title="El ícono viene de maestro.yaml"{{end}}>
+      <i>imagesmode</i><span>Cambiar ícono</span>
     </button>
     <button type="button" data-dialog="move-dialog" data-set-key="{{.Key}}" data-set-group="{{.Group}}"{{if .GroupLocked}} disabled title="El grupo viene de maestro.yaml"{{end}}>
       <i>drive_file_move</i><span>Mover a grupo</span>
