@@ -1,9 +1,18 @@
-{{define "scripts"}}{{template "chartassets"}}{{end}}
+{{define "scripts"}}{{template "chartassets"}}{{if .Live}}<script src="/static/sortable-1.15.7.min.js" defer></script>
+<script src="/static/hardware.js" defer></script>{{end}}{{end}}
 
 {{define "content"}}
 <header class="page-head">
   <h1 class="page-title">Hardware</h1>
-  <div class="page-actions">{{template "ranges"}}</div>
+  <div class="page-actions">
+    {{template "ranges"}}
+    {{if .Live}}
+    <button type="button" class="btn outlined edit-toggle" data-edit-toggle aria-pressed="false" title="Ordenar y ocultar lo que se ve de este host">
+      <i class="view-only">edit</i><span class="view-only m l">Editar</span>
+      <i class="edit-only">check</i><span class="edit-only m l">Listo</span>
+    </button>
+    {{end}}
+  </div>
 </header>
 {{if not .Hardware}}
 <article class="empty-state">
@@ -21,7 +30,8 @@
 </nav>
 {{end}}
 {{range .Hardware}}{{if eq .Name $.HWHost}}
-<section class="hw-host" id="host-{{.Name}}">
+<section class="hw-host" id="host-{{.Name}}" data-hw-host="{{.Name}}">
+  <p class="edit-only edit-hint"><i>info</i>Arrastrá los mosaicos y los gráficos para ordenarlos y usá el ojo para ocultarlos. Vale solo para {{.Name}}.</p>
   <div class="hw-host-head">
     <span class="svc-icon"><i>dns</i></span>
     <div class="hw-host-text">
@@ -45,10 +55,10 @@
     <p>El agent recién arranca: las métricas aparecen con la segunda muestra (unos 15 segundos).</p>
   </article>
   {{else}}
-  <div class="hw-tiles">
+  <div class="hw-tiles balanced" data-hw-sort>
     {{range .Tiles}}
-    <article class="hw-tile{{if .Warn}} warn{{end}}">
-      <div class="hw-label"><i>{{.Icon}}</i><span>{{.Label}}</span></div>
+    <article class="hw-tile{{if .Warn}} warn{{end}}{{if .Hidden}} is-hidden{{end}}" data-hw-item="{{.ID}}">
+      <div class="hw-label"><i>{{.Icon}}</i><span>{{.Label}}</span>{{template "hweye" .}}</div>
       <div class="hw-value">{{.Value}}{{with .Unit}}<small>{{.}}</small>{{end}}</div>
       <div class="meter"><span style="inline-size: {{printf "%.1f" .Pct}}%"></span></div>
       <div class="hw-sub" title="{{.Sub}}">{{.Sub}}</div>
@@ -57,85 +67,91 @@
   </div>
 
   <h2 class="section-title">En el tiempo</h2>
-  <div class="hw-charts">
+  <div class="hw-charts" data-hw-sort>
     {{range .Charts}}{{template "chart" .}}{{end}}
   </div>
 
   {{if or .FS .SMART}}
-  <h2 class="section-title">Almacenamiento</h2>
-  <div class="hw-cards">
-    {{range .FS}}
-    <article class="hw-card{{if .Warn}} warn{{end}}">
-      <div class="hw-card-head">
-        <span class="hw-card-icon"><i>folder_open</i></span>
-        <div class="hw-card-text">
-          <div class="hw-card-title" title="{{.Mount}}">{{.Mount}}</div>
-          <div class="hw-card-sub" title="{{.Device}} · {{.FSType}}">{{.Device}} · {{.FSType}}</div>
+  <div class="hw-section{{if index .Hidden "section:storage"}} is-hidden{{end}}" data-hw-item="section:storage">
+    <h2 class="section-title">Almacenamiento{{template "hweye" (hiddenArg (index .Hidden "section:storage"))}}</h2>
+    <div class="hw-cards balanced">
+      {{range .FS}}
+      <article class="hw-card{{if .Warn}} warn{{end}}">
+        <div class="hw-card-head">
+          <span class="hw-card-icon"><i>folder_open</i></span>
+          <div class="hw-card-text">
+            <div class="hw-card-title" title="{{.Mount}}">{{.Mount}}</div>
+            <div class="hw-card-sub" title="{{.Device}} · {{.FSType}}">{{.Device}} · {{.FSType}}</div>
+          </div>
+          <span class="hw-card-figure">{{.PctText}}</span>
         </div>
-        <span class="hw-card-figure">{{.PctText}}</span>
-      </div>
-      <div class="meter"><span style="inline-size: {{printf "%.1f" .Pct}}%"></span></div>
-      <div class="hw-card-foot">{{.Used}} de {{.Total}}</div>
-    </article>
-    {{end}}
-    {{range .SMART}}
-    <article class="hw-card" data-state="{{.State}}">
-      <div class="hw-card-head">
-        <span class="hw-card-icon"><i>hard_drive</i></span>
-        <div class="hw-card-text">
-          <div class="hw-card-title">{{.Device}}</div>
-          <div class="hw-card-sub" title="{{.Model}}{{with .Serial}} · {{.}}{{end}}">{{or .Model "Disco"}}</div>
+        <div class="meter"><span style="inline-size: {{printf "%.1f" .Pct}}%"></span></div>
+        <div class="hw-card-foot">{{.Used}} de {{.Total}}</div>
+      </article>
+      {{end}}
+      {{range .SMART}}
+      <article class="hw-card" data-state="{{.State}}">
+        <div class="hw-card-head">
+          <span class="hw-card-icon"><i>hard_drive</i></span>
+          <div class="hw-card-text">
+            <div class="hw-card-title">{{.Device}}</div>
+            <div class="hw-card-sub" title="{{.Model}}{{with .Serial}} · {{.}}{{end}}">{{or .Model "Disco"}}</div>
+          </div>
+          <span class="state-pill {{.State}}" title="Autoevaluación SMART"><span class="dot {{.State}}"></span>SMART {{.Verdict}}</span>
         </div>
-        <span class="state-pill {{.State}}" title="Autoevaluación SMART"><span class="dot {{.State}}"></span>SMART {{.Verdict}}</span>
-      </div>
-      <div class="hw-facts">
-        {{with .Temp}}<span><i>thermostat</i>{{.}}</span>{{end}}
-        {{with .Hours}}<span><i>schedule</i>{{.}}</span>{{end}}
-        {{with .Sectors}}<span><i>grid_on</i>sectores: {{.}}</span>{{end}}
-      </div>
-      {{with .Note}}<div class="hw-card-foot">{{.}}</div>{{end}}
-    </article>
-    {{end}}
+        <div class="hw-facts">
+          {{with .Temp}}<span><i>thermostat</i>{{.}}</span>{{end}}
+          {{with .Hours}}<span><i>schedule</i>{{.}}</span>{{end}}
+          {{with .Sectors}}<span><i>grid_on</i>sectores: {{.}}</span>{{end}}
+        </div>
+        {{with .Note}}<div class="hw-card-foot">{{.}}</div>{{end}}
+      </article>
+      {{end}}
+    </div>
+    {{with .FSChart}}<div class="hw-charts">{{template "chart" .}}</div>{{end}}
   </div>
-  {{with .FSChart}}<div class="hw-charts">{{template "chart" .}}</div>{{end}}
   {{end}}
   {{end}}
 
   {{if .Guests}}
-  <h2 class="section-title">LXC y VMs</h2>
-  <div class="hw-cards">
-    {{range .Guests}}
-    <a class="hw-card link" href="{{.Href}}" data-state="{{.State}}">
-      <div class="hw-card-head">
-        <span class="hw-card-icon"><i>{{.Icon}}</i></span>
-        <div class="hw-card-text">
-          <div class="hw-card-title" title="{{.Name}}">{{.Name}}</div>
-          <div class="hw-card-sub">{{.Kind}} {{.VMID}}</div>
+  <div class="hw-section{{if index .Hidden "section:guests"}} is-hidden{{end}}" data-hw-item="section:guests">
+    <h2 class="section-title">LXC y VMs{{template "hweye" (hiddenArg (index .Hidden "section:guests"))}}</h2>
+    <div class="hw-cards balanced">
+      {{range .Guests}}
+      <a class="hw-card link" href="{{.Href}}" data-state="{{.State}}">
+        <div class="hw-card-head">
+          <span class="hw-card-icon"><i>{{.Icon}}</i></span>
+          <div class="hw-card-text">
+            <div class="hw-card-title" title="{{.Name}}">{{.Name}}</div>
+            <div class="hw-card-sub">{{.Kind}} {{.VMID}}</div>
+          </div>
+          <span class="state-pill {{.State}}"><span class="dot {{.State}}"></span>{{.Status}}</span>
         </div>
-        <span class="state-pill {{.State}}"><span class="dot {{.State}}"></span>{{.Status}}</span>
-      </div>
-      <div class="meter"><span style="inline-size: {{printf "%.1f" .MemPct}}%"></span></div>
-      <div class="hw-card-foot"><span>CPU {{or .CPU "–"}}</span><span>RAM {{or .Mem "–"}}</span></div>
-    </a>
-    {{end}}
+        <div class="meter"><span style="inline-size: {{printf "%.1f" .MemPct}}%"></span></div>
+        <div class="hw-card-foot"><span>CPU {{or .CPU "–"}}</span><span>RAM {{or .Mem "–"}}</span></div>
+      </a>
+      {{end}}
+    </div>
+    <div class="hw-charts">{{range .GuestCharts}}{{template "chart" .}}{{end}}</div>
   </div>
-  <div class="hw-charts">{{range .GuestCharts}}{{template "chart" .}}{{end}}</div>
   {{end}}
 
   {{if .Containers}}
-  <h2 class="section-title">Contenedores que más memoria usan</h2>
-  <div class="hw-table">
-    <div class="hw-row hw-row-head"><span>Contenedor</span><span>CPU</span><span class="m l">Red</span><span>Memoria</span></div>
-    {{range .Containers}}
-    {{if .Href}}<a class="hw-row" href="{{.Href}}">{{else}}<div class="hw-row">{{end}}
-      <span class="hw-row-name"><i>deployed_code</i><span title="{{.Name}}">{{.Name}}</span></span>
-      <span>{{.CPU}}</span>
-      <span class="m l hw-net"><i title="Recibe">south</i>{{.NetRx}}<i title="Envía">north</i>{{.NetTx}}</span>
-      <span>{{.Mem}}</span>
-    {{if .Href}}</a>{{else}}</div>{{end}}
-    {{end}}
+  <div class="hw-section{{if index .Hidden "section:containers"}} is-hidden{{end}}" data-hw-item="section:containers">
+    <h2 class="section-title">Contenedores que más memoria usan{{template "hweye" (hiddenArg (index .Hidden "section:containers"))}}</h2>
+    <div class="hw-table">
+      <div class="hw-row hw-row-head"><span>Contenedor</span><span>CPU</span><span class="m l">Red</span><span>Memoria</span></div>
+      {{range .Containers}}
+      {{if .Href}}<a class="hw-row" href="{{.Href}}">{{else}}<div class="hw-row">{{end}}
+        <span class="hw-row-name"><i>deployed_code</i><span title="{{.Name}}">{{.Name}}</span></span>
+        <span>{{.CPU}}</span>
+        <span class="m l hw-net"><i title="Recibe">south</i>{{.NetRx}}<i title="Envía">north</i>{{.NetTx}}</span>
+        <span>{{.Mem}}</span>
+      {{if .Href}}</a>{{else}}</div>{{end}}
+      {{end}}
+      {{if .MoreCount}}<div class="hw-row hw-row-more"><span>Y {{.MoreCount}} más, que usan menos memoria.</span></div>{{end}}
+    </div>
   </div>
-  {{if .MoreCount}}<p class="hw-more">Y {{.MoreCount}} más.</p>{{end}}
   {{end}}
 
   {{if .Errors}}

@@ -156,6 +156,9 @@ var funcs = template.FuncMap{
 		return map[string]any{"Key": key, "Out": out, "Locked": locked}
 	},
 	"base": path.Base, // nombre de un archivo sin la carpeta
+	// hiddenArg arma los datos del botón del ojo del modo edición de
+	// Hardware para una sección.
+	"hiddenArg": func(hidden bool) map[string]any { return map[string]any{"Hidden": hidden} },
 	// localTime escribe una hora como <time> que web/static/localtime.js
 	// pasa a la zona del navegador. layout es "time" (15:04:05) o
 	// "datetime" (02/01 15:04).

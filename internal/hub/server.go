@@ -203,6 +203,8 @@ func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon moni
 	private.HandleFunc("GET /{$}", s.servicesPage)
 	private.HandleFunc("GET /fragments/services", s.servicesFragment)
 	private.HandleFunc("GET /hardware", s.hardwarePage)
+	private.HandleFunc("POST /hardware/order", s.hwOrder)
+	private.HandleFunc("POST /hardware/hidden", s.hwHidden)
 	if s.icons != nil {
 		private.Handle("GET /icons/", http.StripPrefix("/icons", s.icons))
 	}

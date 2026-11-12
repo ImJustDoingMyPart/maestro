@@ -67,12 +67,15 @@
 </nav>
 {{end}}
 
+{{/* Botón del ojo del modo edición: oculta o muestra un elemento. */}}
+{{define "hweye"}}<button type="button" class="icon-btn small edit-only hw-eye" data-hw-hide aria-pressed="{{if .Hidden}}true{{else}}false{{end}}" title="Ocultar o mostrar"><i class="when-shown">visibility</i><i class="when-hidden">visibility_off</i></button>{{end}}
+
 {{define "chartassets"}}<link rel="stylesheet" href="/static/gen/charts.css"><script src="/static/gen/charts.js" defer></script>{{end}}
 
 {{/* Un gráfico de series de tiempo: lo dibuja charts.js con uPlot. */}}
 {{define "chart"}}
-<article class="chart" data-chart data-unit="{{.Unit}}"{{if .Stack}} data-stack{{end}} data-series="{{.Series}}">
-  <div class="chart-head"><h3 class="chart-title">{{.Title}}</h3><span class="chart-now" data-chart-now></span></div>
+<article class="chart{{if .Hidden}} is-hidden{{end}}" data-chart data-unit="{{.Unit}}"{{if .Stack}} data-stack{{end}} data-series="{{.Series}}"{{with .ID}} data-hw-item="{{.}}"{{end}}>
+  <div class="chart-head"><h3 class="chart-title">{{.Title}}</h3><span class="chart-now" data-chart-now></span>{{if .ID}}{{template "hweye" .}}{{end}}</div>
   <div class="chart-plot"></div>
   <div class="chart-legend" data-chart-legend></div>
   <div class="chart-msg">Cargando…</div>
