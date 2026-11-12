@@ -1483,7 +1483,7 @@ nav.segmented > button.active {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--on-surface);
-  font: var(--type-label-l);
+  font: var(--type-title-m);
 }
 .hw-title > a {
   color: inherit;
@@ -1588,7 +1588,7 @@ article.chart {
 }
 .chart-title {
   margin: 0;
-  font: var(--type-label-l);
+  font: var(--type-title-m);
   letter-spacing: 0;
   color: var(--on-surface);
 }
