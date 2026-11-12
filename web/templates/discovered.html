@@ -20,7 +20,7 @@
 </div>
 {{range .Found}}
 <section class="found-host" data-host="{{.Host}}">
-  <h2 class="section-title">{{.Host}}{{if .Failing}} <span class="state-pill down"><span class="dot down"></span>{{.Failing}} con fallas</span>{{end}}</h2>
+  <h2 class="section-title">{{.Host}}{{if .Failing}} {{template "statepill" (pill "down" (printf "%d con fallas" .Failing) "")}}{{end}}</h2>
   <ul class="rows">
     {{range .Rows}}
     <li class="row-item" data-state="{{.State}}" data-text="{{.Label}} {{.Name}} {{.Sub}}">

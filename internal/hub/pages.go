@@ -145,6 +145,7 @@ type pageData struct {
 	Hidden       []hiddenRow    // página de ocultos
 	HostProblems []HostStatus
 	Updated      time.Time // hora de la última vuelta del poller; cero si no hubo
+	Muestra      *muestra  // página del muestrario
 
 	// Login
 	Error    string
@@ -159,7 +160,13 @@ var funcs = template.FuncMap{
 	"separateArgs": func(key string, out, locked bool) map[string]any {
 		return map[string]any{"Key": key, "Out": out, "Locked": locked}
 	},
-	"base": path.Base, // nombre de un archivo sin la carpeta
+	// pill arma los datos del partial "statepill". state es any porque
+	// llega como State o como texto ("down").
+	"pill": func(state any, label, title string) map[string]any {
+		return map[string]any{"State": fmt.Sprint(state), "Label": label, "Title": title}
+	},
+	"list": func(v ...string) []string { return v }, // una lista fija en la plantilla
+	"base": path.Base,                               // nombre de un archivo sin la carpeta
 	// localTime escribe una hora como <time> que web/static/localtime.js
 	// pasa a la zona del navegador. layout es "time" (15:04:05) o
 	// "datetime" (02/01 15:04).
@@ -181,7 +188,13 @@ type pages map[string]*template.Template
 func parsePages(tfs fs.FS, names ...string) (pages, error) {
 	p := make(pages, len(names))
 	for _, name := range names {
-		t, err := template.New(name).Funcs(funcs).ParseFS(tfs, "layout.html", "partials.html", name+".html")
+		files := []string{"layout.html", "partials.html"}
+		// El muestrario usa la tarjeta de la portada: lleva services.html
+		// antes que el suyo, que redefine "content" y "scripts".
+		if name == "muestrario" {
+			files = append(files, "services.html")
+		}
+		t, err := template.New(name).Funcs(funcs).ParseFS(tfs, append(files, name+".html")...)
 		if err != nil {
 			return nil, fmt.Errorf("plantilla %s: %w", name, err)
 		}

@@ -59,7 +59,7 @@ var demoFound = []Discovered{
 // newDemoHandler arma las rutas del modo --demo: la portada con servicios
 // falsos, Hardware vacío y los estáticos. Sin login ni agents.
 func newDemoHandler(logger *slog.Logger, ic *icons.Resolver) (http.Handler, error) {
-	p, err := parsePages(web.Templates, "services", "hardware", "discovered")
+	p, err := parsePages(web.Templates, "services", "hardware", "discovered", "muestrario")
 	if err != nil {
 		return nil, err
 	}
@@ -93,6 +93,11 @@ func newDemoHandler(logger *slog.Logger, ic *icons.Resolver) (http.Handler, erro
 			Title: "Descubiertos", Active: "services", ShowNav: true, Demo: true,
 			Found: found,
 		})
+	})
+	mux.HandleFunc("GET /muestrario", func(w http.ResponseWriter, r *http.Request) {
+		d := muestraData(ic)
+		d.Demo = true
+		p.render(w, logger, "muestrario", d)
 	})
 	mux.HandleFunc("GET /hardware", func(w http.ResponseWriter, r *http.Request) {
 		p.render(w, logger, "hardware", pageData{Title: "Hardware", Active: "hardware", ShowNav: true, Demo: true})

@@ -162,7 +162,7 @@ func withIcons(r *icons.Resolver) handlerOption {
 }
 
 func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon monitorView, prefs prefStore, sessions *auth.Sessions, apiToken string, logger *slog.Logger, opts ...handlerOption) (http.Handler, error) {
-	p, err := parsePages(web.Templates, "services", "service", "stack", "hardware", "login", "hidden", "external", "discovered", "export")
+	p, err := parsePages(web.Templates, "services", "service", "stack", "hardware", "login", "hidden", "external", "discovered", "export", "muestrario")
 	if err != nil {
 		return nil, err
 	}
@@ -213,6 +213,7 @@ func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon moni
 	private.HandleFunc("POST /icons/set", s.setIcon)
 	private.HandleFunc("GET /data/metrics", s.metricsHandler)
 	private.HandleFunc("GET /hidden", s.hiddenPage)
+	private.HandleFunc("GET /muestrario", s.muestrarioPage)
 	private.HandleFunc("POST /hidden", s.hide)
 	private.HandleFunc("POST /hidden/show", s.unhide)
 	private.HandleFunc("POST /names", s.rename)

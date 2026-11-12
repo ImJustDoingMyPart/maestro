@@ -42,7 +42,7 @@
         {{- with .Uptime}}<span>encendido hace {{.}}</span>{{end -}}
       </div>
     </div>
-    {{if not .OK}}<span class="state-pill down"><span class="dot down"></span>Sin respuesta</span>{{end}}
+    {{if not .OK}}{{template "statepill" (pill "down" "Sin respuesta" "")}}{{end}}
   </div>
 
   {{if .NoSystem}}

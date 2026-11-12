@@ -17,6 +17,12 @@
 {{end}}
 
 
+{{/* Estado: el punto y la palabra, en el color del estado (.state-pill).
+     Es la forma única de mostrar un estado con texto; se arma con
+     (pill estado palabra título), título vacío si no hay. */}}
+{{define "statepill"}}<span class="state-pill {{.State}}"{{with .Title}} title="{{.}}"{{end}}><span class="dot {{.State}}"></span>{{.Label}}</span>{{end}}
+
+
 {{/* Cuerpo del visor de logs (web/src/viewer.js). Va dentro de un
      <section class="log-viewer">, y la página tiene que incluir
      "logdetail" una vez. */}}
@@ -81,7 +87,7 @@
     {{template "svcicon" .}}
     <span class="hw-title" title="{{.Title}}">{{if .Href}}<a class="stretched" href="{{.Href}}">{{.Title}}</a>{{else}}{{.Title}}{{end}}</span>
     {{with .Aside}}<span class="hw-aside">{{.}}</span>{{end}}
-    {{if .StateLabel}}<span class="state-pill {{.State}}"{{with .StateTitle}} title="{{.}}"{{end}}><span class="dot {{.State}}"></span>{{.StateLabel}}</span>{{end}}
+    {{if .StateLabel}}{{template "statepill" (pill .State .StateLabel .StateTitle)}}{{end}}
     {{if .Key}}<button type="button" class="icon-btn small edit-only above" data-icon-pick data-key="{{.Key}}" data-icon="{{.IconSet}}" data-name="{{.Title}}" title="Cambiar ícono" aria-label="Cambiar el ícono de {{.Title}}"><i>imagesmode</i></button>{{end}}
     {{if .ID}}{{template "hweye" .}}{{end}}
   </div>

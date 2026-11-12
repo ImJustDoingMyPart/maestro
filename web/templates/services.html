@@ -212,7 +212,8 @@
     {{if .Key}}{{template "cardmenu" .}}{{else}}<span class="menu-spacer"></span>{{end}}
   </div>
   <div class="svc-foot">
-    <span class="state-pill {{.State}}" title="{{.State.Label}}{{with .Reason}}: {{.}}{{end}}"><span class="dot {{.State}}"></span>{{.State.Label}}</span>
+    {{$title := .State.Label}}{{with .Reason}}{{$title = printf "%s: %s" $title .}}{{end}}
+    {{template "statepill" (pill .State .State.Label $title)}}
     <nav class="svc-actions">
       {{if .Members}}
       <button type="button" class="icon-btn above" data-stack-toggle aria-expanded="false" title="Servicios del stack ({{len .Members}})" aria-label="Ver los {{len .Members}} servicios del stack"><i>stacks</i><span class="count">{{len .Members}}</span></button>

@@ -1,0 +1,140 @@
+{{define "scripts"}}<script src="/static/muestrario.js" defer></script>{{end}}
+
+{{/* Muestrario: cada pieza de la interfaz, con datos inventados (ver
+     internal/hub/muestrario.go). Se compila con services.html para usar la
+     tarjeta real ("card"). */}}
+{{define "content"}}
+<header class="page-head">
+  <h1 class="page-title">Muestrario</h1>
+  <div class="page-actions">
+    <nav class="segmented mu-modes" role="group" aria-label="Tema">
+      <button type="button" data-mode="auto" class="active">Sistema</button>
+      <button type="button" data-mode="light">Claro</button>
+      <button type="button" data-mode="dark">Oscuro</button>
+    </nav>
+  </div>
+</header>
+<p class="page-lead">Cada pieza de la interfaz, por familia, con las mismas plantillas que las páginas. Lo que se vive como el mismo tipo de cosa tiene que verse igual; las medidas salen de la escala de <code>maestro.css</code>.</p>
+
+{{with .Muestra}}
+<h2 class="section-title">Escala</h2>
+<div class="mu-grid">
+  <section class="mu-box">
+    <h3 class="mu-title">Espacio</h3>
+    {{range $t := (list "hair" "1" "2" "3" "4" "6" "8" "10" "16")}}
+    <div class="mu-scale"><code>--sp-{{$t}}</code><span class="mu-bar" data-sp="{{$t}}"></span></div>
+    {{end}}
+  </section>
+  <section class="mu-box">
+    <h3 class="mu-title">Radios</h3>
+    <div class="mu-radii">
+      {{range $t := (list "xs" "s" "m" "l" "full" "icon")}}
+      <div class="mu-radius"><span data-r="{{$t}}"></span><code>--r-{{$t}}</code></div>
+      {{end}}
+    </div>
+  </section>
+  <section class="mu-box">
+    <h3 class="mu-title">Tipos</h3>
+    {{range $t := (list "headline" "title-l" "title-m" "label-l" "label-m" "label-s" "body-m" "body-s" "caption" "badge" "mono")}}
+    <div class="mu-type"><code>--type-{{$t}}</code><span data-type="{{$t}}">Jellyfin 14,2 GB</span></div>
+    {{end}}
+  </section>
+  <section class="mu-box">
+    <h3 class="mu-title">Íconos</h3>
+    <div class="mu-icons">
+      {{range $t := (list "xs" "s" "m" "l" "xl" "xxl")}}
+      <div class="mu-icon"><i data-icon="{{$t}}">dns</i><code>--icon-{{$t}}</code></div>
+      {{end}}
+    </div>
+  </section>
+</div>
+
+<h2 class="section-title">Botones</h2>
+<div class="mu-row">
+  <button type="button" class="btn filled"><i>save</i><span>Guardar</span></button>
+  <button type="button" class="btn tonal"><i>visibility</i><span>Mostrar</span></button>
+  <button type="button" class="btn outlined"><i>inbox</i><span>Volver a la bandeja</span></button>
+  <button type="button" class="btn text">Automático</button>
+  <button type="button" class="btn danger"><i>delete</i><span>Borrar</span></button>
+  <button type="button" class="btn tonal" disabled><i>block</i><span>Deshabilitado</span></button>
+</div>
+<div class="mu-row">
+  <button type="button" class="icon-btn" title="Normal"><i>more_vert</i></button>
+  <button type="button" class="icon-btn tonal" title="Tonal"><i>open_in_new</i></button>
+  <span class="icon-btn off" title="Lugar sin acción"><i>monitoring</i></span>
+  <button type="button" class="icon-btn" disabled title="Deshabilitado"><i>description</i></button>
+  <button type="button" class="icon-btn small" title="Chico"><i>visibility</i></button>
+  {{template "ranges"}}
+</div>
+
+<h2 class="section-title">Insignias y chips</h2>
+<div class="mu-row">
+  <button type="button" class="btn outlined"><i>travel_explore</i><span>Descubiertos</span><span class="btn-badge">12</span></button>
+  <button type="button" class="icon-btn" title="En la esquina de un botón"><i>stacks</i><span class="count">5</span></button>
+  <span class="group-count">4</span>
+  <span class="hw-count">3</span>
+</div>
+<div class="mu-row">
+  <span class="stat up"><span class="dot up"></span>14 arriba</span>
+  <span class="stat degraded"><span class="dot degraded"></span>1 degradado</span>
+  <span class="stat down"><span class="dot down"></span>2 caídos</span>
+  <span class="stat down zero"><span class="dot down"></span>0 caídos</span>
+  <a class="stat link" href="#"><i>visibility_off</i>3 ocultos</a>
+  <a class="host-tab active" href="#"><span class="dot up"></span>vm</a>
+  <a class="host-tab" href="#"><span class="dot up"></span>adguard</a>
+  <a class="host-tab" href="#"><span class="dot down"></span>pve</a>
+</div>
+
+<h2 class="section-title">Estado</h2>
+<div class="mu-row">
+  {{range .States}}{{template "statepill" (pill . .Label "")}}{{end}}
+</div>
+<div class="mu-row mu-meters">
+  <div class="meter"><span class="mu-pct-30"></span></div>
+  <div class="warn"><div class="meter"><span class="mu-pct-90"></span></div></div>
+  <div class="check-bars">
+    <span class="bar up"></span><span class="bar up"></span><span class="bar partial"></span><span class="bar up"></span><span class="bar down"></span><span class="bar none"></span><span class="bar up"></span><span class="bar up"></span>
+  </div>
+</div>
+
+<h2 class="section-title">Avisos</h2>
+<article class="banner error">
+  <i>cloud_off</i>
+  <div class="banner-text">
+    <div class="banner-title">El agent de pve no responde</div>
+    <div class="banner-sub">Último dato: hace 3 minutos. Sus servicios figuran sin datos.</div>
+  </div>
+</article>
+<p class="edit-hint mu-show"><i>info</i><span>Arrastrá las tarjetas para ordenarlas y usá el ojo para ocultarlas.</span></p>
+
+<h2 class="section-title">Tarjetas de la portada</h2>
+<div class="cards">
+  {{range .Cards}}<div class="card-slot">{{template "card" .}}</div>{{end}}
+</div>
+
+<h2 class="section-title">Tarjetas de Hardware</h2>
+<div class="hw-tiles balanced">
+  {{range .Tiles}}{{template "hwcard" .}}{{end}}
+</div>
+
+<h2 class="section-title">Filas</h2>
+<ul class="rows">
+  {{range .Rows}}
+  <li class="row-item">
+    <span class="svc-icon"><i>visibility_off</i></span>
+    <div class="row-main">
+      <span class="row-title">{{.Name}}</span>
+      <span class="row-sub">{{.Detail}}</span>
+    </div>
+    <button type="button" class="btn tonal"{{if .Locked}} disabled{{end}}><i>visibility</i><span>Mostrar</span></button>
+  </li>
+  {{end}}
+</ul>
+
+<h2 class="section-title">Vacío</h2>
+<article class="empty-state">
+  <i>visibility</i>
+  <p>No hay nada oculto.</p>
+</article>
+{{end}}
+{{end}}
