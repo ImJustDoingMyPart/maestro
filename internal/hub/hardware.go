@@ -85,13 +85,28 @@ func newTile(id, label, icon, value, sub string, p float64, warn bool) tile {
 	return tile{ID: "tile:" + id, Title: label, Icon: icon, Value: v, Unit: u, Sub: sub, HasBar: true, Pct: p, Warn: warn}
 }
 
+// itemID arma la clave del modo edición de una tarjeta: lo que no entra en
+// hwItem (un espacio en un punto de montaje) pasa a "_".
+func itemID(kind, name string) string {
+	b := []byte(name)
+	for i, c := range b {
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || strings.IndexByte("._/@-", c) >= 0) {
+			b[i] = '_'
+		}
+	}
+	if len(b) > 100 {
+		b = b[:100]
+	}
+	return kind + ":" + string(b)
+}
+
 func (f fsRow) card() hwCard {
-	return hwCard{Icon: "folder_open", Title: f.Mount, Value: strings.TrimSuffix(f.PctText, " %"), Unit: "%",
+	return hwCard{ID: itemID("fs", f.Mount), Icon: "folder_open", Title: f.Mount, Value: strings.TrimSuffix(f.PctText, " %"), Unit: "%",
 		HasBar: true, Pct: f.Pct, Warn: f.Warn, Sub: f.Used + " de " + f.Total + " · " + f.Device + " · " + f.FSType}
 }
 
 func (d smartRow) card() hwCard {
-	c := hwCard{Icon: "hard_drive", Title: d.Device, Value: "–", State: d.State, StateTitle: "Autoevaluación SMART: " + d.Verdict}
+	c := hwCard{ID: itemID("disk", d.Device), Icon: "hard_drive", Title: d.Device, Value: "–", State: d.State, StateTitle: "Autoevaluación SMART: " + d.Verdict}
 	switch d.State {
 	case StateUp:
 		c.StateLabel = "Sano"
@@ -117,7 +132,7 @@ func (d smartRow) card() hwCard {
 }
 
 func (g guestRow) card() hwCard {
-	c := hwCard{Icon: g.Icon, Title: g.Name, Aside: fmt.Sprintf("%s %d", g.Kind, g.VMID), Value: "–",
+	c := hwCard{ID: itemID("guest", fmt.Sprint(g.VMID)), Icon: g.Icon, Title: g.Name, Aside: fmt.Sprintf("%s %d", g.Kind, g.VMID), Value: "–",
 		State: g.State, StateLabel: g.Status, Href: g.Href, Key: g.Key, Logo: g.Logo, IconSet: g.IconSet}
 	if g.Mem != "" {
 		used, total, _ := strings.Cut(g.Mem, " de ")
@@ -165,6 +180,19 @@ type containerUse struct {
 	CPU, Mem     string
 	NetRx, NetTx string
 	cpu, mem     float64
+	rx, tx       float64
+}
+
+// stackUse es una fila de "Lo que más memoria usa": un stack de compose
+// con la suma de sus contenedores (que se despliegan, como en la portada),
+// o un contenedor suelto.
+type stackUse struct {
+	containerUse
+	Logo    *icons.Ref
+	Icon    string
+	Members []containerUse // vacío: un contenedor suelto
+	key     string         // la de "Cambiar ícono", para el logo elegido
+	hint    iconHint
 }
 
 // hostHardware es un host en la página de Hardware.
@@ -184,23 +212,44 @@ type hostHardware struct {
 	SMART       []smartRow
 	Guests      []guestRow
 	GuestCharts []chartSpec
-	Containers  []containerUse // los que más memoria usan
-	MoreCount   int            // cuántos contenedores más corren
+	Containers  []stackUse // los stacks y contenedores que más memoria usan
+	MoreCount   int        // cuántos más corren
 	// Storage son los sistemas de archivos y los discos; GuestCards, las LXC
 	// y VMs: como tarjetas, igual que los mosaicos.
 	Storage    []hwCard
 	GuestCards []hwCard
-	Pinned     bool // es el host que Hardware muestra primero
-	// Hidden son las secciones ocultas desde el modo edición
-	// ("section:storage", "section:guests", "section:containers").
-	Hidden map[string]bool
+	// Sections son las secciones, en el orden en que se ven: lo de
+	// siempre (almacenamiento primero) o el elegido en el modo edición.
+	Sections []hwSection
+}
+
+// hwSection es una sección de Hardware que se ordena y se oculta.
+type hwSection struct {
+	ID     string // "section:storage"
+	Title  string
+	Hidden bool
+}
+
+// sections arma las secciones que tiene el host, en el orden de siempre.
+func (h *hostHardware) sections() {
+	add := func(id, title string, ok bool) {
+		if ok {
+			h.Sections = append(h.Sections, hwSection{ID: "section:" + id, Title: title})
+		}
+	}
+	add("storage", "Almacenamiento", len(h.Storage) > 0)
+	add("tiles", "Ahora", len(h.Tiles) > 0)
+	add("charts", "En el tiempo", len(h.Charts) > 0)
+	add("guests", "LXC y VMs", len(h.GuestCards) > 0)
+	add("containers", "Lo que más memoria usa", len(h.Containers) > 0)
 }
 
 // maxLines es cuántas líneas tiene como mucho un gráfico: los colores de
 // la paleta de web/src/charts.js.
 const maxLines = 8
 
-// maxContainerRows es cuántos contenedores se listan por host.
+// maxContainerRows es cuántas filas (stacks o contenedores sueltos) se
+// listan por host.
 const maxContainerRows = 10
 
 // hardwarePage muestra un host por vez (?host=), con pestañas para pasar a
@@ -208,24 +257,20 @@ const maxContainerRows = 10
 func (s *server) hardwarePage(w http.ResponseWriter, r *http.Request) {
 	snap := s.poller.Snapshot()
 	hw := buildHardware(snap, time.Now())
-	// El host fijado va primero en las pestañas y es el que se ve sin ?host=.
+	// Los hosts van en el orden elegido; el primero es el que se ve sin
+	// ?host=. Los que no están en el orden (nuevos), al final.
 	if st, ok := s.prefs.(hwLayoutStore); ok {
-		pinned, err := st.HWPinned(r.Context())
+		order, err := st.HWHosts(r.Context())
 		if err != nil {
-			s.logger.Error("leer el host fijado", "err", err)
+			s.logger.Error("leer el orden de los hosts", "err", err)
 		}
-		for i := range hw {
-			hw[i].Pinned = hw[i].Name == pinned
-		}
-		slices.SortStableFunc(hw, func(a, b hostHardware) int {
-			switch {
-			case a.Pinned == b.Pinned:
-				return 0
-			case a.Pinned:
-				return -1
+		pos := func(name string) int {
+			if i := slices.Index(order, name); i >= 0 {
+				return i
 			}
-			return 1
-		})
+			return len(order)
+		}
+		slices.SortStableFunc(hw, func(a, b hostHardware) int { return cmp.Compare(pos(a.Name), pos(b.Name)) })
 	}
 	chosen := s.chosenIcons(r.Context())
 	for i := range hw {
@@ -269,37 +314,19 @@ func (h *hostHardware) cards(r *icons.Resolver, chosen map[string]string) {
 		g.Logo, g.Icon = logoFor(r, iconHint{spec: g.IconSet, hints: []string{g.Name}}, g.Icon)
 		h.GuestCards = append(h.GuestCards, g.card())
 	}
-}
-
-// hwPin atiende POST /hardware/pin: fija (pin=1) el host que Hardware
-// muestra primero, o lo saca (pin=0).
-func (s *server) hwPin(w http.ResponseWriter, r *http.Request) {
-	st, host, ok := s.hwHost(w, r)
-	if !ok {
-		return
+	for i := range h.Containers {
+		c := &h.Containers[i]
+		c.Logo, c.Icon = logoFor(r, c.hint.withOverride(chosen[c.key], false), c.Icon)
 	}
-	switch r.PostFormValue("pin") {
-	case "1":
-	case "0":
-		host = ""
-	default:
-		http.Error(w, "pin inválido", http.StatusBadRequest)
-		return
-	}
-	if err := st.SetHWPinned(r.Context(), host); err != nil {
-		s.logger.Error("fijar host de Hardware", "err", err)
-		http.Error(w, "error interno", http.StatusInternalServerError)
-		return
-	}
-	w.WriteHeader(http.StatusNoContent)
+	h.sections()
 }
 
 // buildHardware arma la página con la última foto.
 func buildHardware(snap Snapshot, now time.Time) []hostHardware {
-	byContainer := map[string]string{} // ID de contenedor → página de su servicio
+	byContainer := map[string]catalog.Service{} // ID de contenedor → su servicio
 	for _, svc := range snap.Services {
 		for _, c := range svc.Containers {
-			byContainer[c.ID] = servicePath(svc.ID)
+			byContainer[c.ID] = svc
 		}
 	}
 	shownFound := map[string]bool{}
@@ -332,7 +359,7 @@ func buildHardware(snap Snapshot, now time.Time) []hostHardware {
 		}
 		hh.SMART = smartRows(sys.SMART)
 		hh.Guests, hh.GuestCharts = guestRows(h.Name, sys.Guests, shownFound)
-		hh.Containers, hh.MoreCount = topContainers(sys.Containers, byContainer)
+		hh.Containers, hh.MoreCount = topStacks(h.Name, sys.Containers, byContainer)
 		out = append(out, hh)
 	}
 	return out
@@ -508,20 +535,63 @@ func guestRows(host string, guests []agent.Guest, shown map[string]bool) ([]gues
 	return rows, []chartSpec{c, m}
 }
 
-func topContainers(cs []agent.ContainerStats, href map[string]string) ([]containerUse, int) {
-	rows := make([]containerUse, 0, len(cs))
+// topStacks junta los contenedores de un host por stack de compose (un
+// contenedor sin stack va solo) y devuelve los que más memoria usan, con la
+// suma de sus contenedores, y cuántos más hay.
+func topStacks(host string, cs []agent.ContainerStats, svcs map[string]catalog.Service) ([]stackUse, int) {
+	var out []stackUse
+	byProject := map[string]int{} // proyecto → índice en out
 	for _, c := range cs {
-		rows = append(rows, containerUse{
-			Name: c.Name, Href: href[c.ID], cpu: c.CPU, mem: float64(c.Mem),
-			CPU: fmtPct(c.CPU), Mem: humanBytes(float64(c.Mem)),
-			NetRx: fmtRate(c.NetRx), NetTx: fmtRate(c.NetTx),
-		})
+		svc, known := svcs[c.ID]
+		u := containerUse{Name: c.Name, cpu: c.CPU, mem: float64(c.Mem), rx: c.NetRx, tx: c.NetTx}
+		if known {
+			u.Href = servicePath(svc.ID)
+		}
+		if !known || svc.Project == "" {
+			out = append(out, stackUse{containerUse: u, Icon: "deployed_code", hint: iconHint{hints: []string{c.Name}}})
+			if known {
+				last := &out[len(out)-1]
+				last.Name, last.key, last.hint = svc.Name, serviceKey(svc.ID), serviceHint(svc)
+			}
+			continue
+		}
+		i, ok := byProject[svc.Project]
+		if !ok {
+			i = len(out)
+			byProject[svc.Project] = i
+			out = append(out, stackUse{
+				containerUse: containerUse{Name: svc.Project, Href: stackPath(host, svc.Project)},
+				Icon:         "stacks", key: stackKey(host, svc.Project), hint: iconHint{hints: []string{svc.Project}},
+			})
+		}
+		g := &out[i]
+		g.Members = append(g.Members, u)
+		g.cpu, g.mem, g.rx, g.tx = g.cpu+u.cpu, g.mem+u.mem, g.rx+u.rx, g.tx+u.tx
 	}
-	slices.SortFunc(rows, func(a, b containerUse) int { return cmp.Or(cmp.Compare(b.mem, a.mem), cmp.Compare(a.Name, b.Name)) })
-	if len(rows) > maxContainerRows {
-		return rows[:maxContainerRows], len(rows) - maxContainerRows
+	for i := range out {
+		g := &out[i]
+		// Un stack de un solo contenedor es una fila común, con el link
+		// a su servicio.
+		if len(g.Members) == 1 {
+			g.Href, g.Members = g.Members[0].Href, nil
+		}
+		slices.SortFunc(g.Members, byMem)
+		for j := range g.Members {
+			g.Members[j].format()
+		}
+		g.format()
 	}
-	return rows, 0
+	slices.SortFunc(out, func(a, b stackUse) int { return byMem(a.containerUse, b.containerUse) })
+	if len(out) > maxContainerRows {
+		return out[:maxContainerRows], len(out) - maxContainerRows
+	}
+	return out, 0
+}
+
+func byMem(a, b containerUse) int { return cmp.Or(cmp.Compare(b.mem, a.mem), cmp.Compare(a.Name, b.Name)) }
+
+func (u *containerUse) format() {
+	u.CPU, u.Mem, u.NetRx, u.NetTx = fmtPct(u.cpu), humanBytes(u.mem), fmtRate(u.rx), fmtRate(u.tx)
 }
 
 // serviceCharts son los gráficos de la pestaña Métricas de un servicio:

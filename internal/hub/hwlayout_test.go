@@ -76,7 +76,7 @@ func TestModoEdicionDeHardware(t *testing.T) {
 	}
 }
 
-func TestHostFijadoEnHardware(t *testing.T) {
+func TestOrdenDeHostsEnHardware(t *testing.T) {
 	m := &agent.HostMetrics{CPU: 5, MemTotal: 1 << 30}
 	snap := Snapshot{
 		Hosts:   []HostStatus{{Name: "adguard", OK: true}, {Name: "pve", OK: true}, {Name: "vm", OK: true}},
@@ -89,26 +89,96 @@ func TestHostFijadoEnHardware(t *testing.T) {
 		res, _ := c.Get(srv.URL + "/hardware")
 		return body(t, res)
 	}
-	if b := page(); !strings.Contains(b, `data-hw-host="adguard"`) {
-		t.Fatal("sin fijar, tenía que mostrar el primero")
+	post := func(hosts ...string) int {
+		t.Helper()
+		res := postForm(t, c, srv.URL+"/hardware/hosts", url.Values{"host": hosts}, srv.URL)
+		res.Body.Close()
+		return res.StatusCode
 	}
-	res := postForm(t, c, srv.URL+"/hardware/pin", url.Values{"host": {"vm"}, "pin": {"1"}}, srv.URL)
-	res.Body.Close()
-	if res.StatusCode != http.StatusNoContent {
-		t.Fatalf("fijar = %d", res.StatusCode)
+	if b := page(); !strings.Contains(b, `data-hw-host="adguard"`) {
+		t.Fatal("sin orden, tenía que mostrar el primero")
+	}
+	// Un orden parcial: los que faltan van al final, en su orden.
+	if code := post("vm"); code != http.StatusNoContent {
+		t.Fatalf("ordenar = %d", code)
 	}
 	b := page()
-	if !strings.Contains(b, `data-hw-host="vm"`) || strings.Index(b, `?host=vm"`) > strings.Index(b, `?host=adguard"`) {
-		t.Error("el fijado no es el primero ni el que se muestra")
+	if !strings.Contains(b, `data-hw-host="vm"`) || strings.Index(b, `?host=vm"`) > strings.Index(b, `?host=adguard"`) ||
+		strings.Index(b, `?host=adguard"`) > strings.Index(b, `?host=pve"`) {
+		t.Error("el primero del orden no es el primero ni el que se muestra")
 	}
-	// Con ?host= se ve el pedido aunque haya uno fijado.
+	// Con ?host= se ve el pedido.
 	r2, _ := c.Get(srv.URL + "/hardware?host=pve")
 	if !strings.Contains(body(t, r2), `data-hw-host="pve"`) {
 		t.Error("?host= no manda")
 	}
-	res = postForm(t, c, srv.URL+"/hardware/pin", url.Values{"host": {"vm"}, "pin": {"0"}}, srv.URL)
-	res.Body.Close()
-	if b := page(); !strings.Contains(b, `data-hw-host="adguard"`) {
-		t.Error("al sacarlo vuelve el primero")
+	if code := post("pve", "adguard", "vm"); code != http.StatusNoContent {
+		t.Fatalf("ordenar = %d", code)
+	}
+	if b := page(); !strings.Contains(b, `data-hw-host="pve"`) {
+		t.Error("no tomó el orden nuevo")
+	}
+	for name, hosts := range map[string][]string{"vacío": nil, "desconocido": {"otro"}, "repetido": {"vm", "vm"}} {
+		if code := post(hosts...); code != http.StatusBadRequest {
+			t.Errorf("%s = %d", name, code)
+		}
+	}
+}
+
+func TestSeccionesDeHardware(t *testing.T) {
+	temp := 40.0
+	m := &agent.HostMetrics{CPU: 5, MemTotal: 1 << 30, FS: []agent.FSUsage{{Mount: "/", Total: 10, Used: 5}, {Mount: "/mnt/mis datos", Total: 10, Used: 1}}}
+	snap := Snapshot{
+		Hosts: []HostStatus{{Name: "pve", OK: true}},
+		Systems: map[string]agent.System{"pve": {Metrics: m,
+			SMART:  []agent.SMARTDisk{{Device: "/dev/sda", TempC: &temp}},
+			Guests: []agent.Guest{{Kind: "lxc", VMID: 102, Name: "dns", Status: "running", MaxMem: 1 << 30}}}},
+	}
+	srv := testServer(t, snap)
+	c := loggedIn(t, srv)
+	page := func() string {
+		t.Helper()
+		res, _ := c.Get(srv.URL + "/hardware")
+		return body(t, res)
+	}
+	post := func(path string, form url.Values) {
+		t.Helper()
+		form.Set("host", "pve")
+		res := postForm(t, c, srv.URL+path, form, srv.URL)
+		res.Body.Close()
+		if res.StatusCode != http.StatusNoContent {
+			t.Fatalf("%s %v = %d", path, form, res.StatusCode)
+		}
+	}
+	order := func(b string, items ...string) bool {
+		last := -1
+		for _, it := range items {
+			i := strings.Index(b, `data-hw-item="`+it+`"`)
+			if i < last {
+				return false
+			}
+			last = i
+		}
+		return true
+	}
+	b := page()
+	if !order(b, "section:storage", "section:tiles", "section:charts", "section:guests") {
+		t.Error("almacenamiento no va primero")
+	}
+	if !order(b, "fs:/", "fs:/mnt/mis_datos", "disk:/dev/sda") || !strings.Contains(b, `data-hw-item="guest:102"`) {
+		t.Error("tarjetas sin clave del modo edición")
+	}
+	post("/hardware/order", url.Values{"item": {"section:guests", "section:tiles"}})
+	post("/hardware/order", url.Values{"item": {"disk:/dev/sda", "fs:/mnt/mis_datos", "fs:/"}})
+	post("/hardware/hidden", url.Values{"item": {"guest:102"}, "hidden": {"1"}})
+	b = page()
+	if !order(b, "section:guests", "section:tiles", "section:storage") {
+		t.Error("no tomó el orden de las secciones")
+	}
+	if !order(b, "disk:/dev/sda", "fs:/mnt/mis_datos", "fs:/") {
+		t.Error("no tomó el orden del almacenamiento")
+	}
+	if !strings.Contains(b, `is-hidden" data-hw-item="guest:102"`) {
+		t.Error("no ocultó la LXC")
 	}
 }

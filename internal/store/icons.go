@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -39,24 +40,33 @@ func (s *Store) Icons(ctx context.Context) (map[string]string, error) {
 	return out, rows.Err()
 }
 
-// HWPinned es el host que Hardware muestra primero; "" si no hay.
-func (s *Store) HWPinned(ctx context.Context) (string, error) {
+// HWHosts es el orden de los hosts en Hardware, del primero (el que se
+// abre al entrar) al último; vacío si nunca se ordenó. Si solo hay un host
+// fijado de antes ("hw_pinned"), ese va primero.
+func (s *Store) HWHosts(ctx context.Context) ([]string, error) {
 	var v string
-	err := s.db.QueryRowContext(ctx, `SELECT value FROM ui_prefs WHERE key = 'hw_pinned'`).Scan(&v)
+	err := s.db.QueryRowContext(ctx, `SELECT value FROM ui_prefs WHERE key = 'hw_hosts'`).Scan(&v)
 	if errors.Is(err, sql.ErrNoRows) {
-		return "", nil
+		err = s.db.QueryRowContext(ctx, `SELECT value FROM ui_prefs WHERE key = 'hw_pinned'`).Scan(&v)
 	}
-	return v, err
+	if errors.Is(err, sql.ErrNoRows) || v == "" {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return strings.Split(v, "\n"), nil
 }
 
-// SetHWPinned fija el host que Hardware muestra primero. "" lo saca.
-func (s *Store) SetHWPinned(ctx context.Context, host string) error {
-	if host == "" {
-		_, err := s.db.ExecContext(ctx, `DELETE FROM ui_prefs WHERE key = 'hw_pinned'`)
+// SetHWHosts guarda el orden de los hosts en Hardware.
+func (s *Store) SetHWHosts(ctx context.Context, hosts []string) error {
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM ui_prefs WHERE key = 'hw_pinned'`); err != nil {
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `
+			INSERT INTO ui_prefs (key, value) VALUES ('hw_hosts', ?)
+			ON CONFLICT (key) DO UPDATE SET value = excluded.value`, strings.Join(hosts, "\n"))
 		return err
-	}
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO ui_prefs (key, value) VALUES ('hw_pinned', ?)
-		ON CONFLICT (key) DO UPDATE SET value = excluded.value`, host)
-	return err
+	})
 }

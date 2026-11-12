@@ -17,17 +17,18 @@ type hwLayoutStore interface {
 	HWLayout(ctx context.Context, host string) (map[string]store.HWItem, error)
 	SetHWOrder(ctx context.Context, host string, items []string) error
 	SetHWHidden(ctx context.Context, host, item string, hidden bool) error
-	HWPinned(ctx context.Context) (string, error)
-	SetHWPinned(ctx context.Context, host string) error
+	HWHosts(ctx context.Context) ([]string, error)
+	SetHWHosts(ctx context.Context, hosts []string) error
 }
 
 // hwItem es la clave de un elemento de Hardware: "tile:cpu", "chart:mem",
-// "section:storage".
-var hwItem = regexp.MustCompile(`^(tile|chart|section):[a-z0-9-]{1,40}$`)
+// "section:storage", "fs:/mnt/data", "disk:/dev/sda", "guest:102" (ver
+// itemID).
+var hwItem = regexp.MustCompile(`^(tile|chart|section|fs|disk|guest):[A-Za-z0-9._/@-]{1,100}$`)
 
-// applyHWLayout ordena los mosaicos y los gráficos de un host y marca lo
-// oculto. Lo que tiene posición va primero, en ese orden; lo demás
-// después, en el orden de siempre.
+// applyHWLayout ordena las secciones, las tarjetas y los gráficos de un
+// host y marca lo oculto. Lo que tiene posición va primero, en ese orden;
+// lo demás después, en el orden de siempre.
 func applyHWLayout(h *hostHardware, layout map[string]store.HWItem) {
 	pos := func(id string) int {
 		if it, ok := layout[id]; ok && it.Position >= 0 {
@@ -35,26 +36,30 @@ func applyHWLayout(h *hostHardware, layout map[string]store.HWItem) {
 		}
 		return 1 << 30
 	}
-	slices.SortStableFunc(h.Tiles, func(a, b tile) int { return cmp.Compare(pos(a.ID), pos(b.ID)) })
-	slices.SortStableFunc(h.Charts, func(a, b chartSpec) int { return cmp.Compare(pos(a.ID), pos(b.ID)) })
 	hidden := func(id string) bool { return layout[id].Hidden }
-	for i := range h.Tiles {
-		h.Tiles[i].Hidden = hidden(h.Tiles[i].ID)
+	cards := func(cs []hwCard) {
+		slices.SortStableFunc(cs, func(a, b hwCard) int { return cmp.Compare(pos(a.ID), pos(b.ID)) })
+		for i := range cs {
+			cs[i].Hidden = hidden(cs[i].ID)
+		}
 	}
-	for i := range h.Charts {
-		h.Charts[i].Hidden = hidden(h.Charts[i].ID)
+	charts := func(cs []chartSpec) {
+		slices.SortStableFunc(cs, func(a, b chartSpec) int { return cmp.Compare(pos(a.ID), pos(b.ID)) })
+		for i := range cs {
+			cs[i].Hidden = hidden(cs[i].ID)
+		}
 	}
+	cards(h.Tiles)
+	cards(h.Storage)
+	cards(h.GuestCards)
+	charts(h.Charts)
+	charts(h.GuestCharts)
 	if h.FSChart != nil {
 		h.FSChart.Hidden = hidden(h.FSChart.ID)
 	}
-	for i := range h.GuestCharts {
-		h.GuestCharts[i].Hidden = hidden(h.GuestCharts[i].ID)
-	}
-	h.Hidden = map[string]bool{}
-	for id, it := range layout {
-		if it.Hidden {
-			h.Hidden[id] = true
-		}
+	slices.SortStableFunc(h.Sections, func(a, b hwSection) int { return cmp.Compare(pos(a.ID), pos(b.ID)) })
+	for i := range h.Sections {
+		h.Sections[i].Hidden = hidden(h.Sections[i].ID)
 	}
 }
 
@@ -116,6 +121,38 @@ func (s *server) hwHidden(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := st.SetHWHidden(r.Context(), host, item, hidden == "1"); err != nil {
 		s.logger.Error("ocultar en Hardware", "host", host, "item", item, "err", err)
+		http.Error(w, "error interno", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// hwHosts atiende POST /hardware/hosts: el orden de las pestañas de los
+// hosts (los host del formulario, del primero al último). El primero es el
+// que se abre al entrar.
+func (s *server) hwHosts(w http.ResponseWriter, r *http.Request) {
+	st, ok := s.prefs.(hwLayoutStore)
+	if !ok {
+		http.Error(w, "sin base", http.StatusNotImplemented)
+		return
+	}
+	if !parseSmallForm(w, r) {
+		return
+	}
+	hosts := r.PostForm["host"]
+	known := s.poller.Snapshot().Hosts
+	if len(hosts) == 0 || len(hosts) > len(known) {
+		http.Error(w, "host inválido", http.StatusBadRequest)
+		return
+	}
+	for i, h := range hosts {
+		if !slices.ContainsFunc(known, func(k HostStatus) bool { return k.Name == h }) || slices.Contains(hosts[:i], h) {
+			http.Error(w, "host inválido", http.StatusBadRequest)
+			return
+		}
+	}
+	if err := st.SetHWHosts(r.Context(), hosts); err != nil {
+		s.logger.Error("guardar el orden de los hosts", "err", err)
 		http.Error(w, "error interno", http.StatusInternalServerError)
 		return
 	}

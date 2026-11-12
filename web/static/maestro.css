@@ -60,7 +60,7 @@ main.responsive {
    (:not(.grid, nav, .row) > :not(progress.max) + :is(…)). En los
    componentes propios el espacio lo da el gap del contenedor: ese margen
    desalinea (el pie de una tarjeta, el segundo gráfico de una fila). */
-:is(.topbar, .svc-card, .svc-foot, .svc-head, .cards, .card-slot, .groups, .group, .group-head, .page-head, .summary, .hw-tiles, .hw-charts, .hw-cards, .hw-tile, .chart, .chart-head, .hw-host, .hw-host-head, .hw-table, .card-menu-list, .member-row) > * {
+:is(.topbar, .svc-card, .svc-foot, .svc-head, .cards, .card-slot, .groups, .group, .group-head, .page-head, .summary, .hw-sections, .hw-section, .hw-tiles, .hw-charts, .hw-cards, .hw-tile, .chart, .chart-head, .hw-host, .hw-host-head, .hw-table, .card-menu-list, .member-row) > * {
   margin-block-start: 0 !important;
 }
 .section-title {
@@ -1861,23 +1861,113 @@ body:not(.editing) .edit-hint {
   display: none;
 }
 
-/* Host fijado: el botón cambia de texto y la pestaña lleva un alfiler. */
-[data-hw-pin] .when-on,
-[data-hw-pin][aria-pressed="true"] .when-off {
-  display: none;
+/* Secciones: se arrastran desde la manija del título, que solo aparece en
+   el modo edición; no llevan el borde punteado de las tarjetas. */
+.hw-section > .section-title {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
 }
-[data-hw-pin][aria-pressed="true"] .when-on {
-  display: inline;
+.hw-sections > .hw-section:first-child > .section-title {
+  margin-block-start: 0;
 }
-.hw-host-head > [data-hw-pin] {
-  flex: none;
+body.editing .hw-sections > .hw-section {
+  outline: none;
+  cursor: auto;
 }
-.host-tab > .pin {
+.hw-handle {
+  font-size: 1.25rem;
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+  margin-inline-start: -0.25rem;
+  color: var(--on-surface-variant);
+  cursor: grab;
+  touch-action: none;
+}
+body.editing .hw-section.drag-chosen {
+  border-radius: 0.75rem;
+  background: var(--surface-container-low);
+}
+.edit-hint i.inline {
   font-size: 1rem;
   inline-size: 1rem;
   block-size: 1rem;
-  margin-inline-start: -0.125rem;
-  font-variation-settings: "FILL" 1;
+  vertical-align: -0.1875rem;
+}
+/* Las pestañas de los hosts también se arrastran. */
+body.editing [data-hw-hosts] > .host-tab {
+  cursor: grab;
+  outline: 1px dashed var(--outline-variant);
+  outline-offset: 2px;
+}
+
+/* Lo que más memoria usa: un stack es una fila que se despliega (como en
+   la portada) y muestra sus contenedores debajo, corridos a la derecha. */
+.hw-row-name > .svc-icon {
+  inline-size: 1.75rem;
+  block-size: 1.75rem;
+  border-radius: 0.5rem;
+}
+.hw-row-name > .svc-icon img {
+  inline-size: 1.25rem;
+  block-size: 1.25rem;
+}
+.hw-row-name > .svc-icon > i {
+  font-size: 1.125rem;
+  inline-size: 1.125rem;
+  block-size: 1.125rem;
+}
+.hw-row + .hw-stack,
+.hw-stack + .hw-row,
+.hw-stack + .hw-stack {
+  border-block-start: 1px solid var(--surface-container-highest);
+}
+.hw-stack > summary {
+  cursor: pointer;
+  list-style: none;
+}
+.hw-stack > summary::-webkit-details-marker {
+  display: none;
+}
+.hw-stack > summary:hover {
+  background: var(--surface-container);
+}
+.hw-count {
+  flex: none;
+  min-inline-size: 1.25rem;
+  padding: 0 0.375rem;
+  border-radius: 0.625rem;
+  background: var(--secondary-container);
+  color: var(--on-secondary-container);
+  font: 500 0.6875rem/1.25rem var(--font);
+  text-align: center;
+}
+.hw-chevron {
+  flex: none;
+  color: var(--on-surface-variant) !important;
+  transition: transform 0.2s;
+}
+.hw-stack[open] .hw-chevron {
+  transform: rotate(180deg);
+}
+.hw-stack[open] > summary {
+  background: var(--surface-container);
+}
+.hw-member {
+  min-block-size: 2.5rem;
+  padding-inline-start: 3.5rem;
+  border-block-start: 1px solid var(--surface-container-highest);
+  color: var(--on-surface-variant);
+}
+.hw-member .hw-row-name {
+  font-weight: 400;
+}
+.hw-stack-link .hw-row-name {
+  color: var(--primary);
+  font-weight: 500;
+}
+.hw-stack-link .hw-row-name > i {
+  margin-inline-start: -1.875rem;
 }
 
 /* Diálogo "Cambiar ícono": una grilla de logos para elegir. */

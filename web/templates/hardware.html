@@ -21,18 +21,18 @@
 </article>
 {{end}}
 {{if gt (len .Hardware) 1}}
-<nav class="host-tabs" aria-label="Hosts">
+<nav class="host-tabs" aria-label="Hosts"{{if .Live}} data-hw-hosts{{end}}>
   {{range .Hardware}}
-  <a class="host-tab{{if eq .Name $.HWHost}} active{{end}}" href="/hardware?host={{.Name}}"{{if eq .Name $.HWHost}} aria-current="page"{{end}}>
-    <span class="dot {{if .OK}}up{{else}}down{{end}}"></span><span>{{.Name}}</span>{{if .Pinned}}<i class="pin" title="Se muestra primero">keep</i>{{end}}
+  <a class="host-tab{{if eq .Name $.HWHost}} active{{end}}" href="/hardware?host={{.Name}}" data-host="{{.Name}}"{{if eq .Name $.HWHost}} aria-current="page"{{end}}>
+    <span class="dot {{if .OK}}up{{else}}down{{end}}"></span><span>{{.Name}}</span>
   </a>
   {{end}}
 </nav>
 {{end}}
 {{if .Live}}{{template "icondialog"}}{{end}}
-{{range .Hardware}}{{if eq .Name $.HWHost}}
+{{range .Hardware}}{{if eq .Name $.HWHost}}{{$h := .}}
 <section class="hw-host" id="host-{{.Name}}" data-hw-host="{{.Name}}">
-  <p class="edit-only edit-hint"><i>info</i>Arrastrá los mosaicos y los gráficos para ordenarlos y usá el ojo para ocultarlos; vale solo para {{.Name}}. "Mostrar primero" lo deja como el host de entrada.</p>
+  <p class="edit-only edit-hint"><i>info</i><span>Arrastrá las tarjetas, los gráficos y las secciones (desde <i class="inline">drag_indicator</i>) para ordenarlos, y usá el ojo para ocultarlos; vale solo para {{.Name}}.{{if gt (len $.Hardware) 1}} Las pestañas de los hosts también se arrastran: el primero es el que se abre al entrar.{{end}}</span></p>
   <div class="hw-host-head">
     <span class="svc-icon"><i>dns</i></span>
     <div class="hw-host-text">
@@ -43,9 +43,6 @@
       </div>
     </div>
     {{if not .OK}}<span class="state-pill down"><span class="dot down"></span>Sin respuesta</span>{{end}}
-    {{if $.Live}}<button type="button" class="btn outlined edit-only" data-hw-pin aria-pressed="{{if .Pinned}}true{{else}}false{{end}}" title="El host fijado es el que Hardware muestra primero">
-      <i class="when-off">push_pin</i><i class="when-on">keep_off</i><span class="when-off m l">Mostrar primero</span><span class="when-on m l">No mostrar primero</span>
-    </button>{{end}}
   </div>
 
   {{if .NoSystem}}
@@ -58,54 +55,67 @@
     <i>hourglass_top</i>
     <p>El agent recién arranca: las métricas aparecen con la segunda muestra (unos 15 segundos).</p>
   </article>
-  {{else}}
-  <div class="hw-tiles balanced" data-hw-sort>
-    {{range .Tiles}}{{template "hwcard" .}}{{end}}
-  </div>
+  {{end}}
 
-  <h2 class="section-title">En el tiempo</h2>
-  <div class="hw-charts" data-hw-sort>
-    {{range .Charts}}{{template "chart" .}}{{end}}
-  </div>
-
-  {{if or .FS .SMART}}
-  <div class="hw-section{{if index .Hidden "section:storage"}} is-hidden{{end}}" data-hw-item="section:storage">
-    <h2 class="section-title">Almacenamiento{{template "hweye" (hiddenArg (index .Hidden "section:storage"))}}</h2>
-    <div class="hw-cards balanced">
-      {{range .Storage}}{{template "hwcard" .}}{{end}}
+  <div class="hw-sections" data-hw-sort data-hw-sections>
+  {{range .Sections}}
+  <div class="hw-section{{if .Hidden}} is-hidden{{end}}" data-hw-item="{{.ID}}">
+    <h2 class="section-title"><i class="edit-only hw-handle" data-hw-handle title="Arrastrar la sección">drag_indicator</i><span>{{.Title}}</span>{{template "hweye" .}}</h2>
+    {{if eq .ID "section:storage"}}
+    <div class="hw-cards balanced" data-hw-sort>
+      {{range $h.Storage}}{{template "hwcard" .}}{{end}}
     </div>
-    {{with .FSChart}}<div class="hw-charts">{{template "chart" .}}</div>{{end}}
-  </div>
-  {{end}}
-  {{end}}
-
-  {{if .Guests}}
-  <div class="hw-section{{if index .Hidden "section:guests"}} is-hidden{{end}}" data-hw-item="section:guests">
-    <h2 class="section-title">LXC y VMs{{template "hweye" (hiddenArg (index .Hidden "section:guests"))}}</h2>
-    <div class="hw-cards balanced">
-      {{range .GuestCards}}{{template "hwcard" .}}{{end}}
+    {{with $h.FSChart}}<div class="hw-charts">{{template "chart" .}}</div>{{end}}
+    {{else if eq .ID "section:tiles"}}
+    <div class="hw-tiles balanced" data-hw-sort>
+      {{range $h.Tiles}}{{template "hwcard" .}}{{end}}
     </div>
-    <div class="hw-charts">{{range .GuestCharts}}{{template "chart" .}}{{end}}</div>
-  </div>
-  {{end}}
-
-  {{if .Containers}}
-  <div class="hw-section{{if index .Hidden "section:containers"}} is-hidden{{end}}" data-hw-item="section:containers">
-    <h2 class="section-title">Contenedores que más memoria usan{{template "hweye" (hiddenArg (index .Hidden "section:containers"))}}</h2>
+    {{else if eq .ID "section:charts"}}
+    <div class="hw-charts" data-hw-sort>
+      {{range $h.Charts}}{{template "chart" .}}{{end}}
+    </div>
+    {{else if eq .ID "section:guests"}}
+    <div class="hw-cards balanced" data-hw-sort>
+      {{range $h.GuestCards}}{{template "hwcard" .}}{{end}}
+    </div>
+    <div class="hw-charts" data-hw-sort>{{range $h.GuestCharts}}{{template "chart" .}}{{end}}</div>
+    {{else if eq .ID "section:containers"}}
     <div class="hw-table">
-      <div class="hw-row hw-row-head"><span>Contenedor</span><span>CPU</span><span class="m l">Red</span><span>Memoria</span></div>
-      {{range .Containers}}
+      <div class="hw-row hw-row-head"><span>Stack o contenedor</span><span>CPU</span><span class="m l">Red</span><span>Memoria</span></div>
+      {{range $h.Containers}}
+      {{if .Members}}
+      <details class="hw-stack">
+        <summary class="hw-row" title="Ver sus {{len .Members}} contenedores">
+          <span class="hw-row-name">{{template "svcicon" .}}<span title="{{.Name}}">{{.Name}}</span><span class="hw-count">{{len .Members}}</span><i class="hw-chevron">expand_more</i></span>
+          <span>{{.CPU}}</span>
+          <span class="m l hw-net"><i title="Recibe">south</i>{{.NetRx}}<i title="Envía">north</i>{{.NetTx}}</span>
+          <span>{{.Mem}}</span>
+        </summary>
+        {{range .Members}}
+        {{if .Href}}<a class="hw-row hw-member" href="{{.Href}}">{{else}}<div class="hw-row hw-member">{{end}}
+          <span class="hw-row-name"><span title="{{.Name}}">{{.Name}}</span></span>
+          <span>{{.CPU}}</span>
+          <span class="m l hw-net"><i title="Recibe">south</i>{{.NetRx}}<i title="Envía">north</i>{{.NetTx}}</span>
+          <span>{{.Mem}}</span>
+        {{if .Href}}</a>{{else}}</div>{{end}}
+        {{end}}
+        <a class="hw-row hw-member hw-stack-link" href="{{.Href}}"><span class="hw-row-name"><i>description</i><span>Abrir el stack</span></span></a>
+      </details>
+      {{else}}
       {{if .Href}}<a class="hw-row" href="{{.Href}}">{{else}}<div class="hw-row">{{end}}
-        <span class="hw-row-name"><i>deployed_code</i><span title="{{.Name}}">{{.Name}}</span></span>
+        <span class="hw-row-name">{{template "svcicon" .}}<span title="{{.Name}}">{{.Name}}</span></span>
         <span>{{.CPU}}</span>
         <span class="m l hw-net"><i title="Recibe">south</i>{{.NetRx}}<i title="Envía">north</i>{{.NetTx}}</span>
         <span>{{.Mem}}</span>
       {{if .Href}}</a>{{else}}</div>{{end}}
       {{end}}
-      {{if .MoreCount}}<div class="hw-row hw-row-more"><span>Y {{.MoreCount}} más, que usan menos memoria.</span></div>{{end}}
+      {{end}}
+      {{if $h.MoreCount}}<div class="hw-row hw-row-more"><span>Y {{$h.MoreCount}} más, que usan menos memoria.</span></div>{{end}}
     </div>
+    {{end}}
   </div>
   {{end}}
+  </div>
 
   {{if .Errors}}
   <details class="hw-errors">

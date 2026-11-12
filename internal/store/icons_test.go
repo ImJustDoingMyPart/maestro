@@ -2,11 +2,12 @@ package store
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 )
 
-func TestIconsYHostFijado(t *testing.T) {
+func TestIconsYOrdenDeHosts(t *testing.T) {
 	ctx := context.Background()
 	s, _ := openTest(t)
 	now := time.Now()
@@ -27,16 +28,19 @@ func TestIconsYHostFijado(t *testing.T) {
 		t.Fatalf("Icons = %v, %v", got, err)
 	}
 
-	if h, err := s.HWPinned(ctx); err != nil || h != "" {
-		t.Fatalf("sin fijar: %q, %v", h, err)
+	if h, err := s.HWHosts(ctx); err != nil || h != nil {
+		t.Fatalf("sin orden: %q, %v", h, err)
 	}
-	s.SetHWPinned(ctx, "pve")
-	s.SetHWPinned(ctx, "vm")
-	if h, _ := s.HWPinned(ctx); h != "vm" {
-		t.Errorf("fijado = %q", h)
+	// Un host fijado de antes va primero.
+	if _, err := s.db.ExecContext(ctx, `INSERT INTO ui_prefs (key, value) VALUES ('hw_pinned', 'pve')`); err != nil {
+		t.Fatal(err)
 	}
-	s.SetHWPinned(ctx, "")
-	if h, _ := s.HWPinned(ctx); h != "" {
-		t.Errorf("después de sacarlo = %q", h)
+	if h, _ := s.HWHosts(ctx); !slices.Equal(h, []string{"pve"}) {
+		t.Errorf("con fijado de antes = %q", h)
+	}
+	s.SetHWHosts(ctx, []string{"vm", "pve"})
+	s.SetHWHosts(ctx, []string{"pve", "vm", "adguard"})
+	if h, _ := s.HWHosts(ctx); !slices.Equal(h, []string{"pve", "vm", "adguard"}) {
+		t.Errorf("orden = %q", h)
 	}
 }

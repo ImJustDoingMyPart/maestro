@@ -1,13 +1,14 @@
-// Modo edición de Hardware: arrastrar mosaicos y gráficos para ordenarlos
-// y el botón del ojo para ocultar o mostrar mosaicos, gráficos y
-// secciones. Cada cambio se guarda enseguida, para el host que se ve.
+// Modo edición de Hardware: arrastrar tarjetas, gráficos y secciones para
+// ordenarlos y el botón del ojo para ocultarlos o mostrarlos, para el host
+// que se ve; y arrastrar las pestañas de los hosts (el primero es el que se
+// abre al entrar). Cada cambio se guarda enseguida.
 (function () {
   var host = document.querySelector("[data-hw-host]");
   if (!host) return;
   var hostName = host.dataset.hwHost;
 
   function send(url, body) {
-    body.append("host", hostName);
+    if (!body.has("host")) body.append("host", hostName);
     return fetch(url, { method: "POST", body: body, credentials: "same-origin" }).then(function (res) {
       if (!res.ok) throw new Error(res.status);
     });
@@ -21,6 +22,11 @@
     });
     if (on) startSorting(); else stopSorting();
   }
+  // Al pasar a otro host desde su pestaña se sigue editando.
+  document.addEventListener("click", function (e) {
+    if (!editing() || !e.target.closest(".host-tab")) return;
+    try { sessionStorage.setItem("maestro.hwEditing", "1"); } catch (err) { /* sin almacenamiento */ }
+  });
   document.addEventListener("click", function (e) {
     if (e.target.closest("[data-edit-toggle]")) setEditing(!editing());
   });
@@ -45,19 +51,6 @@
     });
   });
 
-  // "Mostrar primero": fija este host como el de entrada (o lo saca).
-  document.addEventListener("click", function (e) {
-    var btn = e.target.closest("[data-hw-pin]");
-    if (!btn) return;
-    var pin = btn.getAttribute("aria-pressed") !== "true";
-    btn.setAttribute("aria-pressed", pin ? "true" : "false");
-    var body = new URLSearchParams();
-    body.append("pin", pin ? "1" : "0");
-    send("/hardware/pin", body).catch(function () {
-      btn.setAttribute("aria-pressed", pin ? "false" : "true");
-    });
-  });
-
   // Arrastrar (SortableJS, el mismo camino en la computadora y el celular;
   // en pantallas táctiles hay que mantener apretado un momento).
   var sortables = [];
@@ -65,20 +58,44 @@
     sortables.forEach(function (s) { s.destroy(); });
     sortables = [];
   }
+  var opts = {
+    animation: 150, delay: 250, delayOnTouchOnly: true, forceFallback: true, fallbackTolerance: 4,
+    filter: "[data-hw-hide], [data-icon-pick]", preventOnFilter: false,
+    ghostClass: "drag-ghost", chosenClass: "drag-chosen",
+  };
+  function sortable(list, extra, onEnd) {
+    var o = Object.assign({}, opts, extra, { onEnd: onEnd });
+    sortables.push(Sortable.create(list, o));
+  }
   function startSorting() {
     stopSorting();
     if (!window.Sortable) return;
     host.querySelectorAll("[data-hw-sort]").forEach(function (list) {
-      sortables.push(Sortable.create(list, {
-        animation: 150, delay: 250, delayOnTouchOnly: true, forceFallback: true, fallbackTolerance: 4,
-        draggable: "[data-hw-item]", filter: "[data-hw-hide]", preventOnFilter: false,
-        ghostClass: "drag-ghost", chosenClass: "drag-chosen",
-        onEnd: function () {
-          var body = new URLSearchParams();
-          list.querySelectorAll(":scope > [data-hw-item]").forEach(function (el) { body.append("item", el.dataset.hwItem); });
-          send("/hardware/order", body).catch(function () { location.reload(); });
-        },
-      }));
+      // Las secciones se arrastran desde su manija; lo de adentro, de
+      // cualquier parte.
+      var extra = list.hasAttribute("data-hw-sections")
+        ? { draggable: ".hw-section", handle: "[data-hw-handle]" }
+        : { draggable: "[data-hw-item]" };
+      sortable(list, extra, function () {
+        var body = new URLSearchParams();
+        list.querySelectorAll(":scope > [data-hw-item]").forEach(function (el) { body.append("item", el.dataset.hwItem); });
+        send("/hardware/order", body).catch(function () { location.reload(); });
+      });
     });
+    var tabs = document.querySelector("[data-hw-hosts]");
+    if (tabs) {
+      sortable(tabs, { draggable: ".host-tab" }, function () {
+        var body = new URLSearchParams();
+        tabs.querySelectorAll(".host-tab").forEach(function (el) { body.append("host", el.dataset.host); });
+        send("/hardware/hosts", body).catch(function () { location.reload(); });
+      });
+    }
   }
+
+  try {
+    if (sessionStorage.getItem("maestro.hwEditing")) {
+      sessionStorage.removeItem("maestro.hwEditing");
+      setEditing(true);
+    }
+  } catch (e) { /* sin almacenamiento */ }
 })();
