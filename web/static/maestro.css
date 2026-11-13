@@ -509,12 +509,19 @@ header.page-head {
   line-height: 1;
   color: var(--primary);
 }
+/* Hora de la última vuelta, en el encabezado de la portada antes de
+   "Editar", a 16 px del botón para que no se lea como parte de él. */
 .updated {
-  padding-inline: var(--sp-1);
   color: var(--on-surface-variant);
   font: var(--type-caption);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+.page-actions > .updated {
+  margin-inline-end: var(--sp-2);
+}
+.updated:empty {
+  display: none;
 }
 
 /* Avisos arriba de todo (agent caído, unidades que fallan). */

@@ -6,6 +6,7 @@
   <h1 class="page-title">Servicios</h1>
   {{if .Demo}}<span class="chip small tertiary-container no-border">demo</span>{{end}}
   <div class="page-actions">
+    {{template "updated" .}}
     {{if .Live}}
     <button type="button" class="btn outlined edit-toggle" data-edit-toggle aria-pressed="false">
       <i class="view-only">edit</i><span class="view-only">Editar</span>
@@ -106,6 +107,15 @@
 
 {{/* "grid" es lo que htmx vuelve a pedir cada 15 s y reemplaza entero
      (outerHTML): por eso el div con hx-get va adentro del fragmento. */}}
+{{/* Hora de la última vuelta del poller, en el encabezado. Está fuera de
+     la grilla, así que el fragmento la manda con hx-swap-oob y htmx la
+     reemplaza en su lugar. Vacía (y oculta) si todavía no hubo vuelta: el
+     elemento tiene que existir para que el reemplazo lo encuentre. */}}
+{{define "updated"}}<span id="updated" class="updated" title="Se actualiza cada 15 segundos"{{if .OOB}} hx-swap-oob="true"{{end}}>{{if not .Updated.IsZero}}Actualizado {{localTime .Updated "time"}}{{end}}</span>{{end}}
+
+{{/* Lo que htmx pide cada 15 s: la grilla y la hora del encabezado. */}}
+{{define "gridfragment"}}{{template "grid" .}}{{template "updated" .}}{{end}}
+
 {{define "grid"}}
 <div id="services"{{if .Live}} hx-get="/fragments/services" hx-trigger="every 15s, refresh" hx-swap="outerHTML"{{end}}>
   {{range .HostProblems}}
@@ -139,7 +149,6 @@
     <div class="summary-links">
       {{if .FoundPending}}<a class="stat link" href="/discovered" title="Unidades, timers, LXC y VMs que encontraron los agents y no están en la portada"><i>travel_explore</i>{{.FoundPending}} {{if eq .FoundPending 1}}descubierto{{else}}descubiertos{{end}}</a>{{end}}
       {{if .HiddenCount}}<a class="stat link" href="/hidden" title="Tarjetas ocultas"><i>visibility_off</i>{{.HiddenCount}} {{if eq .HiddenCount 1}}oculto{{else}}ocultos{{end}}</a>{{end}}
-      {{if not .Updated.IsZero}}<span class="updated" title="Se actualiza cada 15 segundos">Actualizado {{localTime .Updated "time"}}</span>{{end}}
     </div>
   </div>
 

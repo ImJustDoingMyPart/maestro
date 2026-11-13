@@ -145,6 +145,7 @@ type pageData struct {
 	Hidden       []hiddenRow    // página de ocultos
 	HostProblems []HostStatus
 	Updated      time.Time // hora de la última vuelta del poller; cero si no hubo
+	OOB          bool      // fragmento de la portada: la hora del encabezado va con hx-swap-oob
 	Muestra      *muestra  // página del muestrario
 
 	// Login

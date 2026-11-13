@@ -278,7 +278,9 @@ func (s *server) servicesPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) servicesFragment(w http.ResponseWriter, r *http.Request) {
-	s.pages.renderFragment(w, s.logger, "services", "grid", s.servicesData(r.Context()))
+	data := s.servicesData(r.Context())
+	data.OOB = true
+	s.pages.renderFragment(w, s.logger, "services", "gridfragment", data)
 }
 
 // servicesData arma la grilla desde la última foto del poller.

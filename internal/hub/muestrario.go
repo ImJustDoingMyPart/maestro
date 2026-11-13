@@ -3,6 +3,7 @@ package hub
 import (
 	"net/http"
 	"slices"
+	"time"
 
 	"github.com/ImJustDoingMyPart/maestro/internal/icons"
 )
@@ -45,7 +46,9 @@ func muestraData(ic *icons.Resolver) pageData {
 			{Name: "watchtower", Detail: "servicio de compose en vm", Locked: true},
 		},
 	}
-	return pageData{Title: "Muestrario", ShowNav: true, Muestra: m}
+	// Una hora fija para "Actualizado" del encabezado de la portada.
+	updated := time.Date(2026, 11, 13, 21, 5, 48, 0, time.UTC)
+	return pageData{Title: "Muestrario", ShowNav: true, Muestra: m, Updated: updated}
 }
 
 func (s *server) muestrarioPage(w http.ResponseWriter, r *http.Request) {
