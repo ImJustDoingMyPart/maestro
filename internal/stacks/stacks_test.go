@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -256,7 +257,34 @@ func TestCheck(t *testing.T) {
 	if b, _ := os.ReadFile(filepath.Join(dir, ".env")); string(b) != "X=1\n" {
 		t.Error("Check escribió el archivo")
 	}
+	if res.Warnings != nil {
+		t.Errorf("sin avisos, warnings = %q", res.Warnings)
+	}
+
+	// Una variable que no está en el .env no frena a compose (queda vacía),
+	// pero el aviso tiene que llegar, limpio y sin nombrar el temporal.
+	res, err = m.Check(ctx, "demo", agent.FileCompose, []byte("version: \"3\"\n"+goodCompose+"    hostname: a$b\n"))
+	must(t, err)
+	got := strings.Join(res.Warnings, "\n")
+	if len(res.Warnings) != 2 ||
+		!slices.Contains(res.Warnings, `The "b" variable is not set. Defaulting to a blank string.`) ||
+		!strings.Contains(got, filepath.Join(dir, "compose.yml")+": the attribute `version` is obsolete") ||
+		strings.Contains(got, ".maestro-") {
+		t.Errorf("warnings = %q", res.Warnings)
+	}
 	noTemps(t, dir)
+}
+
+func TestWarningText(t *testing.T) {
+	for in, want := range map[string]string{
+		`time="2026-11-12T21:09:47-03:00" level=warning msg="The \"TAG\" variable is not set. Defaulting to a blank string."` + "\n": `The "TAG" variable is not set. Defaulting to a blank string.`,
+		"  otra cosa  \n": "otra cosa",
+		"":                "",
+	} {
+		if got := warningText(in); got != want {
+			t.Errorf("warningText(%q) = %q, quería %q", in, got, want)
+		}
+	}
 }
 
 // noTemps verifica que no quedaron temporales en la carpeta.

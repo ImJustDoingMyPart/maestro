@@ -18,7 +18,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -253,11 +255,12 @@ func (m *Manager) Check(ctx context.Context, project, name string, content []byt
 		return agent.CheckResult{}, err
 	}
 	defer os.Remove(tmp)
-	if err := m.validate(ctx, s, name, tmp); err != nil {
+	warnings, err := m.validate(ctx, s, name, tmp)
+	if err != nil {
 		return agent.CheckResult{}, err
 	}
 	diff, err := m.diff(ctx, target, tmp)
-	return agent.CheckResult{Diff: diff}, err
+	return agent.CheckResult{Diff: diff, Warnings: warnings}, err
 }
 
 // Write valida content y, si pasa, reemplaza el archivo name del proyecto.
@@ -298,7 +301,9 @@ func (m *Manager) Write(ctx context.Context, project, name string, content []byt
 		return agent.WriteResult{}, err
 	}
 	defer os.Remove(tmp) // después del rename ya no existe y esto no hace nada
-	if err := m.validate(ctx, s, name, tmp); err != nil {
+	// Los avisos ya los vio quien guarda: el navegador valida con Check
+	// antes de mostrar el diff.
+	if _, err := m.validate(ctx, s, name, tmp); err != nil {
 		return agent.WriteResult{}, err
 	}
 	diff, err := m.diff(ctx, target, tmp)
@@ -397,7 +402,9 @@ func commitFile(tmp, target string) error {
 }
 
 // validate corre docker compose config con tmp en el lugar del archivo name.
-func (m *Manager) validate(ctx context.Context, s stack, name, tmp string) error {
+// Si el archivo pasa, devuelve los avisos que haya escrito compose; si no,
+// un *agent.InvalidError con lo que dijo.
+func (m *Manager) validate(ctx context.Context, s stack, name, tmp string) ([]string, error) {
 	ctx, cancel := context.WithTimeout(ctx, validateTimeout)
 	defer cancel()
 
@@ -418,15 +425,41 @@ func (m *Manager) validate(ctx context.Context, s stack, name, tmp string) error
 
 	out, code, err := m.run(ctx, s.dir, m.docker, args...)
 	if err != nil {
-		return fmt.Errorf("docker compose config: %w", err)
+		return nil, fmt.Errorf("docker compose config: %w", err)
+	}
+	// Los mensajes nombran el temporal: se cambia por el archivo de verdad.
+	target, _ := s.path(name)
+	untemp := func(msg string) string {
+		msg = strings.ReplaceAll(msg, tmp, target)
+		return strings.ReplaceAll(msg, filepath.Base(tmp), filepath.Base(target))
 	}
 	if code != 0 {
-		target, _ := s.path(name)
-		msg := strings.ReplaceAll(strings.TrimSpace(string(out)), tmp, target)
-		msg = strings.ReplaceAll(msg, filepath.Base(tmp), filepath.Base(target))
-		return &agent.InvalidError{Output: msg}
+		return nil, &agent.InvalidError{Output: untemp(strings.TrimSpace(string(out)))}
 	}
-	return nil
+	var warnings []string
+	for l := range strings.Lines(string(out)) {
+		if w := warningText(l); w != "" {
+			warnings = append(warnings, untemp(w))
+		}
+	}
+	return warnings, nil
+}
+
+// logrusMsg es el mensaje de un renglón de log de compose, que escribe los
+// avisos así: time="..." level=warning msg="The \"X\" variable is not set...".
+var logrusMsg = regexp.MustCompile(`\bmsg="((?:[^"\\]|\\.)*)"`)
+
+// warningText saca el mensaje de un renglón de aviso de compose. Un renglón
+// que no tiene la forma de log se devuelve tal cual, sin espacios de más.
+func warningText(line string) string {
+	line = strings.TrimSpace(line)
+	if m := logrusMsg.FindStringSubmatch(line); m != nil {
+		if msg, err := strconv.Unquote(`"` + m[1] + `"`); err == nil {
+			return msg
+		}
+		return m[1]
+	}
+	return line
 }
 
 // diff compara target (o nada, si no existe) con tmp usando git diff

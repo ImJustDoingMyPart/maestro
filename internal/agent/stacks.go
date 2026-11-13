@@ -47,9 +47,13 @@ type WriteRequest struct {
 }
 
 // CheckResult es la respuesta de /check: el diff contra lo que hay en el
-// disco, sin escribir nada. Diff vacío: no hay cambios.
+// disco, sin escribir nada. Diff vacío: no hay cambios. Warnings son los
+// avisos de `docker compose config` cuando el archivo pasa igual (una
+// variable que no está definida y queda vacía, un atributo obsoleto): el
+// archivo se puede guardar, pero quien edita tiene que verlos.
 type CheckResult struct {
-	Diff string `json:"diff"`
+	Diff     string   `json:"diff"`
+	Warnings []string `json:"warnings,omitempty"`
 }
 
 // WriteResult es la respuesta de una escritura.
