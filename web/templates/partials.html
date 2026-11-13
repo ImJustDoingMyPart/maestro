@@ -133,3 +133,14 @@
   <div class="chart-msg">Cargando…</div>
 </article>
 {{end}}
+
+{{/* Caja de problemas de un archivo del editor de Compose (errores y avisos
+     de docker compose config). Es la caja de motivos de estado
+     (state-reasons): compose.js le pone down o degraded y llena la lista.
+     El argumento es la clase que la distingue. */}}
+{{define "issuebox"}}<article class="small-round no-elevate state-reasons issue-box {{.}}" hidden>
+  <nav>
+    <i class="issues-icon">warning</i>
+    <div class="max issues-list"></div>
+  </nav>
+</article>{{end}}

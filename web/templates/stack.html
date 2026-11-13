@@ -60,9 +60,12 @@
 
   <nav class="wrap small-space editor-bar">
     <span class="small-text secondary-text max editor-path"></span>
+    <span class="small-text secondary-text editor-check" role="status"></span>
     <button class="small transparent" data-revert disabled><i>undo</i><span>Descartar</span></button>
     <button class="small" data-save disabled><i>save</i><span>Guardar</span></button>
   </nav>
+
+  {{template "issuebox" "editor-issues"}}
 
   <article class="small-round no-elevate compose-msg" hidden role="status">
     <nav>
@@ -77,6 +80,7 @@
 <dialog class="diff-dialog large-width">
   <h6 class="small">Guardar <span class="diff-file"></span></h6>
   <p class="small-text secondary-text">Antes de escribir se validó con <code>docker compose config</code>. Si la carpeta es un repo de git, se hace un commit solo de este archivo.</p>
+  {{template "issuebox" "diff-warnings"}}
   <pre class="diff"></pre>
   <nav class="right-align">
     <button class="transparent" data-cancel>Cancelar</button>

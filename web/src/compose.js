@@ -15,11 +15,17 @@ import {
   HighlightStyle, StreamLanguage, indentUnit,
 } from "@codemirror/language";
 import { searchKeymap, highlightSelectionMatches } from "@codemirror/search";
+import { setDiagnostics, lintGutter } from "@codemirror/lint";
 import { yaml } from "@codemirror/lang-yaml";
 import { tags as t } from "@lezer/highlight";
 
 import { Viewer } from "./viewer.js";
 import { dotenv } from "./dotenv.js";
+import { issuesFor, tabsToSpaces } from "./issues.js";
+
+// checkDelay es la pausa sin teclear después de la cual se revisa el
+// archivo con docker compose config.
+const checkDelay = 1000;
 
 // Colores de la paleta de Material 3 de Beer CSS: siguen al tema claro u
 // oscuro y al color semilla sin tocar nada acá.
@@ -63,6 +69,22 @@ const theme = EditorView.theme({
     backgroundImage: "none", backgroundColor: "var(--secondary-container)",
     color: "var(--on-secondary-container)", border: "none", borderRadius: "1rem", padding: "0.125rem 0.75rem",
   },
+  // Problemas: subrayado ondulado y un punto en el margen, con los colores
+  // de estado (los de CodeMirror vienen fijos en un SVG).
+  ".cm-lintRange": { backgroundImage: "none", paddingBottom: "0", textDecoration: "underline wavy", textDecorationSkipInk: "none", textUnderlineOffset: "0.25rem" },
+  ".cm-lintRange-error": { textDecorationColor: "var(--error)" },
+  ".cm-lintRange-warning": { textDecorationColor: "var(--status-warn)" },
+  ".cm-lintRange-active": { backgroundColor: "color-mix(in srgb, var(--primary) 12%, transparent)" },
+  ".cm-gutter-lint": { width: "1rem" },
+  ".cm-gutter-lint .cm-gutterElement": { display: "flex", alignItems: "center", justifyContent: "center", padding: "0" },
+  ".cm-lint-marker": { content: "normal", width: "0.5rem", height: "0.5rem", borderRadius: "50%" },
+  ".cm-lint-marker-error": { backgroundColor: "var(--error)" },
+  ".cm-lint-marker-warning": { backgroundColor: "var(--status-warn)" },
+  ".cm-tooltip": { backgroundColor: "var(--surface-container-high)", color: "var(--on-surface)", border: "none", borderRadius: "0.5rem" },
+  ".cm-tooltip-lint": { padding: "0.25rem 0", maxWidth: "min(32rem, 90vw)", fontFamily: "var(--font)" },
+  ".cm-diagnostic": { padding: "0.25rem 0.75rem", borderLeftWidth: "0.25rem" },
+  ".cm-diagnostic-error": { borderLeftColor: "var(--error)" },
+  ".cm-diagnostic-warning": { borderLeftColor: "var(--status-warn)" },
 });
 
 const highlight = HighlightStyle.define([
@@ -80,6 +102,7 @@ const editable = new Compartment(); // se apaga mientras se guarda
 
 function extensions(file, onChange) {
   return [
+    lintGutter(),
     lineNumbers(),
     highlightActiveLineGutter(),
     highlightSpecialChars(),
@@ -98,8 +121,15 @@ function extensions(file, onChange) {
     theme,
     editable.of(EditorView.editable.of(true)),
     EditorView.updateListener.of((u) => { if (u.docChanged) onChange(); }),
+    // YAML no acepta tabulaciones en la sangría: lo pegado llega con
+    // espacios. (La tecla Tab ya indenta con espacios: indentUnit.)
+    file === "env" ? [] : EditorView.clipboardInputFilter.of((text) => tabsToSpaces(text)),
     EditorView.contentAttributes.of({ "aria-label": file === "env" ? ".env" : "compose.yml" }),
   ];
+}
+
+function plural(n, one, many) {
+  return `${n} ${n === 1 ? one : many}`;
 }
 
 function el(tag, cls, text) {
@@ -143,6 +173,8 @@ class Compose {
     this.downDialog = document.querySelector(".down-dialog");
     this.actionBtns = [...root.querySelectorAll("[data-action]")];
     this.busyNote = root.querySelector(".compose-busy");
+    this.checkEl = root.querySelector(".editor-check");
+    this.issuesEl = root.querySelector(".editor-issues");
 
     // Un EditorState por archivo; la vista es una sola y se le cambia el
     // estado al cambiar de pestaña (así cada archivo guarda su historial
@@ -150,8 +182,17 @@ class Compose {
     this.files = {};
     for (const ta of root.querySelectorAll("textarea.editor-source")) {
       const name = ta.dataset.file;
-      const f = { name, path: ta.dataset.path, hash: ta.dataset.hash, saved: ta.value, state: null };
-      f.state = EditorState.create({ doc: ta.value, extensions: extensions(name, () => this.updateDirty()) });
+      // seq cuenta las ediciones, para descartar la respuesta de una
+      // revisión de un texto que ya cambió; checked es el texto revisado e
+      // issues lo que se encontró (null mientras no hay respuesta).
+      const f = {
+        name, path: ta.dataset.path, hash: ta.dataset.hash, saved: ta.value, state: null,
+        seq: 0, timer: 0, checked: null, issues: null, checkFail: "",
+      };
+      f.state = EditorState.create({
+        doc: ta.value,
+        extensions: extensions(name, () => { this.updateDirty(); this.scheduleCheck(name); }),
+      });
       this.files[name] = f;
       ta.hidden = true;
     }
@@ -225,6 +266,110 @@ class Compose {
     const f = this.files[name];
     this.pathEl.textContent = f.path + (f.hash ? "" : " (no existe: se crea al guardar)");
     this.updateDirty();
+    if (!f.timer && f.checked !== this.text(name)) this.check(name);
+    this.renderIssues();
+  }
+
+  // Revisión mientras se edita: después de una pausa, el mismo check que
+  // usa Guardar (docker compose config en el agent, sin escribir nada).
+
+  scheduleCheck(name) {
+    const f = this.files[name];
+    f.seq++;
+    clearTimeout(f.timer);
+    f.timer = setTimeout(() => { f.timer = 0; this.check(name); }, checkDelay);
+    if (name === this.current) this.renderIssues();
+  }
+
+  async check(name) {
+    const f = this.files[name];
+    const seq = f.seq;
+    const content = this.text(name);
+    const [status, res] = await post(`${this.base}/files/${name}/check`, { content });
+    if (seq !== f.seq) return; // se siguió editando: ya viene otra revisión
+    this.applyCheck(name, content, status, res);
+  }
+
+  // applyCheck guarda el resultado de un check del texto content y lo
+  // marca en el editor.
+  applyCheck(name, content, status, res) {
+    const f = this.files[name];
+    f.checked = content;
+    f.checkFail = "";
+    if (status === 200 || status === 422) {
+      f.issues = issuesFor({
+        text: content, file: name, base: f.path.split("/").pop(),
+        error: status === 422 ? res.output || res.error : "",
+        warnings: status === 200 ? res.warnings || [] : [],
+      });
+    } else {
+      f.issues = null;
+      f.checkFail = res.error || `el hub contestó ${status}`;
+    }
+    const diags = (f.issues || []).filter((i) => i.from !== undefined).map((i) => ({
+      from: i.from, to: i.to, severity: i.severity, message: i.message,
+    }));
+    if (name === this.current) this.view.dispatch(setDiagnostics(this.view.state, diags));
+    else f.state = f.state.update(setDiagnostics(f.state, diags)).state;
+    if (name === this.current) this.renderIssues();
+  }
+
+  // renderIssues muestra, debajo del editor, cómo está el archivo actual y
+  // la lista de problemas (en el celular no hay tooltips: la lista es la
+  // forma de leerlos).
+  renderIssues() {
+    const f = this.files[this.current];
+    const c = this.checkEl;
+    const issues = f.issues || [];
+    const errors = issues.filter((i) => i.severity === "error").length;
+    const warns = issues.length - errors;
+    let text, cls = "secondary-text";
+    if (f.timer || f.checked !== this.text(this.current)) text = "Revisando…";
+    else if (f.checkFail) { text = `No se pudo revisar: ${f.checkFail}`; cls = "reason degraded"; }
+    else if (!issues.length) text = "Sin problemas";
+    else {
+      text = [errors && plural(errors, "error", "errores"), warns && plural(warns, "aviso", "avisos")].filter(Boolean).join(" · ");
+      cls = "reason " + (errors ? "down" : "degraded");
+    }
+    c.className = "small-text editor-check " + cls;
+    c.textContent = text;
+    this.fillIssues(this.issuesEl, issues, true);
+  }
+
+  // fillIssues llena una caja de problemas (la de debajo del editor o la
+  // del diálogo de guardar). Con jump, "Línea N" lleva a la línea.
+  fillIssues(box, issues, jump) {
+    box.hidden = !issues.length;
+    const errors = issues.some((i) => i.severity === "error");
+    box.classList.toggle("down", errors);
+    box.classList.toggle("degraded", !errors);
+    box.querySelector(".issues-icon").textContent = errors ? "error" : "warning";
+    const list = box.querySelector(".issues-list");
+    list.replaceChildren();
+    for (const i of issues) {
+      const row = el("div", "issue");
+      if (i.line) {
+        let at;
+        if (jump) {
+          at = el("a", "issue-line", `Línea ${i.line}`);
+          at.href = "#";
+          at.addEventListener("click", (e) => { e.preventDefault(); this.jumpTo(i.line); });
+        } else at = el("span", "issue-line", `Línea ${i.line}`);
+        row.append(at, " ");
+      }
+      row.append(i.message);
+      // En el diálogo de guardar, solo la explicación: el original está
+      // en la lista de debajo del editor.
+      if (jump && i.raw && i.raw !== i.message) row.append(el("div", "issue-raw", i.raw));
+      list.append(row);
+    }
+  }
+
+  jumpTo(line) {
+    const doc = this.view.state.doc;
+    const l = doc.line(Math.min(line, doc.lines));
+    this.view.dispatch({ selection: { anchor: l.from }, scrollIntoView: true });
+    this.view.focus();
   }
 
   updateDirty() {
@@ -258,9 +403,11 @@ class Compose {
     this.hideMessage();
     try {
       const [status, res] = await post(`${this.base}/files/${name}/check`, { content });
+      if (status === 200 || status === 422) this.applyCheck(name, content, status, res);
+      if (status === 422) return this.showMessage("error", "docker compose config rechazó el archivo: no se guardó. Los problemas están marcados en el editor y listados arriba.");
       if (status !== 200) return this.showError(res);
       if (!res.diff) return this.showMessage("info", "Sin cambios respecto de lo que hay en el disco.");
-      if (!(await this.confirmDiff(f, res.diff))) return;
+      if (!(await this.confirmDiff(f, res.diff, f.issues || []))) return;
 
       const [st2, saved] = await post(`${this.base}/files/${name}`, { content, hash: f.hash });
       if (st2 !== 200) return this.showError(saved, st2 === 409);
@@ -277,9 +424,11 @@ class Compose {
     }
   }
 
-  confirmDiff(f, diff) {
+  confirmDiff(f, diff, issues) {
     const d = this.diffDialog;
     d.querySelector(".diff-file").textContent = f.path.split("/").pop();
+    // Los avisos no frenan el guardado, pero se ven antes de confirmar.
+    this.fillIssues(d.querySelector(".diff-warnings"), issues, false);
     const pre = d.querySelector(".diff");
     pre.replaceChildren();
     for (const line of diff.split("\n")) {

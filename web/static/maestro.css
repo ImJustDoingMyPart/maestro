@@ -1144,6 +1144,29 @@ body.editing #services .card-slot > .svc-card {
   font: var(--type-mono);
 }
 
+/* Problemas del archivo: la caja de motivos de estado (state-reasons),
+   debajo del editor y en el diálogo de guardar. */
+.issue-box[hidden] {
+  display: none;
+}
+.issue-box.diff-warnings {
+  margin-block: var(--sp-2) 0;
+}
+.issue + .issue {
+  margin-block-start: var(--sp-2);
+}
+.issue-line {
+  font: var(--type-label-l);
+  color: var(--primary);
+}
+.issue-raw {
+  margin-block-start: var(--sp-1);
+  font: var(--type-mono);
+  color: var(--on-surface-variant);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .diff-dialog {
   max-width: min(56rem, 100vw - 2rem);
 }
