@@ -1,4 +1,5 @@
-{{define "scripts"}}<script src="/static/muestrario.js" defer></script>{{end}}
+{{define "scripts"}}<script src="/static/services.js" defer></script>
+<script src="/static/muestrario.js" defer></script>{{end}}
 
 {{/* Muestrario: cada pieza de la interfaz, con datos inventados (ver
      internal/hub/muestrario.go). Se compila con services.html para usar la
@@ -126,6 +127,26 @@
 <div class="hw-tiles balanced">
   {{range .Tiles}}{{template "hwcard" .}}{{end}}
 </div>
+
+<h2 class="section-title">Movimiento</h2>
+<p class="page-lead">Cada botón cambia algo de arriba como lo haría un refresco, y se anima solo lo que cambió. El stack se despliega con su botón, el menú se abre con los tres puntos y el fundido entre páginas se ve yendo a Servicios o a Hardware. Con «reducir movimiento» del sistema, todo pasa en el acto.</p>
+<div class="mu-row">
+  <button type="button" class="btn tonal" data-mu-motion="state"><i>swap_horiz</i><span>Cambiar estados</span></button>
+  <button type="button" class="btn tonal" data-mu-motion="card"><i>add</i><span>Tarjeta nueva</span></button>
+  <button type="button" class="btn tonal" data-mu-motion="bars"><i>bar_chart</i><span>Mover barras</span></button>
+  <button type="button" class="btn tonal" data-mu-motion="updated"><i>schedule</i><span>Actualizar la hora</span></button>
+  <button type="button" class="btn tonal" data-dialog="mu-dialog"><i>web_asset</i><span>Diálogo</span></button>
+  <button type="button" class="btn tonal" data-mu-motion="busy"><i>sync</i><span>Esperar</span></button>
+</div>
+<dialog id="mu-dialog" class="small-round form-dialog rename-dialog">
+  <h6>Diálogo</h6>
+  <p class="small-text secondary-text">Entra creciendo un poco y sale un poco más rápido.</p>
+  <nav class="dialog-actions">
+    <div class="max"></div>
+    <button type="button" class="btn outlined" data-close>Cancelar</button>
+    <button type="button" class="btn filled" data-close>Aceptar</button>
+  </nav>
+</dialog>
 
 <h2 class="section-title">Filas</h2>
 <ul class="rows">

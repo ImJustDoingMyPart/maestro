@@ -119,7 +119,7 @@
 {{/* Semáforo de la cabecera. En el fragmento "live" va con
      hx-swap-oob: htmx lo reemplaza en su lugar, fuera del div que pidió. */}}
 {{define "svcstatus"}}
-<span id="svc-status" class="status {{.State}}" title="{{.State.Label}}"{{if .OOB}} hx-swap-oob="true"{{end}}>
+<span id="svc-status" class="status {{.State}}" title="{{.State.Label}}" data-watch="svc-status" data-state="{{.State}}"{{if .OOB}} hx-swap-oob="true"{{end}}>
   <span class="dot {{.State}}"></span>
   <span class="small-text">{{.State.Label}}</span>
 </span>

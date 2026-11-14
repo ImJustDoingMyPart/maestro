@@ -33,6 +33,13 @@
     })]);
   }
 
+  // wait pone el botón en espera (el ícono gira, motion.js) mientras se
+  // arma el informe. Se puede llamar dos veces: la segunda no hace nada.
+  function wait(btn, on) {
+    btn.disabled = on;
+    if (window.maestroMotion) maestroMotion.busy(btn, on);
+  }
+
   function flash(btn, label, icon) {
     var span = btn.querySelector("span"), i = btn.querySelector("i");
     var before = [span.textContent, i.textContent];
@@ -59,16 +66,17 @@
     var btn = e.target.closest("button[data-report]");
     if (!btn || btn.disabled) return;
     var url = btn.dataset.report;
-    btn.disabled = true;
+    wait(btn, true);
     var text = fetchReport(url);
     within(copy(text), 3000)
-      .then(function () { flash(btn, "Copiado", "check"); })
+      .then(function () { wait(btn, false); flash(btn, "Copiado", "check"); })
       .catch(function () {
-        return text.then(function (t) { showDialog(t, url); }, function (err) {
+        return text.then(function (t) { wait(btn, false); showDialog(t, url); }, function (err) {
           console.error("informe:", err);
+          wait(btn, false);
           flash(btn, "No se pudo", "error");
         });
       })
-      .finally(function () { btn.disabled = false; });
+      .finally(function () { wait(btn, false); });
   });
 })();

@@ -10,7 +10,8 @@
   }
 
   // htmx reemplaza la grilla cada 15 s y una tarjeta nueva viene cerrada:
-  // se vuelven a abrir los stacks que estaban desplegados.
+  // se vuelven a abrir los stacks que estaban desplegados, sin la animación
+  // de desplegarse (maestroMotion.quiet, de motion.js).
   function setOpen(card, on) {
     card.classList.toggle("open", on);
     var btn = card.querySelector("[data-stack-toggle]");
@@ -19,7 +20,9 @@
   function restore(root) {
     var open = load();
     root.querySelectorAll(".svc-card[data-stack]").forEach(function (card) {
-      if (open.indexOf(card.dataset.stack) >= 0) setOpen(card, true);
+      if (open.indexOf(card.dataset.stack) < 0 || card.classList.contains("open")) return;
+      if (window.maestroMotion) maestroMotion.quiet(card, function () { setOpen(card, true); });
+      else setOpen(card, true);
     });
   }
 
@@ -131,7 +134,9 @@
   function startSorting() {
     stopSorting();
     if (!window.Sortable) return;
-    var common = { animation: 150, delay: 250, delayOnTouchOnly: true, forceFallback: true, fallbackTolerance: 4, ghostClass: "drag-ghost", chosenClass: "drag-chosen" };
+    // La animación de reacomodarse sale de la escala de maestro.css.
+    var m = window.maestroMotion;
+    var common = { animation: m ? m.ms("--dur-m") : 150, easing: m ? m.token("--ease") : undefined, delay: 250, delayOnTouchOnly: true, forceFallback: true, fallbackTolerance: 4, ghostClass: "drag-ghost", chosenClass: "drag-chosen" };
     document.querySelectorAll("#services .group .cards").forEach(function (grid) {
       sortables.push(Sortable.create(grid, Object.assign({}, common, {
         group: "cards",
@@ -198,9 +203,11 @@
     if (editing() || document.querySelector("details.card-menu[open], dialog.form-dialog[open]")) e.preventDefault();
   });
 
+  // Se restaura antes de que se pinte la grilla nueva (afterSwap), así un
+  // stack abierto no aparece cerrado un instante.
   document.addEventListener("DOMContentLoaded", function () { restore(document); });
-  document.addEventListener("htmx:afterSettle", function (e) {
-    restore(e.target);
+  document.addEventListener("htmx:afterSwap", function () { restore(document); });
+  document.addEventListener("htmx:afterSettle", function () {
     if (editing()) startSorting(); // la grilla es otra: los Sortable viejos quedaron sueltos
   });
 })();

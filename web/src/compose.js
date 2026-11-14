@@ -492,13 +492,20 @@ class Compose {
     d.showModal();
   }
 
-  setBusy(on, external) {
+  // setBusy traba los botones mientras corre una acción; el de la acción
+  // que se lanzó desde acá queda en espera (el ícono gira, motion.js).
+  setBusy(on, external, action) {
     for (const b of this.actionBtns) b.disabled = on;
     this.busyNote.hidden = !external;
+    const motion = window.maestroMotion;
+    if (!motion) return;
+    if (this.busyBtn) motion.busy(this.busyBtn, false);
+    this.busyBtn = on ? this.actionBtns.find((b) => b.dataset.action === action) : null;
+    if (this.busyBtn) motion.busy(this.busyBtn, true);
   }
 
   async runAction(action) {
-    this.setBusy(true);
+    this.setBusy(true, false, action);
     const [status, res] = await post(`${this.base}/actions/${action}`);
     if (status !== 200) {
       this.setBusy(false);
@@ -509,7 +516,7 @@ class Compose {
   }
 
   watchRun(url, action) {
-    this.setBusy(true);
+    this.setBusy(true, false, action);
     this.output.hidden = false;
     this.output.querySelector(".run-title").textContent = `Salida de ${action}`;
     this.viewer.open(url);

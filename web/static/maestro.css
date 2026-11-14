@@ -95,10 +95,31 @@
   --a-faded: 40%;
   --a-soft: 80%;
 
-  /* Movimiento: la curva estándar de M3. */
+  /* Movimiento (duraciones y curvas de M3). s, los cambios de estado de un
+     control (hover, color); m, lo chico que aparece (un menú) y lo que se
+     va; l, lo grande que entra (un diálogo, un stack que se despliega); xl,
+     el aviso de que algo cambió solo (un estado, una barra); loop, una
+     vuelta del indicador de espera. ease es la curva estándar; ease-out
+     (emphasized decelerate) es la de lo que entra y ease-in (emphasized
+     accelerate), la de lo que sale; ease-linear, solo para lo que gira.
+     motion-scale y motion-shift son de dónde arranca lo que aparece: un
+     poco más chico, un poco más abajo. instant reemplaza a todas las
+     duraciones con prefers-reduced-motion: 1 ms y no 0, así los eventos
+     de fin de animación siguen llegando. */
+  --dur-instant: 1ms;
   --dur-s: 150ms;
   --dur-m: 200ms;
+  --dur-l: 300ms;
+  --dur-xl: 600ms;
+  --dur-loop: 1000ms;
   --ease: cubic-bezier(0.2, 0, 0, 1);
+  --ease-out: cubic-bezier(0.05, 0.7, 0.1, 1);
+  --ease-in: cubic-bezier(0.3, 0, 0.8, 0.15);
+  --ease-linear: linear;
+  --motion-scale: 0.96;
+  --motion-shift: var(--sp-2);
+  /* height: auto se puede animar (los stacks que se despliegan). */
+  interpolate-size: allow-keywords;
 
   /* M3 no trae un verde de "éxito" ni un ámbar de "aviso": se define uno
      por tema. El modo sigue al sistema salvo que body tenga .light o .dark
@@ -2116,6 +2137,227 @@ button.icon-choice.selected {
   display: flex;
   align-items: center;
   gap: var(--sp-1);
+}
+
+/* ---------- Movimiento ----------
+
+   Solo se anima lo que cambió de verdad: un refresco que trae lo mismo no
+   mueve nada. Lo que se anima es opacity, transform y colores, más el alto
+   de un stack que se despliega y el ancho de una barra de uso (las dos,
+   cajas chicas). Duraciones y curvas, de la escala: lo que entra lo hace
+   en l o m con ease-out y sale en m o s con ease-in. web/static/motion.js
+   marca lo que cambió entre dos vueltas (data-was, data-enter,
+   data-renewed) y lo de abajo lo anima. Con prefers-reduced-motion todo
+   pasa en el acto. */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after, ::backdrop {
+    animation-duration: var(--dur-instant) !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: var(--dur-instant) !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Pasar a un estado sin transición: motion.js la pone un momento al
+   restaurar lo que estaba abierto antes de un refresco (un stack
+   desplegado no se vuelve a desplegar cada 15 segundos). */
+.no-motion,
+.no-motion * {
+  transition: none !important;
+}
+.no-motion::details-content {
+  transition: none !important;
+}
+
+/* Entre páginas, un fundido; las barras de navegación quedan quietas. */
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition {
+    navigation: auto;
+  }
+}
+.topbar {
+  view-transition-name: topbar;
+}
+nav.bottom {
+  view-transition-name: bottomnav;
+}
+::view-transition-old(root) {
+  animation: fade-out var(--dur-s) var(--ease-in) both;
+}
+::view-transition-new(root) {
+  animation: rise-in var(--dur-l) var(--ease-out) both;
+}
+
+/* Diálogos: Beer los baja 4 rem en 300 ms con la curva por defecto; acá
+   crecen desde motion-scale con las curvas de M3, y al cerrarse siguen en
+   la capa de arriba (overlay) hasta terminar de irse. Los que salen de un
+   borde (.bottom, el detalle de una línea de log) se siguen deslizando. */
+dialog {
+  transition:
+    opacity var(--dur-m) var(--ease-in),
+    transform var(--dur-m) var(--ease-in),
+    visibility var(--dur-m) var(--ease-in),
+    overlay var(--dur-m) var(--ease-in) allow-discrete;
+}
+dialog:is([open], .active) {
+  transition-duration: var(--dur-l);
+  transition-timing-function: var(--ease-out);
+}
+dialog:not(.top, .right, .bottom, .left, .max) {
+  transform: translate(-50%) scale(var(--motion-scale));
+}
+dialog:not(.top, .right, .bottom, .left, .max):is([open], .active) {
+  transform: translate(-50%);
+}
+
+/* Menú de los tres puntos: crece desde su esquina. */
+.card-menu-list {
+  transform-origin: top right;
+  transition:
+    opacity var(--dur-s) var(--ease-in),
+    transform var(--dur-s) var(--ease-in);
+}
+.card-menu:not([open]) > .card-menu-list {
+  opacity: 0;
+  transform: scale(var(--motion-scale));
+}
+.card-menu[open] > .card-menu-list {
+  transition-duration: var(--dur-m);
+  transition-timing-function: var(--ease-out);
+}
+@starting-style {
+  .card-menu[open] > .card-menu-list {
+    opacity: 0;
+    transform: scale(var(--motion-scale));
+  }
+}
+/* Al cerrarse, el contenido del <details> espera a que la lista se vaya. */
+.card-menu::details-content {
+  transition: content-visibility var(--dur-s) var(--ease-in) allow-discrete;
+}
+
+/* Servicios de un stack en la portada: el alto va de 0 a auto. Mientras
+   se mueve, lo que no entra se recorta; abierto, el menú de una fila puede
+   salirse de la tarjeta. */
+.stack-members {
+  block-size: 0;
+  opacity: 0;
+  overflow: clip;
+  transition:
+    display var(--dur-m) var(--ease-in) allow-discrete,
+    block-size var(--dur-m) var(--ease-in),
+    opacity var(--dur-m) var(--ease-in);
+}
+.svc-card.open .stack-members {
+  block-size: auto;
+  opacity: 1;
+  transition-duration: var(--dur-l);
+  transition-timing-function: var(--ease-out);
+}
+@starting-style {
+  .svc-card.open .stack-members {
+    block-size: 0;
+    opacity: 0;
+  }
+}
+.stack-members:has(.card-menu[open]) {
+  overflow: visible;
+}
+
+/* Stacks de la tabla de memoria (Hardware): el mismo despliegue, con el
+   contenido del <details>. Donde ::details-content no existe, se abren
+   como antes. */
+.hw-stack::details-content {
+  block-size: 0;
+  overflow: clip;
+  transition:
+    block-size var(--dur-m) var(--ease-in),
+    content-visibility var(--dur-m) var(--ease-in) allow-discrete;
+}
+.hw-stack[open]::details-content {
+  block-size: auto;
+  transition-duration: var(--dur-l);
+  transition-timing-function: var(--ease-out);
+}
+
+/* Un estado que cambió entre dos vueltas: el punto pasa del color de antes
+   al de ahora con un anillo que se abre y se apaga, y la palabra cambia de
+   color. data-was es el estado anterior. */
+[data-was="up"]       { --was: var(--status-up); }
+[data-was="degraded"] { --was: var(--status-warn); }
+[data-was="down"]     { --was: var(--error); }
+[data-was="unknown"],
+[data-was="stopped"]  { --was: var(--outline); }
+.dot[data-was] {
+  animation: state-ring var(--dur-xl) var(--ease-out);
+}
+.dot.stopped[data-was] {
+  animation-name: state-fill;
+}
+.state-pill[data-was],
+.status[data-was] {
+  animation: state-text var(--dur-xl) var(--ease-out);
+}
+@keyframes state-ring {
+  from {
+    background-color: var(--was);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--state, var(--outline)) var(--a-faded), transparent);
+  }
+  to {
+    box-shadow: 0 0 0 var(--sp-2) transparent;
+  }
+}
+@keyframes state-fill {
+  from { background-color: var(--was); }
+}
+@keyframes state-text {
+  from { color: var(--was); }
+}
+
+/* Lo que aparece entre dos vueltas (una tarjeta nueva, una que cambió de
+   grupo, un servicio que vuelve a su stack) sube un poco y se enciende. */
+[data-enter] {
+  animation: rise-in var(--dur-l) var(--ease-out) both;
+}
+
+/* La barra de uso se desliza hasta el valor nuevo. */
+.meter > span {
+  transition: inline-size var(--dur-xl) var(--ease);
+}
+
+/* "Actualizado" se tiñe un instante de primary cuando cambia la hora. */
+[data-renewed] {
+  animation: renewed var(--dur-xl) var(--ease-out);
+}
+@keyframes renewed {
+  from { color: var(--primary); }
+}
+
+/* Esperando: el ícono del botón pasa a progress_activity y gira (lo
+   cambia motion.js); un botón sin ícono se atenúa. Es lo único que se
+   repite sin fin, y solo mientras dura el pedido. */
+[aria-busy="true"] {
+  cursor: progress;
+}
+[aria-busy="true"] > i {
+  animation: spin var(--dur-loop) var(--ease-linear) infinite;
+}
+button[aria-busy="true"]:not(:has(> i)) {
+  opacity: var(--a-soft);
+}
+@keyframes spin {
+  to { transform: rotate(1turn); }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--motion-shift));
+  }
+}
+@keyframes fade-out {
+  to { opacity: 0; }
 }
 
 /* ---------- Muestrario (/muestrario) ---------- */

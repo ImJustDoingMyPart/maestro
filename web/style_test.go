@@ -88,6 +88,9 @@ var (
 	colorFn  = regexp.MustCompile(`\b(rgba?|hsla?|oklch|lab)\(`)
 	mixPct   = regexp.MustCompile(`color-mix\([^;]*\d%`)
 	varRe    = regexp.MustCompile(`var\((--[\w-]+)`)
+	// Una curva escrita a mano en una transición o animación: va un token
+	// --ease-*. "var(--ease)" no cuenta: el guion de adelante lo excluye.
+	curveRe = regexp.MustCompile(`(^|[\s,(])(ease(-in|-out|-in-out)?|linear|step-start|step-end)\b|cubic-bezier\(|steps\(`)
 )
 
 // scaled dice si una propiedad tiene que tomar su valor de la escala.
@@ -130,6 +133,9 @@ func TestEstiloSinValoresSueltos(t *testing.T) {
 		if scaled(d.prop) && lengthRe.MatchString(d.value) {
 			where("medida suelta; va un token de la escala (--sp-*, --r-*, --type-*, --icon-*, --dur-*)")
 		}
+		if (strings.HasPrefix(d.prop, "transition") || strings.HasPrefix(d.prop, "animation")) && curveRe.MatchString(d.value) {
+			where("curva escrita a mano; va un token --ease-*")
+		}
 		if d.prop == "opacity" && d.value != "0" && d.value != "1" && !strings.HasPrefix(d.value, "var(") {
 			where("opacidad suelta; va un token --a-*")
 		}
@@ -147,7 +153,7 @@ func TestEstiloTokensDefinidos(t *testing.T) {
 		}
 	}
 	// Las de M3 las define Beer CSS; las propias son las de estos prefijos.
-	own := regexp.MustCompile(`^--(sp|r|type|icon|a|dur|ease|font|mono|status|state|cols|gap|hw)\b`)
+	own := regexp.MustCompile(`^--(sp|r|type|icon|a|dur|ease|motion|font|mono|status|state|was|cols|gap|hw)\b`)
 	for _, d := range decls {
 		for _, m := range varRe.FindAllStringSubmatch(d.value, -1) {
 			if own.MatchString(m[1]) && !defined[m[1]] {
@@ -209,6 +215,19 @@ func TestParseCSS(t *testing.T) {
 	} {
 		if lengthRe.MatchString(c.v) != c.hit {
 			t.Errorf("lengthRe(%q) = %v, quería %v", c.v, !c.hit, c.hit)
+		}
+	}
+	for _, c := range []struct {
+		v   string
+		hit bool
+	}{
+		{"opacity var(--dur-s) var(--ease)", false}, {"spin var(--dur-loop) var(--ease-linear) infinite", false},
+		{"display var(--dur-m) var(--ease-in) allow-discrete", false}, {"opacity var(--dur-s) ease", true},
+		{"transform var(--dur-m) ease-in-out", true}, {"spin var(--dur-loop) linear infinite", true},
+		{"cubic-bezier(0.2, 0, 0, 1)", true}, {"x var(--dur-s) steps(4)", true}, {"var(--dur-s),ease-out", true},
+	} {
+		if curveRe.MatchString(c.v) != c.hit {
+			t.Errorf("curveRe(%q) = %v, quería %v", c.v, !c.hit, c.hit)
 		}
 	}
 }
