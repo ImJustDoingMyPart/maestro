@@ -2129,6 +2129,70 @@ button.icon-choice.selected {
   gap: var(--sp-1);
 }
 
+/* ---------- Movimiento ----------
+
+   Solo opacity y transform: las resuelve la placa de video sin rehacer la
+   página. Nada anima un alto ni un ancho, y entre páginas no hay fundido.
+   Lo que aparece lo hace en m con la curva estándar; lo que se va, en s.
+   Con prefers-reduced-motion no se mueve nada. */
+
+/* Diálogos: Beer los baja 4 rem con transition: all en 300 ms. Acá suben
+   un poco y se encienden, y solo se mueve lo que hace falta. */
+dialog,
+dialog::backdrop {
+  transition:
+    opacity var(--dur-s) var(--ease),
+    transform var(--dur-s) var(--ease),
+    visibility var(--dur-s) var(--ease);
+}
+dialog:is([open], .active) {
+  transition-duration: var(--dur-m);
+}
+dialog:not(.top, .right, .bottom, .left, .max) {
+  transform: translate(-50%, var(--sp-4));
+}
+dialog:not(.top, .right, .bottom, .left, .max):is([open], .active) {
+  transform: translate(-50%);
+}
+
+/* Menú de los tres puntos: aparece desde su esquina. Se cierra en el
+   acto (un <details> cerrado no muestra su contenido). */
+.card-menu[open] > .card-menu-list {
+  transform-origin: top right;
+  transition:
+    opacity var(--dur-m) var(--ease),
+    transform var(--dur-m) var(--ease);
+}
+@starting-style {
+  .card-menu[open] > .card-menu-list {
+    opacity: 0;
+    transform: translateY(calc(-1 * var(--sp-2)));
+  }
+}
+
+/* Stack que se despliega con un clic: sus servicios bajan un poco y se
+   encienden, uno tras otro. services.js pone .opening solo en el clic, no
+   al reabrir los stacks después de un refresco, y la saca al terminar. */
+.svc-card.opening .stack-members li {
+  animation: member-in var(--dur-m) var(--ease) both;
+}
+.svc-card.opening .stack-members li:nth-child(2) { animation-delay: calc(var(--dur-s) / 4); }
+.svc-card.opening .stack-members li:nth-child(3) { animation-delay: calc(var(--dur-s) / 2); }
+.svc-card.opening .stack-members li:nth-child(n + 4) { animation-delay: calc(var(--dur-s) * 3 / 4); }
+@keyframes member-in {
+  from {
+    opacity: 0;
+    transform: translateY(calc(-1 * var(--sp-2)));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after, ::backdrop {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
 /* ---------- Muestrario (/muestrario) ---------- */
 
 .mu-grid {
