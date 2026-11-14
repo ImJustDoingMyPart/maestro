@@ -82,7 +82,7 @@
      portada); después el número grande, la barra (vacía si no aplica) y el
      detalle. */}}
 {{define "hwcard"}}
-<article class="hw-tile{{if .Warn}} warn{{end}}{{if .Hidden}} is-hidden{{end}}"{{with .ID}} data-hw-item="{{.}}" data-watch="hw:{{.}}"{{end}}{{with .State}} data-state="{{.}}"{{end}}>
+<article class="hw-tile{{if .Warn}} warn{{end}}{{if .Hidden}} is-hidden{{end}}"{{with .ID}} data-hw-item="{{.}}"{{end}}{{with .State}} data-state="{{.}}"{{end}}>
   <div class="hw-label">
     {{template "svcicon" .}}
     <span class="hw-title" title="{{.Title}}">{{if .Href}}<a class="stretched" href="{{.Href}}">{{.Title}}</a>{{else}}{{.Title}}{{end}}</span>

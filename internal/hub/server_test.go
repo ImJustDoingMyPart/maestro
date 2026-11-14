@@ -9,7 +9,6 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -182,7 +181,7 @@ func TestRecorridoDeLogin(t *testing.T) {
 	res, _ = c.Get(srv.URL + "/fragments/services")
 	if b := body(t, res); !strings.HasPrefix(strings.TrimSpace(b), `<div id="services"`) || strings.Contains(b, "<html") {
 		t.Errorf("el fragmento no es solo la grilla:\n%.200s", b)
-	} else if !regexp.MustCompile(`<span id="updated"[^>]* hx-swap-oob="true">Actualizado`).MatchString(b) {
+	} else if !strings.Contains(b, `id="updated" class="updated" title="Se actualiza cada 15 segundos" hx-swap-oob="true">Actualizado`) {
 		t.Error("el fragmento tiene que traer la hora del encabezado con hx-swap-oob")
 	}
 

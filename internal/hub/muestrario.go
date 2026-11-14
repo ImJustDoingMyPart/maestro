@@ -35,9 +35,9 @@ func muestraData(ic *icons.Resolver) pageData {
 	m := &muestra{
 		Cards: groups[0].Services,
 		Tiles: []hwCard{
-			{ID: "mu-cpu", Icon: "memory", Title: "CPU", Value: "23", Unit: "%", HasBar: true, Pct: 23, Sub: "8 núcleos · carga 1,84"},
-			{ID: "mu-mem", Icon: "memory_alt", Title: "Memoria", Value: "14,2", Unit: "GB", HasBar: true, Pct: 93, Warn: true, Sub: "de 15,3 GB"},
-			{ID: "mu-sda", Icon: "hard_drive", Title: "sda", Aside: "SSD", Value: "38", Unit: "°C", Sub: "Samsung 870 EVO · 1 TB", State: StateUp, StateLabel: "Sano", StateTitle: "Autoevaluación SMART: PASSED"},
+			{Icon: "memory", Title: "CPU", Value: "23", Unit: "%", HasBar: true, Pct: 23, Sub: "8 núcleos · carga 1,84"},
+			{Icon: "memory_alt", Title: "Memoria", Value: "14,2", Unit: "GB", HasBar: true, Pct: 93, Warn: true, Sub: "de 15,3 GB"},
+			{Icon: "hard_drive", Title: "sda", Aside: "SSD", Value: "38", Unit: "°C", Sub: "Samsung 870 EVO · 1 TB", State: StateUp, StateLabel: "Sano", StateTitle: "Autoevaluación SMART: PASSED"},
 			{Icon: "dns", Title: "dns", Aside: "LXC 102", Value: "–", Sub: "1 núcleo · 1,0 GB", State: StateStopped, StateLabel: "Detenido"},
 		},
 		States: []State{StateUp, StateDegraded, StateDown, StateStopped, StateUnknown},

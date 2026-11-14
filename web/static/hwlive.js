@@ -30,28 +30,16 @@
     if (a && b && a.outerHTML !== b.outerHTML) a.replaceWith(document.importNode(b, true));
   }
 
-  // Lo que cambió se anima (motion.js): la foto antes de tocar nada y las
-  // marcas al final.
-  var motion = window.maestroMotion;
-
   function patch(next) {
     if (shape(document) !== shape(next)) {
       location.reload();
       return;
     }
-    var snap = motion && motion.snapshot();
     swap(".hw-host-head", next);
     document.querySelectorAll(".host-tab").forEach(function (tab) {
       var other = next.querySelector('.host-tab[data-host="' + CSS.escape(tab.dataset.host) + '"] .dot');
       var dot = tab.querySelector(".dot");
-      if (other && dot && dot.className !== other.className) {
-        var was = dot.className.replace(/\bdot\b/, "").trim();
-        dot.className = other.className;
-        if (motion && was) {
-          dot.setAttribute("data-was", was);
-          dot.addEventListener("animationend", function () { dot.removeAttribute("data-was"); }, { once: true });
-        }
-      }
+      if (other && dot) dot.className = other.className;
     });
     document.querySelectorAll(".hw-tile[data-hw-item]").forEach(function (card) {
       var other = next.querySelector('.hw-tile[data-hw-item="' + CSS.escape(card.dataset.hwItem) + '"]');
@@ -61,12 +49,7 @@
     var open = {};
     document.querySelectorAll(".hw-stack[open]").forEach(function (d) { open[d.dataset.stack] = true; });
     swap(".hw-table", next);
-    document.querySelectorAll(".hw-stack").forEach(function (d) {
-      if (!open[d.dataset.stack]) return;
-      if (motion) motion.quiet(d, function () { d.open = true; });
-      else d.open = true;
-    });
-    if (motion) motion.mark(snap);
+    document.querySelectorAll(".hw-stack").forEach(function (d) { if (open[d.dataset.stack]) d.open = true; });
   }
 
   var busy = false;

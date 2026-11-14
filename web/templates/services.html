@@ -111,7 +111,7 @@
      la grilla, así que el fragmento la manda con hx-swap-oob y htmx la
      reemplaza en su lugar. Vacía (y oculta) si todavía no hubo vuelta: el
      elemento tiene que existir para que el reemplazo lo encuentre. */}}
-{{define "updated"}}<span id="updated" class="updated" title="Se actualiza cada 15 segundos" data-watch="updated" data-pulse="{{.Updated.Unix}}"{{if .OOB}} hx-swap-oob="true"{{end}}>{{if not .Updated.IsZero}}Actualizado {{localTime .Updated "time"}}{{end}}</span>{{end}}
+{{define "updated"}}<span id="updated" class="updated" title="Se actualiza cada 15 segundos"{{if .OOB}} hx-swap-oob="true"{{end}}>{{if not .Updated.IsZero}}Actualizado {{localTime .Updated "time"}}{{end}}</span>{{end}}
 
 {{/* Lo que htmx pide cada 15 s: la grilla y la hora del encabezado. */}}
 {{define "gridfragment"}}{{template "grid" .}}{{template "updated" .}}{{end}}
@@ -207,7 +207,7 @@
      ::after del nombre la cubre); una de stack se toca para desplegar sus
      servicios (web/static/services.js). */}}
 {{define "card"}}
-<article class="svc-card{{if .Members}} stack{{end}}" data-state="{{.State}}"{{with .Key}} data-watch="card:{{.}}"{{end}}{{if .Members}} data-stack="{{.Key}}"{{end}}>
+<article class="svc-card{{if .Members}} stack{{end}}" data-state="{{.State}}"{{if .Members}} data-stack="{{.Key}}"{{end}}>
   <div class="svc-head">
     {{template "svcicon" .}}
     <div class="svc-text">
@@ -249,7 +249,7 @@
   {{if .Members}}
   <ul class="stack-members">
     {{range .Members}}
-    <li class="member-row" data-state="{{.State}}"{{with .Key}} data-watch="member:{{.}}"{{end}}>
+    <li class="member-row">
       <span class="dot {{.State}}" title="{{.State.Label}}"></span>
       <div class="member-text">
         <a href="{{.Href}}" title="{{.Name}}">{{.Name}}</a>
