@@ -16,16 +16,6 @@
     var btn = card.querySelector("[data-stack-toggle]");
     if (btn) btn.setAttribute("aria-expanded", on ? "true" : "false");
   }
-  // opening marca el despliegue hecho con un clic para que maestro.css lo
-  // anime ("Movimiento"); se saca cuando termina el último servicio.
-  function opening(card) {
-    var rows = card.querySelectorAll(".stack-members li");
-    if (!rows.length) return;
-    card.classList.add("opening");
-    rows[rows.length - 1].addEventListener("animationend", function () {
-      card.classList.remove("opening");
-    }, { once: true });
-  }
   function restore(root) {
     var open = load();
     root.querySelectorAll(".svc-card[data-stack]").forEach(function (card) {
@@ -42,7 +32,6 @@
     if (!onToggle && e.target.closest("a, button, details, .stack-members")) return;
     var on = !card.classList.contains("open");
     setOpen(card, on);
-    if (on) opening(card);
     var open = load().filter(function (k) { return k !== card.dataset.stack; });
     if (on) open.push(card.dataset.stack);
     save(open);
