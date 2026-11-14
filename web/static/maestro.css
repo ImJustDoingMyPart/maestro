@@ -28,6 +28,19 @@
   unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
 }
 
+/* Íconos de Material Symbols: la misma fuente que declara Beer, pero con
+   font-display: block. Con swap (el de Beer), mientras carga se lee el
+   nombre del ícono ("open_in_new") en la letra de reserva; con block queda
+   en blanco ese instante. Gana esta regla porque viene después. La
+   precarga está en layout.html. */
+@font-face {
+  font-family: "Material Symbols Outlined";
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url(beercss-5.0.3/material-symbols-outlined.woff2) format("woff2");
+}
+
 /* ---------- Escala ----------
 
    Todas las medidas de la hoja salen de acá (criterio en PLAN.md,
@@ -2170,7 +2183,10 @@ button.icon-choice.selected {
   transition: none !important;
 }
 
-/* Entre páginas, un fundido; las barras de navegación quedan quietas. */
+/* Entre páginas, la nueva sube un poco y se enciende encima de la vieja,
+   que queda entera debajo hasta el final: si las dos se desvanecen a la
+   vez, en el medio se ve lo que hay detrás de la ventana. Las barras de
+   navegación quedan quietas. */
 @media (prefers-reduced-motion: no-preference) {
   @view-transition {
     navigation: auto;
@@ -2183,10 +2199,12 @@ nav.bottom {
   view-transition-name: bottomnav;
 }
 ::view-transition-old(root) {
-  animation: fade-out var(--dur-s) var(--ease-in) both;
+  animation: none;
+  mix-blend-mode: normal;
 }
 ::view-transition-new(root) {
   animation: rise-in var(--dur-l) var(--ease-out) both;
+  mix-blend-mode: normal;
 }
 
 /* Diálogos: Beer los baja 4 rem en 300 ms con la curva por defecto; acá
@@ -2242,6 +2260,10 @@ dialog:not(.top, .right, .bottom, .left, .max):is([open], .active) {
    salirse de la tarjeta. */
 .stack-members {
   block-size: 0;
+  /* Es un ítem flex en columna: sin esto su mínimo es el alto del
+     contenido (overflow: clip no lo baja, como haría hidden) y el alto no
+     se mueve: solo se desvanece y al final salta. */
+  min-block-size: 0;
   opacity: 0;
   overflow: clip;
   transition:
@@ -2355,9 +2377,6 @@ button[aria-busy="true"]:not(:has(> i)) {
     opacity: 0;
     transform: translateY(var(--motion-shift));
   }
-}
-@keyframes fade-out {
-  to { opacity: 0; }
 }
 
 /* ---------- Muestrario (/muestrario) ---------- */

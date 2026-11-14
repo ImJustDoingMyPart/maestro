@@ -2,11 +2,16 @@ package hub
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
+	"sync"
 
 	"github.com/ImJustDoingMyPart/maestro/internal/httpserver"
 	"github.com/ImJustDoingMyPart/maestro/internal/icons"
@@ -107,13 +112,37 @@ func newDemoHandler(logger *slog.Logger, ic *icons.Resolver) (http.Handler, erro
 
 // staticHandler sirve web/static. Con no-cache el navegador guarda los
 // archivos pero pregunta si cambiaron (responde 304 si no): mientras se
-// desarrolla, un cambio en maestro.css se ve sin forzar la recarga.
+// desarrolla, un cambio en maestro.css se ve sin forzar la recarga. Para
+// poder responder 304 hace falta un ETag: los archivos embebidos no tienen
+// fecha, y sin él el navegador bajaba todo de nuevo en cada página (la
+// fuente de íconos, 464 KB, llegaba tarde y se leían los nombres).
 func staticHandler() http.Handler {
 	files := http.FileServerFS(web.Static)
+	var etags sync.Map // ruta → ETag, calculado la primera vez que se pide
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-cache")
+		if tag, ok := staticETag(&etags, r.URL.Path); ok {
+			w.Header().Set("ETag", tag)
+		}
 		files.ServeHTTP(w, r)
 	})
+}
+
+// staticETag devuelve el ETag de un archivo de web/static: los primeros
+// 16 caracteres del sha256 de su contenido, entre comillas. No hay ETag
+// para lo que no es un archivo (un directorio, una ruta que no existe).
+func staticETag(cache *sync.Map, name string) (string, bool) {
+	if v, ok := cache.Load(name); ok {
+		return v.(string), true
+	}
+	b, err := fs.ReadFile(web.Static, strings.TrimPrefix(name, "/"))
+	if err != nil {
+		return "", false
+	}
+	sum := sha256.Sum256(b)
+	tag := `"` + hex.EncodeToString(sum[:8]) + `"`
+	cache.Store(name, tag)
+	return tag, true
 }
 
 // ServeDemo sirve el modo --demo en addr hasta que se cancele ctx.
