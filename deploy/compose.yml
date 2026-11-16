@@ -19,6 +19,11 @@ services:
     command: ["serve", "--listen", "0.0.0.0:8090", "--config", "/config/maestro.yaml", "--db", "/data/maestro.db"]
     environment:
       MAESTRO_TOKEN_VM: ${MAESTRO_TOKEN_VM:?falta en .env}
+      # Avisos a Telegram (telegram: en maestro.yaml), opcionales.
+      MAESTRO_TELEGRAM_TOKEN: ${MAESTRO_TELEGRAM_TOKEN:-}
+      MAESTRO_TELEGRAM_CHAT: ${MAESTRO_TELEGRAM_CHAT:-}
+      # La hora de los avisos: sin TZ, el contenedor está en UTC.
+      TZ: America/Argentina/Buenos_Aires
     volumes:
       - ./maestro.yaml:/config/maestro.yaml:ro
       - maestro-data:/data

@@ -56,6 +56,9 @@ type Telegram struct {
 	// TELEGRAM_CHATID de notify.sh: un número (negativo en grupos y
 	// canales) o "@canal".
 	Chat string `yaml:"chat"`
+	// API es la dirección de la Bot API; vacía es la de Telegram. Sirve
+	// para un servidor propio (telegram-bot-api) o para probar.
+	API string `yaml:"api"`
 }
 
 // Chats da los destinos de Chat, en orden y sin vacíos.
@@ -275,6 +278,11 @@ func (c *Config) validate() error {
 		}
 		if len(t.Chats()) == 0 {
 			add("telegram.chat: falta (uno o más chat_id separados por espacios o comas)")
+		}
+		if t.API != "" {
+			if err := checkURL(t.API); err != nil {
+				add("telegram.api: %v", err)
+			}
 		}
 		for i, chat := range t.Chats() {
 			if !chatID.MatchString(chat) {

@@ -60,7 +60,7 @@ func Serve(ctx context.Context, opts Options, logger *slog.Logger) error {
 	if t := cfg.Telegram; t != nil {
 		// La hora de los avisos va en la zona del proceso: TZ en el
 		// compose (el contenedor corre en UTC si no).
-		al := newAlerter(telegram.New(t.Token, ""), t.Chats(), cfg.PublicURL, st, time.Local, logger)
+		al := newAlerter(telegram.New(t.Token, t.API), t.Chats(), cfg.PublicURL, st, time.Local, logger)
 		mon.notify = al.Notify
 		go al.Run(ctx)
 		logger.Info("avisos a Telegram", "chats", len(t.Chats()), "zona", time.Local.String())

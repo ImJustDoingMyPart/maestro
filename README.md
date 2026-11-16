@@ -156,6 +156,25 @@ Los resultados se guardan 7 días; después quedan resúmenes por hora (cantidad
 
 En la página del servicio, cada check muestra su último resultado, la latencia, el certificado, la disponibilidad de las últimas 24 horas y una barra por media hora. Se refresca cada minuto; el semáforo, los contenedores y los motivos, cada 15 segundos. La disponibilidad de un push es por tiempo: cada llamada cubre su intervalo más la gracia, y cuenta la parte del día que estuvo cubierta. La pestaña Actividad intercala los cambios de estado con las líneas de log; un servicio sin logs (externo) muestra la lista. Las horas se ven en la zona del navegador.
 
+## Avisos a Telegram
+
+Con `telegram:` en `maestro.yaml`, el hub avisa cuando un servicio pasa a **Caído** y cuando sale de Caído, como Uptime Kuma. Degradado (una falla de un check, un reinicio) no avisa, y tampoco quedarse sin datos: si un agent deja de responder, sus servicios pasan a Sin datos y no se avisa (lo cubren los checks, que corren en el hub).
+
+```
+🔴 Immich dejó de responder
+🕗 14:32 · 💬 check http falla: timeout (10s)
+🔗 Ver en Maestro
+```
+
+El mensaje va en el HTML de Telegram (lo de afuera, escapado), con "se cayó" o "dejó de responder" según el motivo, la hora del cambio en la zona del proceso (`TZ` en el compose del hub; sin ella, UTC) y un link a la página del servicio si está `public_url`. Un servicio de un stack se nombra con el proyecto: `immich-server (immich)`. Si Telegram rechaza el HTML, va el mismo texto sin formato. Si la red, un 429 o un 5xx lo impiden, reintenta a los 10 s, 30 s, 1, 5, 10 y 30 min (o lo que pida Telegram); un token o un chat mal puestos no se reintentan y quedan en el log, sin el token ni el chat.
+
+Quién avisa, de mayor a menor prioridad: `alert` en `maestro.yaml`; "Avisar por Telegram" / "Dejar de avisar" en el menú de tres puntos de la tarjeta (en la de un stack, cambia todos sus servicios salvo los que fija el archivo); el label `maestro.alert`; y por defecto, los servicios con checks, las unidades de systemd declaradas en el archivo y lo descubierto que se muestra en la portada. Un servicio oculto sigue avisando; uno ignorado no existe.
+
+```sh
+# Manda "Prueba desde Maestro" a cada chat:
+docker compose run --rm hub telegram-test --config /config/maestro.yaml
+```
+
 ## Pestaña Compose
 
 `/stacks/<host>/<proyecto>`, enlazada desde la página de cada servicio de compose. Se nombra por stack y no por servicio porque después de un `down` el stack no tiene contenedores ni servicios, y hay que poder levantarlo de nuevo: el agent lo encuentra igual por `<stacks-dir>/<proyecto>/compose.yml`.
@@ -211,7 +230,7 @@ Un servicio de compose se identifica como `<proyecto>/<servicio>`, por ejemplo `
 | `maestro.check.tcp` | `host:puerto` de un check TCP | | sin check |
 | `maestro.check.interval` | cada cuánto, duración de Go (`30s`, `5m`) | | `60s` |
 | `maestro.check.timeout` | cuánto esperar la respuesta | | `10s` |
-| `maestro.alert` | `true`/`false`: avisar por Telegram | | `true` si tiene checks |
+| `maestro.alert` | `true`/`false`: avisar por Telegram (ver "Avisos a Telegram") | | `true` si tiene checks |
 | `maestro.ignore` | `true`: no mostrarlo ni vigilarlo | | se muestra |
 | `maestro.separate` | `true`: tarjeta propia, fuera de la de su stack | | en la tarjeta del stack |
 
@@ -222,6 +241,8 @@ Una clave `maestro.*` desconocida o un valor inválido se ignora y queda en el l
 Ver [`maestro.example.yaml`](maestro.example.yaml). Tiene estas secciones y una clave suelta:
 
 - `api_token`: opcional, el token para pedir la API sin sesión (ver "Informe para IA").
+- `telegram`: opcional, el bot de los avisos: `token` (el de BotFather), `chat` (uno o más `chat_id` separados por espacios o comas, como el `TELEGRAM_CHATID` de un `notify.sh`; negativos en grupos y canales) y `api` (opcional, un servidor propio de la Bot API). Token y chat van en variables `${...}`.
+- `public_url`: opcional, la dirección del hub desde afuera (`https://maestro.example.org`), para los links de los avisos.
 - `hosts`: cada host con agent, con `agent` (URL) y `token`.
 - `services`: con clave `<proyecto>/<servicio>` pisa valores de un servicio descubierto; con una clave sin `/` declara uno propio, que es una unidad systemd si tiene `unit` (y entonces necesita `host`) o un servicio externo si no.
 - `stacks`: con clave `<host>/<proyecto>`, `name`, `group` y `hidden` de la tarjeta de un stack. El host tiene que estar en `hosts`.

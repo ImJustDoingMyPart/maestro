@@ -304,10 +304,12 @@ func TestEjemploDelRepo(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg, err := Parse(data, env(map[string]string{
-		"MAESTRO_TOKEN_VM":      "a",
-		"MAESTRO_TOKEN_ADGUARD": "b",
-		"MAESTRO_PUSH_RESTIC":   "0123456789abcdef",
-		"MAESTRO_API_TOKEN":     "0123456789abcdef0123456789abcdef",
+		"MAESTRO_TOKEN_VM":       "a",
+		"MAESTRO_TOKEN_ADGUARD":  "b",
+		"MAESTRO_PUSH_RESTIC":    "0123456789abcdef",
+		"MAESTRO_API_TOKEN":      "0123456789abcdef0123456789abcdef",
+		"MAESTRO_TELEGRAM_TOKEN": "123456:ABCdefghijklmnopqrstuvwxyz",
+		"MAESTRO_TELEGRAM_CHAT":  "1418192704",
 	}))
 	if err != nil {
 		t.Fatal(err)

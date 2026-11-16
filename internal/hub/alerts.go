@@ -256,7 +256,7 @@ func TelegramTest(ctx context.Context, configPath string, out io.Writer) error {
 	if cfg.Telegram == nil {
 		return errors.New("maestro.yaml no tiene telegram:")
 	}
-	c := telegram.New(cfg.Telegram.Token, "")
+	c := telegram.New(cfg.Telegram.Token, cfg.Telegram.API)
 	var errs []error
 	for i, chat := range cfg.Telegram.Chats() {
 		if err := c.Send(ctx, chat, testText); err != nil {

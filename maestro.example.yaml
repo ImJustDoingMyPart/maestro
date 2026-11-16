@@ -12,6 +12,17 @@
 # Opcional; mínimo 32 caracteres (openssl rand -hex 32).
 api_token: ${MAESTRO_API_TOKEN}
 
+# Avisos a Telegram cuando un servicio se cae y cuando vuelve. Opcional.
+# token es el de BotFather; chat, uno o más chat_id separados por espacios
+# o comas (negativos en grupos y canales). Los dos son secretos.
+telegram:
+  token: ${MAESTRO_TELEGRAM_TOKEN}
+  chat: ${MAESTRO_TELEGRAM_CHAT}
+
+# Dirección del hub desde afuera, para el link "Ver en Maestro" de los
+# avisos. Opcional.
+public_url: https://maestro.example.org
+
 hosts:
   vm:
     agent: http://192.168.0.11:9101
