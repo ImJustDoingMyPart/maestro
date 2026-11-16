@@ -17,6 +17,7 @@ import (
 	"github.com/ImJustDoingMyPart/maestro/internal/icons"
 	"github.com/ImJustDoingMyPart/maestro/internal/status"
 	"github.com/ImJustDoingMyPart/maestro/internal/store"
+	"github.com/ImJustDoingMyPart/maestro/internal/telegram"
 	"github.com/ImJustDoingMyPart/maestro/web"
 )
 
@@ -56,6 +57,16 @@ func Serve(ctx context.Context, opts Options, logger *slog.Logger) error {
 		return fmt.Errorf("monitor: %w", err)
 	}
 	go mon.Run(ctx)
+	if t := cfg.Telegram; t != nil {
+		// La hora de los avisos va en la zona del proceso: TZ en el
+		// compose (el contenedor corre en UTC si no).
+		al := newAlerter(telegram.New(t.Token, ""), t.Chats(), cfg.PublicURL, st, time.Local, logger)
+		mon.notify = al.Notify
+		go al.Run(ctx)
+		logger.Info("avisos a Telegram", "chats", len(t.Chats()), "zona", time.Local.String())
+	} else {
+		logger.Info("sin telegram en maestro.yaml: las caídas no se avisan")
+	}
 
 	rec := newRecorder(st, logger)
 	go rec.Run(ctx)
