@@ -102,6 +102,21 @@ func TestParseErrores(t *testing.T) {
 			want: []string{"api_token", "32"},
 		},
 		{
+			name: "telegram con token y chat que no tienen la forma",
+			data: "telegram: { token: \"${T}\", chat: \"123, juan\" }\n",
+			want: []string{"telegram.token", "telegram.chat: el destino 2"},
+		},
+		{
+			name: "telegram sin chat",
+			data: "telegram: { token: \"123:abcdefghijklmnopqrstuvwxyz\" }\n",
+			want: []string{"telegram.chat: falta"},
+		},
+		{
+			name: "public_url relativa",
+			data: "public_url: /maestro\n",
+			want: []string{"public_url"},
+		},
+		{
 			name: "clave desconocida en un servicio",
 			data: "services:\n  router:\n    nmae: Router\n",
 			want: []string{"nmae", "line 3"},
@@ -226,6 +241,29 @@ func TestTokenNoSeFiltra(t *testing.T) {
 	}
 	if strings.Contains(buf.String(), "supersecreto") {
 		t.Errorf("el token aparece en el log: %s", buf.String())
+	}
+}
+
+func TestTelegram(t *testing.T) {
+	cfg, err := Parse([]byte("telegram:\n  token: ${TG_TOKEN}\n  chat: ${TG_CHAT}\npublic_url: https://maestro.example.org\n"),
+		env(map[string]string{"TG_TOKEN": "123456:ABCdef_ghi-jklmnopqrstuvwxyz", "TG_CHAT": " 1418192704, -1001234567890 @avisos "}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := cfg.Telegram.Chats(), []string{"1418192704", "-1001234567890", "@avisos"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("Chats() = %q, quiero %q", got, want)
+	}
+	if cfg.PublicURL != "https://maestro.example.org" {
+		t.Errorf("PublicURL = %q", cfg.PublicURL)
+	}
+
+	// Ni el token ni los chats salen en un print o en el log.
+	var buf strings.Builder
+	slog.New(slog.NewTextHandler(&buf, nil)).Info("x", "telegram", *cfg.Telegram)
+	for _, s := range []string{fmt.Sprint(*cfg.Telegram), fmt.Sprintf("%+v", *cfg.Telegram), buf.String()} {
+		if strings.Contains(s, "ABCdef") || strings.Contains(s, "1418192704") {
+			t.Errorf("se filtra un secreto en %q", s)
+		}
 	}
 }
 
