@@ -867,6 +867,9 @@ body.light .svc-icon img.mono { filter: none; }
   align-items: center;
   justify-content: flex-start;
   gap: var(--sp-3);
+  /* El ancho incluye el relleno: si no, el ítem (y su resaltado al pasar
+     el mouse) se pasaba 28 px del borde del menú. */
+  box-sizing: border-box;
   inline-size: 100%;
   block-size: 3rem;
   margin: 0;
