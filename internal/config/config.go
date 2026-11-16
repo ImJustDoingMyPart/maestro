@@ -134,13 +134,18 @@ type Service struct {
 	Hidden *bool `yaml:"hidden"`
 }
 
-// Check son los checks de un servicio: uno HTTP, uno TCP y uno push como
-// mucho, con el mismo intervalo y timeout.
+// Check son los checks de un servicio: uno HTTP, uno TCP, uno DNS y uno
+// push como mucho, con el mismo intervalo y timeout.
 type Check struct {
 	HTTP      string `yaml:"http"`
 	Expect    int    `yaml:"expect"`    // código esperado; 0 si no se declara
 	Redirects *bool  `yaml:"redirects"` // seguir redirecciones; nil es sí
 	TCP       string `yaml:"tcp"`       // host:puerto
+	// DNS es un nombre que se pregunta a Resolver (host o host:puerto, 53
+	// por defecto; vacío es el resolver del hub). Pasa si da al menos una
+	// dirección.
+	DNS      string `yaml:"dns"`
+	Resolver string `yaml:"resolver"`
 	// Push es el token que el script pone en /push/<token>. Es un secreto:
 	// va en una variable ${...}.
 	Push string `yaml:"push"`
@@ -160,8 +165,8 @@ func (c Check) String() string {
 	if c.Push != "" {
 		push = "[censurado]"
 	}
-	return fmt.Sprintf("{http: %s, expect: %d, tcp: %s, push: %s, interval: %s, timeout: %s}",
-		c.HTTP, c.Expect, c.TCP, push, c.Interval, c.Timeout)
+	return fmt.Sprintf("{http: %s, expect: %d, tcp: %s, dns: %s, resolver: %s, push: %s, interval: %s, timeout: %s}",
+		c.HTTP, c.Expect, c.TCP, c.DNS, c.Resolver, push, c.Interval, c.Timeout)
 }
 
 // LookupFunc busca una variable de entorno. Es la firma de os.LookupEnv; los
@@ -355,8 +360,8 @@ func (c *Config) validate() error {
 }
 
 func validateCheck(key string, c *Check, add func(string, ...any)) {
-	if c.HTTP == "" && c.TCP == "" && c.Push == "" {
-		add("services.%s.check: falta http, tcp o push", key)
+	if c.HTTP == "" && c.TCP == "" && c.DNS == "" && c.Push == "" {
+		add("services.%s.check: falta http, tcp, dns o push", key)
 	}
 	if c.HTTP != "" {
 		if err := checkURL(c.HTTP); err != nil {
@@ -373,6 +378,16 @@ func validateCheck(key string, c *Check, add func(string, ...any)) {
 			add("services.%s.check.tcp: %q no es host:puerto", key, c.TCP)
 		}
 	}
+	if c.DNS != "" && !validDNSName(c.DNS) {
+		add("services.%s.check.dns: %q no es un nombre de dominio", key, c.DNS)
+	}
+	if c.Resolver != "" {
+		if c.DNS == "" {
+			add("services.%s.check: resolver es de dns", key)
+		} else if _, err := resolverAddr(c.Resolver); err != nil {
+			add("services.%s.check.resolver: %q no es host o host:puerto", key, c.Resolver)
+		}
+	}
 	if c.Push != "" && len(c.Push) < MinPushTokenLen {
 		add("services.%s.check.push: el token tiene que tener al menos %d caracteres (openssl rand -hex 16)", key, MinPushTokenLen)
 	}
@@ -384,6 +399,43 @@ func validateCheck(key string, c *Check, add func(string, ...any)) {
 			add("services.%s.check.%s: %q no es una duración (30s, 5m, 96h)", key, d.name, d.v)
 		}
 	}
+}
+
+// validDNSName acepta un nombre de dominio: etiquetas de letras, dígitos,
+// "-" y "_" separadas por puntos, con un punto final opcional.
+func validDNSName(name string) bool {
+	name = strings.TrimSuffix(name, ".")
+	if name == "" || len(name) > 253 {
+		return false
+	}
+	for label := range strings.SplitSeq(name, ".") {
+		if label == "" || len(label) > 63 || strings.HasPrefix(label, "-") || strings.HasSuffix(label, "-") {
+			return false
+		}
+		for _, r := range label {
+			if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_') {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// resolverAddr completa el servidor de un check DNS con el puerto 53 si no
+// lo trae ("192.168.0.12" es "192.168.0.12:53"; una IPv6 va entre
+// corchetes si lleva puerto).
+func resolverAddr(raw string) (string, error) {
+	if host, port, err := net.SplitHostPort(raw); err == nil {
+		if host == "" || port == "" {
+			return "", errors.New("falta el host o el puerto")
+		}
+		return raw, nil
+	}
+	host := strings.TrimSuffix(strings.TrimPrefix(raw, "["), "]")
+	if host == "" || strings.ContainsAny(host, "[]/ ") {
+		return "", errors.New("no es un host")
+	}
+	return net.JoinHostPort(host, "53"), nil
 }
 
 // checkURL exige una URL absoluta http o https.
@@ -451,6 +503,13 @@ func (c *Check) checks() []catalog.Check {
 	}
 	if c.TCP != "" {
 		out = append(out, catalog.Check{Kind: catalog.CheckTCP, Target: c.TCP, Interval: interval, Timeout: timeout})
+	}
+	if c.DNS != "" {
+		var resolver string
+		if c.Resolver != "" {
+			resolver, _ = resolverAddr(c.Resolver)
+		}
+		out = append(out, catalog.Check{Kind: catalog.CheckDNS, Target: c.DNS, Resolver: resolver, Interval: interval, Timeout: timeout})
 	}
 	if c.Push != "" {
 		out = append(out, catalog.Check{Kind: catalog.CheckPush, Target: c.Push, Interval: interval})

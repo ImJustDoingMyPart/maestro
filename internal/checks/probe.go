@@ -121,6 +121,53 @@ func probeTCP(ctx context.Context, spec Spec) outcome {
 	return outcome{ok: true, latency: latency, detail: "conectó"}
 }
 
+// probeDNS pregunta el nombre al servidor del check (o al del hub) y pasa
+// si da al menos una dirección. El detalle lleva las primeras.
+func probeDNS(ctx context.Context, spec Spec) outcome {
+	ctx, cancel := context.WithTimeout(ctx, spec.timeout())
+	defer cancel()
+	r := net.DefaultResolver
+	if spec.Resolver != "" {
+		r = &net.Resolver{PreferGo: true, Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
+			var d net.Dialer
+			return d.DialContext(ctx, network, spec.Resolver)
+		}}
+	}
+	start := time.Now()
+	addrs, err := r.LookupHost(ctx, spec.Target)
+	latency := time.Since(start)
+	if err != nil {
+		return outcome{latency: latency, detail: describeDNSErr(err, spec)}
+	}
+	if len(addrs) == 0 {
+		return outcome{latency: latency, detail: "respondió sin direcciones"}
+	}
+	shown := addrs[:min(len(addrs), 3)]
+	detail := "responde " + strings.Join(shown, ", ")
+	if len(addrs) > len(shown) {
+		detail += fmt.Sprintf(" y %d más", len(addrs)-len(shown))
+	}
+	return outcome{ok: true, latency: latency, detail: detail}
+}
+
+// describeDNSErr es describeErr para un check DNS: el nombre que se pregunta
+// es lo que se vigila, así que "no existe" es la respuesta del servidor y
+// no un problema para llegar a él.
+func describeDNSErr(err error, spec Spec) string {
+	var dnsErr *net.DNSError
+	switch {
+	case errors.As(err, &dnsErr) && dnsErr.IsNotFound:
+		return "el servidor dice que " + spec.Target + " no existe"
+	case errors.As(err, &dnsErr) && dnsErr.IsTimeout, errors.Is(err, context.DeadlineExceeded):
+		return fmt.Sprintf("timeout (%s)", formatDuration(spec.timeout()))
+	case errors.Is(err, syscall.ECONNREFUSED):
+		return "conexión rechazada"
+	case errors.As(err, &dnsErr):
+		return "falla: " + dnsErr.Err
+	}
+	return err.Error()
+}
+
 // describeErr pasa un error de red a un texto corto en castellano. Es lo
 // que se ve en la página del servicio y en los eventos, así que conviene
 // que sea estable: el mismo problema, el mismo texto.

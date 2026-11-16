@@ -169,7 +169,7 @@ func TestParseErrores(t *testing.T) {
 		{
 			name: "check vacío",
 			data: "services:\n  router: {check: {interval: 30s}}\n",
-			want: []string{"services.router.check: falta http, tcp o push"},
+			want: []string{"services.router.check: falta http, tcp, dns o push"},
 		},
 		{
 			name: "expect sin http",
@@ -190,6 +190,11 @@ func TestParseErrores(t *testing.T) {
 			name: "token push repetido",
 			data: "services:\n  a: {check: {push: 0123456789abcdef}}\n  b: {check: {push: 0123456789abcdef}}\n",
 			want: []string{"services.b.check.push", "mismo token que a"},
+		},
+		{
+			name: "dns mal escrito, resolver sin dns y resolver roto",
+			data: "services:\n  a: {check: {dns: \"no es.un nombre\"}}\n  b: {check: {tcp: \"b:53\", resolver: 1.1.1.1}}\n  c: {check: {dns: c.lan, resolver: \"1.1.1.1:\"}}\n",
+			want: []string{"services.a.check.dns", "services.b.check: resolver es de dns", "services.c.check.resolver"},
 		},
 		{
 			name: "stacks con clave mala y host inexistente",
@@ -273,6 +278,9 @@ func TestFileServices(t *testing.T) {
 		"p/s":        {Alert: ptr(false), Ignore: ptr(true), Separate: ptr(true), Hidden: ptr(true)},
 		"sin-checks": {Group: "Red"},
 		"restic":     {Check: &Check{Push: "0123456789abcdef", Interval: "96h"}},
+		"dns":        {Check: &Check{DNS: "adguard.lan", Resolver: "192.168.0.12"}},
+		"dns6":       {Check: &Check{DNS: "x.lan.", Resolver: "[::1]:5353"}},
+		"dns-hub":    {Check: &Check{DNS: "x.lan"}},
 		"db": {Check: &Check{
 			HTTP: "https://db/", Redirects: ptr(false), TCP: "db:5432", Interval: "30s", Timeout: "5s",
 		}},
@@ -287,6 +295,9 @@ func TestFileServices(t *testing.T) {
 		"restic": {Checks: []catalog.Check{
 			{Kind: catalog.CheckPush, Target: "0123456789abcdef", Interval: 96 * time.Hour},
 		}},
+		"dns":     {Checks: []catalog.Check{{Kind: catalog.CheckDNS, Target: "adguard.lan", Resolver: "192.168.0.12:53"}}},
+		"dns6":    {Checks: []catalog.Check{{Kind: catalog.CheckDNS, Target: "x.lan.", Resolver: "[::1]:5353"}}},
+		"dns-hub": {Checks: []catalog.Check{{Kind: catalog.CheckDNS, Target: "x.lan"}}},
 		"db": {Checks: []catalog.Check{
 			{Kind: catalog.CheckHTTP, Target: "https://db/", NoRedirects: true, Interval: 30 * time.Second, Timeout: 5 * time.Second},
 			{Kind: catalog.CheckTCP, Target: "db:5432", Interval: 30 * time.Second, Timeout: 5 * time.Second},
