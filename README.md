@@ -7,7 +7,7 @@ Es un solo binario de Go con dos modos:
 - `maestro serve`: el **hub**. Web, login y base SQLite. No toca el socket de Docker: le pide los datos a los agents.
 - `maestro agent`: uno por **host**. Lee Docker (si hay), `/proc`, `/sys` y systemd, edita y levanta los stacks de compose, y responde solo al hub, con un token.
 
-Estado: etapa 7 (hardware, métricas y descubrimiento). Además de lo de abajo, cada host con agent tiene su hardware (CPU, RAM, red, discos, temperaturas, SMART) con historial, cada servicio de Docker su pestaña Métricas, y las unidades y timers de systemd y las LXC y VMs de Proxmox llegan a la bandeja de Descubiertos. Lo de etapas anteriores: Hay portada con login y lista de servicios desde Docker; el semáforo combina el estado de los contenedores con checks HTTP, TCP y push que corren en el hub, y cada cambio de estado queda guardado. Cada servicio tiene su página con el historial de sus checks, la línea de tiempo (logs en vivo con los cambios de estado intercalados) y, si es de compose, la pestaña Compose para editar el `compose.yml` y el `.env` y correr `up`, `down`, `restart` y `pull`. Cada servicio da además un informe en Markdown, con los secretos censurados, para pegarlo en un agente de IA.
+Estado: etapa 7 (hardware, métricas y descubrimiento). Además de lo de abajo, cada host con agent tiene su hardware (CPU, RAM, red, discos, temperaturas, SMART) con historial, cada servicio de Docker su pestaña Métricas, y las unidades y timers de systemd y las LXC y VMs de Proxmox llegan a la bandeja de Descubiertos. Lo de etapas anteriores: Hay portada con login y lista de servicios desde Docker; el semáforo combina el estado de los contenedores con checks HTTP, TCP, DNS y push que corren en el hub, y cada cambio de estado queda guardado. Cada servicio tiene su página con el historial de sus checks, la línea de tiempo (logs en vivo con los cambios de estado intercalados) y, si es de compose, la pestaña Compose para editar el `compose.yml` y el `.env` y correr `up`, `down`, `restart` y `pull`. Cada servicio da además un informe en Markdown, con los secretos censurados, para pegarlo en un agente de IA.
 
 ## Desarrollo
 
@@ -137,6 +137,7 @@ Los checks corren en el hub, cada uno en su goroutine. Un servicio tiene como mu
 
 - **HTTP**: un `GET` a la URL. Vale cualquier 2xx, o el código de `expect`. Sigue hasta 10 redirecciones salvo `redirects: false` (entonces el 3xx es la respuesta). Cada vez abre una conexión nueva y no usa el proxy del entorno. En HTTPS guarda el vencimiento del certificado.
 - **TCP**: conecta a `host:puerto` y cierra.
+- **DNS**: le pregunta el nombre de `dns` al servidor de `resolver` (`host` o `host:puerto`, 53 por defecto; sin `resolver`, al del hub) y pasa si da al menos una dirección. Es el monitor DNS de Uptime Kuma: ve que el servidor responde, no solo que el proceso corre o que el puerto acepta conexiones. Va solo en el archivo, sin label.
 - **Push**: lo hace un script al terminar bien, con `curl https://<maestro>/push/<token>` (GET o POST, sin login). Si no llega en `interval` más un 10 %, falla, y sigue fallando una vez por intervalo mientras no llegue. Entiende los parámetros de un push de Uptime Kuma: con `?status=down&msg=<motivo>` el script avisa que corrió pero falló, y el servicio cae con ese motivo (de una línea, hasta 200 caracteres); cualquier otro `status` es que salió bien, y `ping` se ignora. Así un script que le avisaba a Kuma pasa a Maestro cambiando solo la URL. Al reiniciar el hub, el plazo se cuenta desde el último push guardado. La ruta responde `ok` exista o no el token, para no servir de oráculo; los tokens desconocidos quedan en el log.
 
 Por defecto, cada 60 s con 10 s de timeout. El timeout nunca pasa del intervalo. Los checks salen del contenedor del hub: en el despliegue de ejemplo está en `caddy_net`, así que `http://jellyfin:8096` resuelve por el DNS de Docker si el servicio está en esa red (igual que en Uptime Kuma).
@@ -145,7 +146,7 @@ El estado de un servicio:
 
 | Estado | Cuándo |
 |---|---|
-| Caído | un contenedor no corre; un check HTTP o TCP falló 3 veces seguidas (como Uptime Kuma con 3 reintentos); un push no llegó o avisó una falla |
+| Caído | un contenedor no corre; un check HTTP, TCP o DNS falló 3 veces seguidas (como Uptime Kuma con 3 reintentos); un push no llegó o avisó una falla |
 | Degradado | un contenedor está `unhealthy` o reinició hace menos de 10 minutos; un check falló menos de 3 veces; un certificado vence en menos de 14 días |
 | Sin datos | el agent de su host no responde y no hay checks con resultados; un contenedor está arrancando (`starting`); un servicio propio cuyos checks todavía no corrieron |
 | Arriba | ninguna de las anteriores |
@@ -251,14 +252,14 @@ Ver [`maestro.example.yaml`](maestro.example.yaml). Tiene estas secciones y una 
 | Clave de un servicio | Tipo | Dónde vale |
 |---|---|---|
 | `name`, `group`, `icon`, `url`, `description` | texto | todos |
-| `check` | `{http, expect, redirects, tcp, push, interval, timeout}` (ver abajo) | todos |
+| `check` | `{http, expect, redirects, tcp, dns, resolver, push, interval, timeout}` (ver abajo) | todos |
 | `alert`, `ignore` | `true`/`false` | todos |
 | `separate` | `true`/`false` | servicios de compose |
 | `hidden` | `true`: no se muestra en la portada; `false`: no se oculta desde la interfaz | todos |
 | `host` | nombre de un host de `hosts` | solo propios |
 | `unit` | unidad systemd | solo propios |
 
-`check` lleva al menos uno de `http` (URL), `tcp` (`host:puerto`) o `push` (token, de al menos 16 caracteres y distinto en cada servicio), y opcionalmente `expect` y `redirects` (de `http`) e `interval` y `timeout` (duraciones de Go, para todos los del servicio). Para un push, `interval` es cada cuánto tiene que llegar la llamada. Un `check` en el archivo reemplaza a los de los labels.
+`check` lleva al menos uno de `http` (URL), `tcp` (`host:puerto`), `dns` (un nombre, con `resolver` opcional) o `push` (token, de al menos 16 caracteres y distinto en cada servicio), y opcionalmente `expect` y `redirects` (de `http`) e `interval` y `timeout` (duraciones de Go, para todos los del servicio). Para un push, `interval` es cada cuánto tiene que llegar la llamada. Un `check` en el archivo reemplaza a los de los labels.
 
 Una clave desconocida es un error al arrancar, igual que una variable `${VAR}` que no existe en el entorno. Los secretos van siempre en variables, nunca escritos en el archivo. Dentro de un mapa entre llaves (`{ ... }`), la variable va entre comillas: `token: "${MAESTRO_TOKEN_VM}"`.
 

@@ -113,6 +113,74 @@ func TestProbeTCP(t *testing.T) {
 	}
 }
 
+// fakeDNS es un servidor DNS por UDP que contesta a cada A con ip y a cada
+// AAAA sin respuestas; a un nombre de nxdomain, NXDOMAIN. Arma los paquetes
+// a mano (RFC 1035): basta para el resolver de Go.
+func fakeDNS(t *testing.T, ip net.IP, nxdomain string) string {
+	t.Helper()
+	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { pc.Close() })
+	go func() {
+		buf := make([]byte, 512)
+		for {
+			n, addr, err := pc.ReadFrom(buf)
+			if err != nil {
+				return
+			}
+			q := buf[:n]
+			// Pregunta: después de los 12 bytes de cabecera, etiquetas
+			// hasta un 0, y 4 bytes de tipo y clase.
+			i, labels := 12, []string{}
+			for i < n && q[i] != 0 {
+				l := int(q[i])
+				labels = append(labels, string(q[i+1:i+1+l]))
+				i += 1 + l
+			}
+			end := i + 5
+			qtype := int(q[i+1])<<8 | int(q[i+2])
+			resp := append([]byte{}, q[:2]...)                      // mismo ID
+			resp = append(resp, 0x81, 0x80, 0, 1, 0, 0, 0, 0, 0, 0) // respuesta, RD y RA, una pregunta
+			resp = append(resp, q[12:end]...)
+			switch {
+			case strings.Join(labels, ".") == nxdomain:
+				resp[3] |= 3 // NXDOMAIN
+			case qtype == 1:
+				resp[7] = 1 // una respuesta
+				resp = append(resp, 0xc0, 12, 0, 1, 0, 1, 0, 0, 0, 60, 0, 4)
+				resp = append(resp, ip.To4()...)
+			}
+			pc.WriteTo(resp, addr)
+		}
+	}()
+	return pc.LocalAddr().String()
+}
+
+func TestProbeDNS(t *testing.T) {
+	addr := fakeDNS(t, net.IPv4(192, 168, 0, 11), "nada.lan")
+	spec := Spec{Check: catalog.Check{Kind: catalog.CheckDNS, Target: "adguard.lan", Resolver: addr, Timeout: 2 * time.Second}}
+	if o := probeDNS(context.Background(), spec); !o.ok || o.detail != "responde 192.168.0.11" {
+		t.Errorf("nombre que existe: %+v", o)
+	}
+	spec.Target = "nada.lan"
+	if o := probeDNS(context.Background(), spec); o.ok || o.detail != "el servidor dice que nada.lan no existe" {
+		t.Errorf("NXDOMAIN: %+v", o)
+	}
+	// Un puerto UDP donde nadie contesta: el resolver de Go reintenta
+	// hasta el timeout.
+	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pc.Close()
+	spec = Spec{Check: catalog.Check{Kind: catalog.CheckDNS, Target: "adguard.lan", Resolver: pc.LocalAddr().String(), Timeout: 300 * time.Millisecond}}
+	if o := probeDNS(context.Background(), spec); o.ok || o.detail != "timeout (300ms)" {
+		t.Errorf("servidor mudo: %+v", o)
+	}
+}
+
 // closedAddr da una dirección local donde nadie escucha.
 func closedAddr(t *testing.T) string {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")

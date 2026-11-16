@@ -45,6 +45,8 @@ services:
       http: http://192.168.0.12/
       expect: 200      # sin expect vale cualquier 2xx
       tcp: 192.168.0.12:53
+      dns: adguard.example.org # se le pregunta a resolver: pasa si responde
+      resolver: 192.168.0.12   # host o host:puerto (53 por defecto)
       interval: 60s    # por defecto 60s
       timeout: 10s     # por defecto 10s
 

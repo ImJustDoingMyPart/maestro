@@ -49,6 +49,7 @@ type CheckKind string
 const (
 	CheckHTTP CheckKind = "http" // GET a una URL
 	CheckTCP  CheckKind = "tcp"  // conectar a host:puerto y cerrar
+	CheckDNS  CheckKind = "dns"  // preguntar un nombre a un servidor DNS
 	// CheckPush lo hace un script llamando a /push/<token>; falla si la
 	// llamada no llega a tiempo. Solo se declara en el archivo: el token
 	// es un secreto.
@@ -58,8 +59,11 @@ const (
 // Check es un chequeo declarado para un servicio.
 type Check struct {
 	Kind   CheckKind
-	Target string // URL para HTTP, host:puerto para TCP, token para push
-	Expect int    // HTTP: código esperado; 0 si no se declaró (cualquier 2xx)
+	Target string // URL para HTTP, host:puerto para TCP, nombre para DNS, token para push
+	// Resolver (DNS) es el servidor al que se pregunta, host:puerto; vacío
+	// es el del hub.
+	Resolver string
+	Expect   int // HTTP: código esperado; 0 si no se declaró (cualquier 2xx)
 	// NoRedirects (HTTP) no sigue las redirecciones: un 3xx es la
 	// respuesta.
 	NoRedirects bool

@@ -429,6 +429,9 @@ func (m *Monitor) Checks(id string) []CheckView {
 	out := make([]CheckView, 0, len(svc.Checks))
 	for _, c := range svc.Checks {
 		v := CheckView{Kind: c.Kind, Target: c.Target}
+		if c.Kind == catalog.CheckDNS && c.Resolver != "" {
+			v.Target += " en " + c.Resolver
+		}
 		if c.Kind == catalog.CheckPush {
 			v.Target = ""
 			v.Deadline = checks.Spec{Service: id, Check: c}.PushDeadline()

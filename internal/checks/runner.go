@@ -1,4 +1,4 @@
-// Package checks corre los checks HTTP, TCP y push de los servicios desde
+// Package checks corre los checks HTTP, TCP, DNS y push de los servicios desde
 // el hub. Cada check tiene su goroutine; los resultados salen por una
 // función que pasa quien crea el Runner (el hub los guarda y recalcula el
 // estado).
@@ -191,6 +191,8 @@ func (r *Runner) run(ctx context.Context, j *job) {
 		probe = newHTTPProber(j.spec).probe
 	case catalog.CheckTCP:
 		probe = func(ctx context.Context) outcome { return probeTCP(ctx, j.spec) }
+	case catalog.CheckDNS:
+		probe = func(ctx context.Context) outcome { return probeDNS(ctx, j.spec) }
 	default:
 		r.opts.Logger.Error("tipo de check desconocido", "service", j.spec.Service, "kind", j.spec.Kind)
 		return
