@@ -74,6 +74,8 @@ type apiCard struct {
 	EditHref       string      `json:"editHref"`
 	Found          bool        `json:"found"`
 	HiddenLocked   bool        `json:"hiddenLocked"`
+	Alert          bool        `json:"alert"`
+	AlertLocked    bool        `json:"alertLocked"`
 }
 
 type apiMember struct {
@@ -83,6 +85,8 @@ type apiMember struct {
 	NameLocked     bool   `json:"nameLocked"`
 	SeparateLocked bool   `json:"separateLocked"`
 	HiddenLocked   bool   `json:"hiddenLocked"`
+	Alert          bool   `json:"alert"`
+	AlertLocked    bool   `json:"alertLocked"`
 	State          State  `json:"state"`
 	StateLabel     string `json:"stateLabel"`
 	Reason         string `json:"reason"`
@@ -122,7 +126,7 @@ func cardJSON(c serviceCard) apiCard {
 		Members: []apiMember{}, StackHref: c.StackHref, MetricsHref: c.MetricsHref,
 		NameLocked: c.NameLocked, GroupLocked: c.GroupLocked, Separated: c.Separated,
 		SeparateLocked: c.SeparateLocked, EditHref: c.EditHref, Found: c.Found,
-		HiddenLocked: c.HiddenLocked,
+		HiddenLocked: c.HiddenLocked, Alert: c.Alert, AlertLocked: c.AlertLocked,
 	}
 	if c.Logo != nil {
 		ac.Logo = &apiLogo{Src: c.Logo.Src, SrcDark: c.Logo.SrcDark, Mono: c.Logo.Mono}
@@ -131,6 +135,7 @@ func cardJSON(c serviceCard) apiCard {
 		ac.Members = append(ac.Members, apiMember{
 			Key: m.Key, Name: m.Name, Href: m.Href, NameLocked: m.NameLocked,
 			SeparateLocked: m.SeparateLocked, HiddenLocked: m.HiddenLocked,
+			Alert: m.Alert, AlertLocked: m.AlertLocked,
 			State: m.State, StateLabel: m.State.Label(), Reason: m.Reason,
 		})
 	}

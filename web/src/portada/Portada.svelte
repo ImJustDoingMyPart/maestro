@@ -121,6 +121,9 @@
       case "separate":
         flash(await run("/separate", p));
         break;
+      case "alert":
+        flash(await run("/alert", p));
+        break;
       case "unshow":
         flash(await run("/discovered/unshow", p));
         break;

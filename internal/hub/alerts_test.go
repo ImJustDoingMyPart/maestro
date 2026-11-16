@@ -284,7 +284,7 @@ func TestInterruptorDeAvisos(t *testing.T) {
 	// next es lo que haría el ítem del menú de key: "1" prender, "0" apagar.
 	next := func(key string) string {
 		t.Helper()
-		res, _ := c.Get(srv.URL + "/")
+		res, _ := c.Get(srv.URL + "/clasica")
 		b := body(t, res)
 		mark := `value="` + key + `">` + "\n" + `  <input type="hidden" name="alert" value="`
 		i := strings.Index(b, mark)

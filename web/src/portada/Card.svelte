@@ -29,6 +29,14 @@
   const flipDur = () => (instant() ? 0 : dur("--dur-m"));
 </script>
 
+<!-- Prender o apagar los avisos a Telegram (en un stack, todos sus
+     servicios; x.alert es si alguno avisa). -->
+{#snippet alertItem(x)}
+  <button type="button" disabled={x.alertLocked} title={x.alertLocked ? "Viene de maestro.yaml" : null} onclick={() => act("alert", { key: x.key, alert: x.alert ? "0" : "1" })}>
+    {#if x.alert}<i>notifications_off</i><span>Dejar de avisar</span>{:else}<i>notifications</i><span>Avisar por Telegram</span>{/if}
+  </button>
+{/snippet}
+
 {#snippet dot(state, label)}
   {#key state}
     <span class="dot {state}" title={label} in:scale={{ start: 0.3, duration: dur("--dur-l"), easing: ease }}></span>
@@ -76,6 +84,7 @@
             <i>call_merge</i><span>Volver al stack</span>
           </button>
         {/if}
+        {@render alertItem(card)}
         {#if card.found}
           <button type="button" onclick={() => act("unshow", { key: card.key })}><i>inbox</i><span>Volver a la bandeja</span></button>
         {:else}
@@ -133,6 +142,7 @@
               <button type="button" disabled={m.separateLocked} title={m.separateLocked ? "Viene de maestro.yaml" : null} onclick={() => act("separate", { key: m.key, separate: "1" })}>
                 <i>call_split</i><span>Sacar del stack</span>
               </button>
+              {@render alertItem(m)}
               <button type="button" disabled={m.hiddenLocked} title={m.hiddenLocked ? "maestro.yaml dice hidden: false" : null} onclick={() => act("hide", { key: m.key })}>
                 <i>visibility_off</i><span>Ocultar</span>
               </button>
