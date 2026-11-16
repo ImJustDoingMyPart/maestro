@@ -319,7 +319,7 @@ main.responsive {
   pointer-events: none;
   transition: opacity var(--dur-s) var(--ease);
 }
-:is(.btn, .icon-btn:not(.off), .topnav-item, .stat.link, .card-menu-list > *, .card-menu-list > form > button, .banner[href]):is(:hover, [open] > *)::after {
+:is(.btn, .icon-btn:not(.off), .topnav-item, .stat.link, .card-menu-list > *, .card-menu-list > form > button, .banner[href]):is(:hover, [open] > *, .card-menu.open > *)::after {
   opacity: var(--a-hover);
 }
 :is(.btn, .icon-btn:not(.off), .topnav-item, .stat.link, .card-menu-list > *, .card-menu-list > form > button):active::after {
@@ -782,7 +782,8 @@ body.light .svc-icon img.mono { filter: none; }
   border-radius: 0; /* Beer hereda el radio de la tarjeta */
   cursor: default;
 }
-.svc-card.open .stack-members {
+.svc-card.open .stack-members,
+.stack-members.shown {
   display: block;
 }
 .stack-members li {
@@ -847,7 +848,7 @@ body.light .svc-icon img.mono { filter: none; }
 }
 /* Beer separa con margen un form que sigue a otro elemento: su selector
    gana por especificidad, de ahí el !important. */
-details.card-menu > .card-menu-list > * {
+.card-menu > .card-menu-list > * {
   margin: 0 !important;
 }
 .card-menu-list > button,
@@ -884,12 +885,12 @@ details.card-menu > .card-menu-list > * {
 }
 /* Un menú abierto va por encima de todo lo de la tarjeta y la tarjeta,
    por encima de sus vecinas. */
-.card-menu[open],
-.stack-members li:has(.card-menu[open]) {
+.card-menu:is([open], .open),
+.stack-members li:has(.card-menu:is([open], .open)) {
   z-index: 10;
 }
-.card-slot:has(.card-menu[open]),
-.svc-card:has(.card-menu[open]) {
+.card-slot:has(.card-menu:is([open], .open)),
+.svc-card:has(.card-menu:is([open], .open)) {
   z-index: 5;
   position: relative;
 }
@@ -2159,6 +2160,18 @@ button.icon-choice.selected {
   display: flex;
   align-items: center;
   gap: var(--sp-1);
+}
+
+/* ---------- Portada de Svelte ----------
+
+   La portada nueva (web/src/portada) anima con Svelte y la Web Animations
+   API, con los mismos tokens. Sus diálogos (.modal) entran y salen desde
+   JavaScript: la transición de Beer queda apagada para que no se pisen. */
+dialog.modal {
+  transition: none;
+}
+dialog.modal::backdrop {
+  transition: opacity var(--dur-m) var(--ease);
 }
 
 /* ---------- Muestrario (/muestrario) ---------- */

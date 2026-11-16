@@ -33,7 +33,7 @@ func TestBandejaDeDescubiertos(t *testing.T) {
 		return body(t, res)
 	}
 
-	if b := get("/"); !strings.Contains(b, "3 descubiertos") || strings.Contains(b, "AdGuardHome.service") {
+	if b := get("/clasica"); !strings.Contains(b, "3 descubiertos") || strings.Contains(b, "AdGuardHome.service") {
 		t.Error("la portada tiene que mostrar el chip y ninguna tarjeta")
 	}
 	b := get("/discovered")
@@ -49,7 +49,7 @@ func TestBandejaDeDescubiertos(t *testing.T) {
 	if res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != "/discovered" {
 		t.Fatalf("mostrar = %d %s", res.StatusCode, res.Header.Get("Location"))
 	}
-	b = get("/")
+	b = get("/clasica")
 	if !strings.Contains(b, "2 descubiertos") || !strings.Contains(b, `data-key="found:vm/timer/restic-backup.timer"`) ||
 		!strings.Contains(b, "Volver a la bandeja") || !strings.Contains(b, `state-pill down`) {
 		t.Errorf("después de mostrar, la portada:\n%.3000s", b)
@@ -62,13 +62,13 @@ func TestBandejaDeDescubiertos(t *testing.T) {
 	res.Body.Close()
 	res = postForm(t, c, srv.URL+"/groups/move", url.Values{"key": {"found:vm/timer/restic-backup.timer"}, "group": {"Sistema"}}, srv.URL)
 	res.Body.Close()
-	if b := get("/"); !strings.Contains(b, ">Backups<") || !strings.Contains(b, `data-group="Sistema"`) {
+	if b := get("/clasica"); !strings.Contains(b, ">Backups<") || !strings.Contains(b, `data-group="Sistema"`) {
 		t.Error("renombrar o mover un descubierto no anduvo")
 	}
 
 	res = postForm(t, c, srv.URL+"/discovered/unshow", url.Values{"key": {"found:vm/timer/restic-backup.timer"}}, srv.URL)
 	res.Body.Close()
-	if b := get("/"); strings.Contains(b, "found:vm/timer") || !strings.Contains(b, "3 descubiertos") {
+	if b := get("/clasica"); strings.Contains(b, "found:vm/timer") || !strings.Contains(b, "3 descubiertos") {
 		t.Error("volver a la bandeja no lo sacó de la portada")
 	}
 	for _, key := range []string{"service:a/b", "found:solo", "found:a/b"} {

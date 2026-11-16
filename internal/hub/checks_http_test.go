@@ -49,7 +49,7 @@ func TestPortadaConEstadoCombinado(t *testing.T) {
 	}
 	srv := testServer(t, snap)
 	c := loggedIn(t, srv)
-	res, _ := c.Get(srv.URL + "/")
+	res, _ := c.Get(srv.URL + "/clasica")
 	b := body(t, res)
 	for _, want := range []string{"Degradado", "enfermo unhealthy", "1 degradado", "parado detenido (exit 137)", `<time datetime=`} {
 		if !strings.Contains(b, want) {

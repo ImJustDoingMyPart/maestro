@@ -162,7 +162,7 @@ func withIcons(r *icons.Resolver) handlerOption {
 }
 
 func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon monitorView, prefs prefStore, sessions *auth.Sessions, apiToken string, logger *slog.Logger, opts ...handlerOption) (http.Handler, error) {
-	p, err := parsePages(web.Templates, "services", "service", "stack", "hardware", "login", "hidden", "external", "discovered", "export", "muestrario")
+	p, err := parsePages(web.Templates, "portada", "services", "service", "stack", "hardware", "login", "hidden", "external", "discovered", "export", "muestrario")
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +200,10 @@ func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon moni
 	mux.HandleFunc("GET /api/services/{rest...}", s.serviceReport)
 
 	private := http.NewServeMux()
-	private.HandleFunc("GET /{$}", s.servicesPage)
+	// Portada nueva (Svelte, rama de prueba) y la de antes, para comparar.
+	private.HandleFunc("GET /{$}", s.portadaPage)
+	private.HandleFunc("GET /api/portada", s.portadaAPI)
+	private.HandleFunc("GET /clasica", s.servicesPage)
 	private.HandleFunc("GET /fragments/services", s.servicesFragment)
 	private.HandleFunc("GET /hardware", s.hardwarePage)
 	private.HandleFunc("POST /hardware/order", s.hwOrder)
@@ -275,6 +278,12 @@ func (s *server) servicesPage(w http.ResponseWriter, r *http.Request) {
 	data := s.servicesData(r.Context())
 	data.Title, data.Active, data.ShowNav = "Servicios", "services", true
 	s.pages.render(w, s.logger, "services", data)
+}
+
+// portadaPage es la portada hecha con Svelte: la página trae solo el
+// lugar donde se monta; los datos llegan de /api/portada.
+func (s *server) portadaPage(w http.ResponseWriter, r *http.Request) {
+	s.pages.render(w, s.logger, "portada", pageData{Title: "Servicios", Active: "services", ShowNav: true, Live: true})
 }
 
 func (s *server) servicesFragment(w http.ResponseWriter, r *http.Request) {

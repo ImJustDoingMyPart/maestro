@@ -21,15 +21,7 @@ func TestBundleAlDia(t *testing.T) {
 	// los archivos que abrió este proceso: los que lee esbuild no cuentan.
 	// Por eso se leen acá también, con npm.lock (que fija lo que hay en
 	// node_modules).
-	entries, err := os.ReadDir("src")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, e := range entries {
-		if _, err := os.ReadFile(filepath.Join("src", e.Name())); err != nil {
-			t.Fatal(err)
-		}
-	}
+	readSources(t)
 	if _, err := os.ReadFile("npm.lock"); err != nil {
 		t.Fatal(err)
 	}
@@ -82,5 +74,53 @@ func TestBundleAlDia(t *testing.T) {
 		if !bytes.Equal(got, want) {
 			t.Errorf("%s/%s no está al día con src/: correr go generate ./web", committed, e.Name())
 		}
+	}
+}
+
+// readSources lee todo src/ (con las subcarpetas): ver el comentario de
+// TestBundleAlDia sobre la caché de go test.
+func readSources(t *testing.T) {
+	t.Helper()
+	err := filepath.WalkDir("src", func(path string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		_, err = os.ReadFile(path)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// La portada de Svelte, igual: el bundle commiteado tiene que salir de
+// src/portada tal como está. Su compilador necesita Node; sin Node el test
+// se saltea.
+func TestPortadaAlDia(t *testing.T) {
+	if testing.Short() {
+		t.Skip("compila el bundle")
+	}
+	readSources(t)
+	if _, err := os.ReadFile("npm.lock"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat("node_modules/svelte/.npmfetch"); err != nil {
+		t.Skip("faltan los paquetes de npm (go generate ./web los baja)")
+	}
+	if _, err := exec.LookPath("node"); err != nil {
+		t.Skip("sin Node no se compila Svelte")
+	}
+	out := t.TempDir()
+	cmd := exec.Command("go", "run", "../internal/sveltebuild", "-outdir", out, "src/portada.js")
+	if b, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("sveltebuild: %v\n%s", err, b)
+	}
+	got, _ := os.ReadFile(filepath.Join(out, "portada.js"))
+	want, err := os.ReadFile("static/gen/portada.js")
+	if err != nil {
+		t.Fatal("static/gen/portada.js no está commiteado: correr go generate ./web")
+	}
+	if !bytes.Equal(got, want) {
+		t.Error("static/gen/portada.js no está al día con src/portada: correr go generate ./web")
 	}
 }

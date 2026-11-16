@@ -92,7 +92,7 @@ func TestGruposDesdeLaInterfaz(t *testing.T) {
 	}
 	portada := func() string {
 		t.Helper()
-		res, _ := c.Get(srv.URL + "/")
+		res, _ := c.Get(srv.URL + "/clasica")
 		return body(t, res)
 	}
 
@@ -224,7 +224,7 @@ func TestOrdenarArrastrando(t *testing.T) {
 		t.Errorf("solo Otros = %d", code)
 	}
 
-	res, _ := c.Get(srv.URL + "/")
+	res, _ := c.Get(srv.URL + "/clasica")
 	b := body(t, res)
 	var keys, groups []string
 	for _, part := range strings.Split(b, `<section class="group`)[1:] {
@@ -266,7 +266,7 @@ func TestSacarDelStack(t *testing.T) {
 	}
 	cards := func() string {
 		t.Helper()
-		res, _ := c.Get(srv.URL + "/")
+		res, _ := c.Get(srv.URL + "/clasica")
 		b := body(t, res)
 		var keys []string
 		for _, part := range strings.Split(b, `class="card-slot" data-key="`)[1:] {
@@ -284,7 +284,7 @@ func TestSacarDelStack(t *testing.T) {
 	if got := cards(); got != "stack:vm/p service:p/uno service:router" {
 		t.Errorf("después de sacar: %s", got)
 	}
-	res, _ := c.Get(srv.URL + "/")
+	res, _ := c.Get(srv.URL + "/clasica")
 	if b := body(t, res); !strings.Contains(b, "Volver al stack") || !strings.Contains(b, "Sacar del stack") {
 		t.Error("faltan las opciones de sacar y volver")
 	}

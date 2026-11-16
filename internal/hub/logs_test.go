@@ -445,7 +445,7 @@ func TestPaginaDeServicio(t *testing.T) {
 	srv := testServerLogs(t, snap, &fakeLogs{})
 	c := loggedIn(t, srv)
 
-	res, _ := c.Get(srv.URL + "/")
+	res, _ := c.Get(srv.URL + "/clasica")
 	if b := body(t, res); !strings.Contains(b, `href="/services/media/jellyfin"`) {
 		t.Error("la tarjeta de la portada no enlaza a la página del servicio")
 	}

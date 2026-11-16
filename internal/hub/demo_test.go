@@ -22,7 +22,7 @@ func TestDemoRoutes(t *testing.T) {
 		wantCode int
 		wantBody []string
 	}{
-		{"/", http.StatusOK, []string{"Jellyfin", "AdGuard Home", "Forgejo", `class="dot down"`, "2 caídos"}},
+		{"/clasica", http.StatusOK, []string{"Jellyfin", "AdGuard Home", "Forgejo", `class="dot down"`, "2 caídos"}},
 		{"/hardware", http.StatusOK, []string{"Hardware"}},
 		{"/discovered", http.StatusOK, []string{"AdGuardHome.service", "Volver a la bandeja", "disabled"}},
 		{"/static/beercss-5.0.3/beer.min.css", http.StatusOK, nil},

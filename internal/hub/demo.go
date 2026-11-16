@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/ImJustDoingMyPart/maestro/internal/httpserver"
 	"github.com/ImJustDoingMyPart/maestro/internal/icons"
@@ -51,6 +52,42 @@ var demoGroups = []group{
 	}},
 }
 
+// demoLive es demoGroups con claves (la portada de Svelte las usa para
+// seguir cada tarjeta) y un estado que cambia cada 15 segundos: en cada
+// vuelta una tarjeta distinta se cae o se recupera, y en Immich un
+// servicio distinto se degrada. Sirve para mirar las animaciones de
+// cambio de estado sin agents.
+func demoLive(now time.Time) []group {
+	n := int(now.Unix() / 15)
+	groups := slices.Clone(demoGroups)
+	var all []*serviceCard
+	for i := range groups {
+		groups[i].Services = slices.Clone(groups[i].Services)
+		for j := range groups[i].Services {
+			c := &groups[i].Services[j]
+			c.Key = "demo:" + c.Name
+			c.Members = slices.Clone(c.Members)
+			for k := range c.Members {
+				m := &c.Members[k]
+				m.Key = c.Key + "/" + m.Name
+				m.State, m.Reason = StateUp, ""
+				if k == n%len(c.Members) {
+					m.State, m.Reason = StateDegraded, m.Name+" reiniciado (exit 137)"
+					c.State, c.Reason = StateDegraded, m.Name+": "+m.Reason
+				}
+			}
+			all = append(all, c)
+		}
+	}
+	c := all[n%len(all)]
+	if c.State == StateUp {
+		c.State, c.Reason = StateDown, "no responde (simulado)"
+	} else if len(c.Members) == 0 {
+		c.State, c.Reason = StateUp, ""
+	}
+	return groups
+}
+
 // demoFound son descubiertos inventados para mirar la bandeja.
 var demoFound = []Discovered{
 	{Host: "adguard", Kind: "unit", Name: "AdGuardHome.service", Label: "AdGuardHome.service", State: StateUp, Detail: "AdGuard Home: Network-level blocker"},
@@ -64,7 +101,7 @@ var demoFound = []Discovered{
 // newDemoHandler arma las rutas del modo --demo: la portada con servicios
 // falsos, Hardware vacío y los estáticos. Sin login ni agents.
 func newDemoHandler(logger *slog.Logger, ic *icons.Resolver) (http.Handler, error) {
-	p, err := parsePages(web.Templates, "services", "hardware", "discovered", "muestrario")
+	p, err := parsePages(web.Templates, "portada", "services", "hardware", "discovered", "muestrario")
 	if err != nil {
 		return nil, err
 	}
@@ -75,6 +112,17 @@ func newDemoHandler(logger *slog.Logger, ic *icons.Resolver) (http.Handler, erro
 
 	// "GET /{$}" solo coincide con "/" exacto; sin {$}, "/" atrapa todo.
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
+		p.render(w, logger, "portada", pageData{Title: "Servicios", Active: "services", ShowNav: true, Demo: true, Live: true})
+	})
+	mux.HandleFunc("GET /api/portada", func(w http.ResponseWriter, r *http.Request) {
+		groups := demoLive(time.Now())
+		decorateGroups(ic, groups, nil)
+		writeJSON(w, http.StatusOK, portadaJSON(pageData{
+			Demo: true, Live: true, Groups: groups, Summary: summarize(groups),
+			FoundPending: len(demoFound) - 1, Updated: time.Now(),
+		}))
+	})
+	mux.HandleFunc("GET /clasica", func(w http.ResponseWriter, r *http.Request) {
 		groups := slices.Clone(demoGroups)
 		for i := range groups {
 			groups[i].Services = slices.Clone(groups[i].Services)

@@ -107,7 +107,7 @@ func TestOcultarYMostrar(t *testing.T) {
 	srv := testServer(t, snap)
 	c := loggedIn(t, srv)
 
-	res, _ := c.Get(srv.URL + "/")
+	res, _ := c.Get(srv.URL + "/clasica")
 	b := body(t, res)
 	for _, want := range []string{`data-key="stack:vm/immich"`, "2 servicios", `value="service:immich/redis"`, "/stacks/vm/immich"} {
 		if !strings.Contains(b, want) {
@@ -141,7 +141,7 @@ func TestOcultarYMostrar(t *testing.T) {
 	if res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != "/hidden" {
 		t.Errorf("mostrar = %d %s", res.StatusCode, res.Header.Get("Location"))
 	}
-	res, _ = c.Get(srv.URL + "/")
+	res, _ = c.Get(srv.URL + "/clasica")
 	if b := body(t, res); !strings.Contains(b, `data-key="stack:vm/immich"`) {
 		t.Error("después de mostrar, el stack no volvió")
 	}
@@ -211,7 +211,7 @@ func TestCambiarNombre(t *testing.T) {
 		t.Errorf("renombrar un nombre del archivo = %d", res.StatusCode)
 	}
 
-	res, _ = c.Get(srv.URL + "/")
+	res, _ = c.Get(srv.URL + "/clasica")
 	b := body(t, res)
 	for _, want := range []string{">Fotos<", ">Mi web<", "Del archivo", `data-set-name="Fotos"`, "El nombre viene de maestro.yaml"} {
 		if !strings.Contains(b, want) {
@@ -229,7 +229,7 @@ func TestCambiarNombre(t *testing.T) {
 
 	// Vacío vuelve al original.
 	rename("service:solo/web", "")
-	res, _ = c.Get(srv.URL + "/")
+	res, _ = c.Get(srv.URL + "/clasica")
 	if b := body(t, res); strings.Contains(b, "Mi web") || !strings.Contains(b, ">web<") {
 		t.Error("el nombre vacío no volvió al original")
 	}

@@ -6,10 +6,13 @@
 // paquetes de npm que usa el editor (CodeMirror) los baja npmfetch a
 // node_modules/ con las versiones de npm.lock. La salida se commitea, así
 // un go build alcanza; después de tocar src/ o npm.lock hay que correr
-// go generate ./web.
+// go generate ./web. La portada está hecha con Svelte (src/portada/): la
+// arma internal/sveltebuild, que es esbuild más el compilador de Svelte, y
+// ese compilador sí necesita Node (solo para go generate).
 package web
 
 //go:generate go run ../internal/npmfetch -lock npm.lock -dir node_modules
+//go:generate go run ../internal/sveltebuild -outdir static/gen src/portada.js
 //go:generate go tool esbuild src/logs.js src/compose.js src/charts.js --bundle --minify --format=iife --target=es2020,safari15 --legal-comments=none --outdir=static/gen
 
 import (

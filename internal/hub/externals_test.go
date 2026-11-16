@@ -117,7 +117,7 @@ func TestServiciosExternos(t *testing.T) {
 		t.Errorf("el del archivo cambió: %+v", r)
 	}
 
-	res, _ = c.Get(srv.URL + "/")
+	res, _ = c.Get(srv.URL + "/clasica")
 	b = body(t, res)
 	for _, want := range []string{">Router<", `data-group="Red"`, `href="/externals/router-2"`, ">Mi sitio<"} {
 		if !strings.Contains(b, want) {

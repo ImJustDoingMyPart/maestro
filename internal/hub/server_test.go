@@ -121,7 +121,7 @@ func TestRecorridoDeLogin(t *testing.T) {
 	c := client(t)
 
 	// Sin sesión: la portada manda al login y el fragmento avisa a htmx.
-	res, _ := c.Get(srv.URL + "/")
+	res, _ := c.Get(srv.URL + "/clasica")
 	res.Body.Close()
 	if res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != "/login" {
 		t.Fatalf("GET / sin sesión = %d %s", res.StatusCode, res.Header.Get("Location"))
@@ -161,7 +161,7 @@ func TestRecorridoDeLogin(t *testing.T) {
 	}
 
 	// La portada muestra los servicios, el semáforo y el agent caído.
-	res, _ = c.Get(srv.URL + "/")
+	res, _ = c.Get(srv.URL + "/clasica")
 	b := body(t, res)
 	for _, want := range []string{
 		"Jellyfin", "Media", "jellyfin/jellyfin", "https://jellyfin.example.org",
@@ -195,7 +195,7 @@ func TestRecorridoDeLogin(t *testing.T) {
 	// Logout: la sesión deja de servir.
 	res = postForm(t, c, srv.URL+"/logout", nil, srv.URL)
 	res.Body.Close()
-	res, _ = c.Get(srv.URL + "/")
+	res, _ = c.Get(srv.URL + "/clasica")
 	res.Body.Close()
 	if res.StatusCode != http.StatusSeeOther {
 		t.Errorf("GET / después del logout = %d, quería 303", res.StatusCode)

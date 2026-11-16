@@ -47,7 +47,7 @@ func hubWith(t *testing.T, cfg *config.Config, containers []agent.Container) (*h
 // y nombre (sin el orden de las tarjetas, que no se exporta).
 func portadaDe(t *testing.T, srv *httptest.Server, c *http.Client) string {
 	t.Helper()
-	res, _ := c.Get(srv.URL + "/")
+	res, _ := c.Get(srv.URL + "/clasica")
 	b := body(t, res)
 	var out []string
 	for _, sec := range strings.Split(b, `<section class="group`)[1:] {
