@@ -125,6 +125,8 @@ type prefStore interface {
 	SetCardOrder(ctx context.Context, keys []string) error
 	Separated(ctx context.Context) (map[string]bool, error)
 	SetSeparate(ctx context.Context, key string, separate *bool, at time.Time) error
+	Alerts(ctx context.Context) (map[string]bool, error)
+	SetAlert(ctx context.Context, key string, alert *bool, at time.Time) error
 	Externals(ctx context.Context) ([]store.External, error)
 	External(ctx context.Context, id string) (store.External, error)
 	CreateExternal(ctx context.Context, e store.External, name, group string, at time.Time) error
@@ -235,6 +237,7 @@ func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon moni
 	private.HandleFunc("POST /layout/cards", s.orderCards)
 	private.HandleFunc("POST /layout/groups", s.orderGroups)
 	private.HandleFunc("POST /separate", s.separate)
+	private.HandleFunc("POST /alert", s.setAlert)
 	private.HandleFunc("GET /export", s.exportPage)
 	private.HandleFunc("GET /export.yaml", s.exportFile)
 	private.HandleFunc("GET /discovered", s.discoveredPage)

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -265,4 +266,61 @@ func TelegramTest(ctx context.Context, configPath string, out io.Writer) error {
 		fmt.Fprintf(out, "chat %d: mandado\n", i+1)
 	}
 	return errors.Join(errs...)
+}
+
+// setAlert atiende POST /alert: con alert=1 prende los avisos de "key" y
+// con 0 los apaga. La clave es la de un servicio ("service:…", "found:…")
+// o la de un stack ("stack:<host>/<proyecto>"), que cambia todos sus
+// servicios salvo los que fija el archivo. Si el archivo fija el servicio
+// (o todos los del stack), 409.
+func (s *server) setAlert(w http.ResponseWriter, r *http.Request) {
+	key, ok := s.prefKey(w, r)
+	if !ok {
+		return
+	}
+	v := r.PostFormValue("alert") == "1"
+	snap := s.poller.Snapshot()
+	var targets []catalog.Service
+	kind, rest, _ := strings.Cut(key, ":")
+	switch kind {
+	case "stack":
+		host, project, _ := strings.Cut(rest, "/")
+		for _, svc := range snap.Services {
+			if svc.Source == catalog.SourceCompose && svc.Host == host && svc.Project == project {
+				targets = append(targets, svc)
+			}
+		}
+	case "service":
+		if svc, found := findService(snap, rest); found {
+			targets = append(targets, svc)
+		}
+	case "found":
+		for _, svc := range withShown(snap, s.loadPrefs(r.Context()).Shown) {
+			if svc.ID == key {
+				targets = append(targets, svc)
+			}
+		}
+	}
+	if len(targets) == 0 {
+		http.Error(w, "no existe ese servicio", http.StatusNotFound)
+		return
+	}
+	changed := 0
+	now := time.Now()
+	for _, svc := range targets {
+		if svc.AlertFromFile {
+			continue
+		}
+		if err := s.prefs.SetAlert(r.Context(), serviceKey(svc.ID), &v, now); err != nil {
+			s.logger.Error("avisos", "key", key, "err", err)
+			http.Error(w, "no se pudo guardar", http.StatusInternalServerError)
+			return
+		}
+		changed++
+	}
+	if changed == 0 {
+		http.Error(w, "alert viene de maestro.yaml", http.StatusConflict)
+		return
+	}
+	s.gridOrHome(w, r)
 }

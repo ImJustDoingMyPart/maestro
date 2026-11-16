@@ -4,12 +4,16 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/ImJustDoingMyPart/maestro/internal/agent"
 	"github.com/ImJustDoingMyPart/maestro/internal/catalog"
+	"github.com/ImJustDoingMyPart/maestro/internal/config"
 	"github.com/ImJustDoingMyPart/maestro/internal/status"
 	"github.com/ImJustDoingMyPart/maestro/internal/store"
 	"github.com/ImJustDoingMyPart/maestro/internal/telegram"
@@ -256,5 +260,67 @@ func TestMonitorAvisa(t *testing.T) {
 	a.deliver(ctx, <-a.queue)
 	if len(f.sent) != 2 || !strings.Contains(f.sent[0], "se cayó") || !strings.Contains(f.sent[0], "exit 137") || !strings.Contains(f.sent[1], "volvió a funcionar") {
 		t.Errorf("mandado: %q", f.sent)
+	}
+}
+
+func TestInterruptorDeAvisos(t *testing.T) {
+	containers := []agent.Container{
+		composeContainer("immich-server", "immich", "server", "running", ""),
+		composeContainer("immich-db", "immich", "db", "running", ""),
+		composeContainer("jelly", "media", "jellyfin", "running", ""),
+	}
+	cfg, err := config.Parse([]byte("hosts:\n  vm: { agent: http://vm:9101, token: t }\n"+
+		"services:\n  immich/db: { alert: false }\n  media/jellyfin: { alert: true }\n"), func(string) (string, bool) { return "", false })
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv, c := hubWith(t, cfg, containers)
+	post := func(key, v string) int {
+		t.Helper()
+		res := postForm(t, c, srv.URL+"/alert", url.Values{"key": {key}, "alert": {v}}, srv.URL)
+		res.Body.Close()
+		return res.StatusCode
+	}
+	// next es lo que haría el ítem del menú de key: "1" prender, "0" apagar.
+	next := func(key string) string {
+		t.Helper()
+		res, _ := c.Get(srv.URL + "/")
+		b := body(t, res)
+		mark := `value="` + key + `">` + "\n" + `  <input type="hidden" name="alert" value="`
+		i := strings.Index(b, mark)
+		if i < 0 {
+			t.Fatalf("no está el ítem de avisos de %s", key)
+		}
+		return b[i+len(mark) : i+len(mark)+1]
+	}
+
+	// El stack de immich: server sin checks no avisa, db lo apaga el
+	// archivo. Prender el stack prende server y deja db.
+	if next("stack:vm/immich") != "1" || next("service:immich/server") != "1" {
+		t.Fatal("nada de immich avisa todavía y el menú ofrece apagar")
+	}
+	if next("service:media/jellyfin") != "0" {
+		t.Error("jellyfin avisa por el archivo y el menú ofrece prender")
+	}
+	if code := post("stack:vm/immich", "1"); code != http.StatusOK && code != http.StatusSeeOther {
+		t.Fatalf("POST stack = %d", code)
+	}
+	if next("stack:vm/immich") != "0" || next("service:immich/server") != "0" || next("service:immich/db") != "1" {
+		t.Error("después de prender el stack: server tiene que avisar y db no")
+	}
+	res, _ := c.Get(srv.URL + "/export.yaml")
+	if out := body(t, res); !strings.Contains(out, "immich/server:\n    alert: true") || strings.Contains(out, "immich/db") {
+		t.Errorf("export:\n%s", out)
+	}
+
+	// Lo que fija el archivo no se cambia desde la interfaz.
+	if code := post("service:immich/db", "1"); code != http.StatusConflict {
+		t.Errorf("POST de un servicio fijado por el archivo = %d, quiero 409", code)
+	}
+	if code := post("service:media/jellyfin", "0"); code != http.StatusConflict {
+		t.Errorf("POST de un servicio fijado por el archivo = %d, quiero 409", code)
+	}
+	if code := post("service:no/existe", "1"); code != http.StatusNotFound {
+		t.Errorf("POST de un servicio que no existe = %d, quiero 404", code)
 	}
 }

@@ -109,6 +109,8 @@ func TestExportarYVolverACargar(t *testing.T) {
 	post("/separate", "key", "service:immich/redis", "separate", "1")
 	post("/groups/move", "key", "service:immich/redis", "group", "Otros")
 	post("/hidden", "key", "service:red/dns")
+	post("/alert", "key", "service:immich/db", "alert", "1")
+	post("/alert", "key", "stack:vm/media", "alert", "0")
 	post("/hidden", "key", "stack:vm/media")
 	post("/groups/move", "key", "service:web/app", "group", "Sitios")
 	post("/groups", "name", "Vacío")
@@ -127,7 +129,7 @@ func TestExportarYVolverACargar(t *testing.T) {
 			t.Errorf("el export tiene %q:\n%s", no, out)
 		}
 	}
-	for _, want := range []string{"vm/immich:", "name: Fotos", "group: Otros", "separate: true", "hidden: true", "router:", "interval: 30s"} {
+	for _, want := range []string{"vm/immich:", "name: Fotos", "group: Otros", "separate: true", "hidden: true", "alert: true", "alert: false", "router:", "interval: 30s"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("el export no tiene %q:\n%s", want, out)
 		}
