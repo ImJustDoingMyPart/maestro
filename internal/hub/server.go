@@ -144,7 +144,7 @@ type monitorView interface {
 	Checks(id string) []CheckView
 	History(ctx context.Context, id string, since time.Time) ([]store.CheckResult, []store.StateEvent, error)
 	Subscribe(id string) (<-chan store.StateEvent, func())
-	Push(token string) bool
+	Push(token string, down bool, msg string) bool
 }
 
 type server struct {
@@ -321,8 +321,14 @@ func (s *server) servicesData(ctx context.Context) pageData {
 // push atiende /push/{token}. Responde lo mismo exista o no el token: la
 // ruta no tiene login y no tiene que servir para probar tokens. El que no
 // existe queda en el log, para ver un script mal configurado.
+//
+// Entiende los parámetros de un push de Uptime Kuma en la URL: con
+// status=down el script avisa que falló y msg es el motivo; cualquier otro
+// status es que salió bien (ping y lo demás se ignoran). Así un script que
+// le avisaba a Kuma pasa a Maestro cambiando solo la URL.
 func (s *server) push(w http.ResponseWriter, r *http.Request) {
-	if !s.mon.Push(r.PathValue("token")) {
+	q := r.URL.Query()
+	if !s.mon.Push(r.PathValue("token"), q.Get("status") == "down", q.Get("msg")) {
 		s.logger.Warn("push con un token desconocido", "remote", r.RemoteAddr,
 			"forwarded_for", r.Header.Get("X-Forwarded-For"))
 	}

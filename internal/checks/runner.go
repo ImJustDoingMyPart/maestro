@@ -98,7 +98,15 @@ type Runner struct {
 type job struct {
 	spec   Spec
 	cancel context.CancelFunc
-	push   chan time.Time // solo en push; con lugar para uno
+	push   chan Ping // solo en push; con lugar para uno
+}
+
+// Ping es una llamada a /push/<token>. Down es el status=down de Uptime
+// Kuma: el script corrió pero avisa que falló, con Msg como motivo.
+type Ping struct {
+	At   time.Time
+	Down bool
+	Msg  string
 }
 
 // NewRunner crea un Runner sin checks. Cancelar ctx los para a todos.
@@ -130,7 +138,7 @@ func (r *Runner) Sync(specs []Spec) {
 		ctx, cancel := context.WithCancel(r.ctx)
 		j := &job{spec: s, cancel: cancel}
 		if s.Kind == catalog.CheckPush {
-			j.push = make(chan time.Time, 1)
+			j.push = make(chan Ping, 1)
 		}
 		r.jobs[k] = j
 		r.wg.Go(func() { r.run(ctx, j) })
@@ -147,7 +155,7 @@ func (r *Runner) Wait() { r.wg.Wait() }
 // Compara contra todos los tokens en tiempo constante y sin cortar en el
 // primero que coincide: el tiempo de respuesta no dice cuánto del token
 // acertó ni cuál era.
-func (r *Runner) Push(token string, at time.Time) bool {
+func (r *Runner) Push(token string, p Ping) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	var match *job
@@ -162,10 +170,13 @@ func (r *Runner) Push(token string, at time.Time) bool {
 	if match == nil {
 		return false
 	}
+	// Si ya había una esperando, vale la última: es lo que dijo el script
+	// más tarde. Con r.mu tomado nadie más manda, así que hay lugar.
 	select {
-	case match.push <- at:
-	default: // ya había uno esperando: con uno alcanza
+	case <-match.push:
+	default:
 	}
+	match.push <- p
 	return true
 }
 
@@ -218,8 +229,8 @@ func (r *Runner) once(ctx context.Context, j *job, probe func(context.Context) o
 	r.opts.Sink(res)
 }
 
-// runPush espera las llamadas: cada una es un resultado bueno, y cada vez
-// que se cumple el plazo sin llamada, uno malo.
+// runPush espera las llamadas: cada una es un resultado (bueno, o malo si
+// avisa una falla), y cada vez que se cumple el plazo sin llamada, uno malo.
 func (r *Runner) runPush(ctx context.Context, j *job) {
 	key := j.spec.Key()
 	start := time.Now()
@@ -235,9 +246,15 @@ func (r *Runner) runPush(ctx context.Context, j *job) {
 		select {
 		case <-ctx.Done():
 			return
-		case at := <-j.push:
-			r.deliver(Result{Key: key, At: at, OK: true, Detail: "llegó"})
-			deadline = at.Add(j.spec.interval() + j.spec.grace())
+		case p := <-j.push:
+			res := Result{Key: key, At: p.At, OK: true, Detail: "llegó"}
+			if p.Down {
+				res.OK, res.Detail = false, pushDownDetail(p.Msg)
+			}
+			r.deliver(res)
+			// Una llamada con falla también dice que el script corrió: el
+			// próximo plazo se cuenta desde ella.
+			deadline = p.At.Add(j.spec.interval() + j.spec.grace())
 		case <-timer.C:
 			r.deliver(Result{Key: key, At: time.Now(), Detail: pushDetail(j.spec.interval())})
 			// Sigue fallando una vez por intervalo mientras no llegue.

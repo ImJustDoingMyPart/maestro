@@ -29,11 +29,22 @@ type fakeMonitor struct {
 	events  []store.StateEvent
 	live    chan store.StateEvent
 	tokens  map[string]bool
+	pushes  []fakePush
+}
+
+type fakePush struct {
+	token, msg string
+	down       bool
 }
 
 func (f *fakeMonitor) Status(id string) status.Status { return snapStatus(id, f.snap) }
 func (f *fakeMonitor) Checks(id string) []CheckView   { return f.checks[id] }
-func (f *fakeMonitor) Push(token string) bool         { return f.tokens[token] }
+func (f *fakeMonitor) Push(token string, down bool, msg string) bool {
+	if f.tokens[token] {
+		f.pushes = append(f.pushes, fakePush{token: token, msg: msg, down: down})
+	}
+	return f.tokens[token]
+}
 func (f *fakeMonitor) History(ctx context.Context, id string, since time.Time) ([]store.CheckResult, []store.StateEvent, error) {
 	return f.results, f.events, nil
 }

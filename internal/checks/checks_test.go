@@ -226,14 +226,14 @@ func TestRunnerPush(t *testing.T) {
 	r := NewRunner(ctx, Options{Sink: c.sink, Logger: discard()})
 	r.Sync([]Spec{{Service: "restic", Check: catalog.Check{Kind: catalog.CheckPush, Target: token, Interval: 200 * time.Millisecond}}})
 
-	if r.Push("otro-token-cualquiera", time.Now()) {
+	if r.Push("otro-token-cualquiera", Ping{At: time.Now()}) {
 		t.Error("Push aceptó un token que no es")
 	}
-	if r.Push(token[:8], time.Now()) {
+	if r.Push(token[:8], Ping{At: time.Now()}) {
 		t.Error("Push aceptó un prefijo del token")
 	}
 	at := time.Now()
-	if !r.Push(token, at) {
+	if !r.Push(token, Ping{At: at}) {
 		t.Fatal("Push no reconoció el token")
 	}
 	res := c.next(t)
@@ -252,6 +252,42 @@ func TestRunnerPush(t *testing.T) {
 	// Y sigue fallando una vez por intervalo.
 	if res = c.next(t); res.OK {
 		t.Errorf("segunda falla: %+v", res)
+	}
+}
+
+// Un push con status=down (como en Uptime Kuma) es una falla con el motivo
+// del script, y el plazo se cuenta desde él: el script corrió.
+func TestRunnerPushConFalla(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	c := newCollector()
+	const token = "0123456789abcdef"
+	r := NewRunner(ctx, Options{Sink: c.sink, Logger: discard()})
+	r.Sync([]Spec{{Service: "restic", Check: catalog.Check{Kind: catalog.CheckPush, Target: token, Interval: 300 * time.Millisecond}}})
+
+	at := time.Now()
+	r.Push(token, Ping{At: at, Down: true, Msg: "B2_FAILED"})
+	if res := c.next(t); res.OK || res.Detail != "avisó una falla: B2_FAILED" || !res.At.Equal(at) {
+		t.Errorf("push con falla: %+v", res)
+	}
+	r.Push(token, Ping{At: time.Now()})
+	if res := c.next(t); !res.OK || res.Detail != "llegó" {
+		t.Errorf("push bueno después de una falla: %+v", res)
+	}
+}
+
+func TestPushDownDetail(t *testing.T) {
+	for _, tc := range []struct{ msg, want string }{
+		{"", "avisó una falla"},
+		{"  \t ", "avisó una falla"},
+		{"B2_FAILED", "avisó una falla: B2_FAILED"},
+		{"dos\nlíneas\x00 y\x1b[31m color", "avisó una falla: dos líneas y [31m color"},
+		{"\xff\xfe roto", "avisó una falla: roto"},
+		{strings.Repeat("á", 250), "avisó una falla: " + strings.Repeat("á", 200) + "…"},
+	} {
+		if got := pushDownDetail(tc.msg); got != tc.want {
+			t.Errorf("pushDownDetail(%q) = %q, want %q", tc.msg, got, tc.want)
+		}
 	}
 }
 

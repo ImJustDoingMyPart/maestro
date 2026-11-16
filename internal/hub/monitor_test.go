@@ -205,14 +205,22 @@ func TestMonitorPush(t *testing.T) {
 	if s := m.Status("restic"); s.State != "unknown" {
 		t.Errorf("sin pushes todavía: %+v", s)
 	}
-	if m.Push("no-es-el-token-0000") {
+	if m.Push("no-es-el-token-0000", false, "") {
 		t.Error("Push aceptó un token ajeno")
 	}
-	if !m.Push(token) {
+	if !m.Push(token, false, "OK") {
 		t.Fatal("Push no reconoció el token")
 	}
 	if e := waitEvent(t, events); e.To != "up" {
 		t.Errorf("después del push: %+v", e)
+	}
+	m.Push(token, true, "B2_FAILED")
+	if e := waitEvent(t, events); e.To != "down" || e.Reason != "push: avisó una falla: B2_FAILED" {
+		t.Errorf("push con status=down: %+v", e)
+	}
+	m.Push(token, false, "OK")
+	if e := waitEvent(t, events); e.To != "up" {
+		t.Errorf("push bueno después de la falla: %+v", e)
 	}
 	if e := waitEvent(t, events); e.To != "down" || e.Reason != "push: no llegó en 100ms" {
 		t.Errorf("sin push a tiempo: %+v", e)

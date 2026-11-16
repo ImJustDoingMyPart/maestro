@@ -10,8 +10,11 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 	"syscall"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 // maxBody es cuánto del cuerpo de la respuesta se lee (y se descarta): lo
@@ -166,6 +169,25 @@ func describeErr(err error, spec Spec) string {
 // pushDetail es el detalle de un push que no llegó.
 func pushDetail(interval time.Duration) string {
 	return "no llegó en " + formatDuration(interval)
+}
+
+// maxPushMsg es el largo máximo, en caracteres, del mensaje de un push con
+// falla: llega de afuera, sin login, y termina en la base y en un aviso.
+const maxPushMsg = 200
+
+// pushDownDetail es el detalle de un push que avisa una falla: el msg del
+// script, en una línea, sin caracteres de control y recortado.
+func pushDownDetail(msg string) string {
+	msg = strings.Join(strings.FieldsFunc(msg, func(r rune) bool {
+		return unicode.IsSpace(r) || unicode.IsControl(r) || r == utf8.RuneError
+	}), " ")
+	if msg == "" {
+		return "avisó una falla"
+	}
+	if r := []rune(msg); len(r) > maxPushMsg {
+		msg = string(r[:maxPushMsg]) + "…"
+	}
+	return "avisó una falla: " + msg
 }
 
 // formatDuration escribe "96h", "30m", "1h30m" sin los ceros que agrega

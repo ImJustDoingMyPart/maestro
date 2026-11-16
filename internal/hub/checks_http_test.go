@@ -36,6 +36,35 @@ func TestPushSinLogin(t *testing.T) {
 	}
 }
 
+// Los parámetros de un push de Uptime Kuma: status=down es una falla con
+// msg de motivo; cualquier otro status, o ninguno, es que salió bien.
+func TestPushComoKuma(t *testing.T) {
+	mon := &fakeMonitor{tokens: map[string]bool{"0123456789abcdef": true}}
+	srv := testServerMon(t, Snapshot{}, nil, nil, mon)
+	c := client(t)
+	for _, q := range []string{"", "?status=up&msg=OK&ping=", "?status=down&msg=B2_FAILED&ping=", "?status=down"} {
+		res, err := c.Get(srv.URL + "/push/0123456789abcdef" + q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body(t, res)
+	}
+	want := []fakePush{
+		{token: "0123456789abcdef"},
+		{token: "0123456789abcdef", msg: "OK"},
+		{token: "0123456789abcdef", msg: "B2_FAILED", down: true},
+		{token: "0123456789abcdef", down: true},
+	}
+	if len(mon.pushes) != len(want) {
+		t.Fatalf("pushes = %+v", mon.pushes)
+	}
+	for i := range want {
+		if mon.pushes[i] != want[i] {
+			t.Errorf("push %d = %+v, want %+v", i, mon.pushes[i], want[i])
+		}
+	}
+}
+
 func TestPortadaConEstadoCombinado(t *testing.T) {
 	snap := Snapshot{
 		At:    time.Now(),
