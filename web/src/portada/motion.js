@@ -56,3 +56,25 @@ export function ease(p) {
   }
   return cached(p);
 }
+
+// fold despliega o pliega una caja con su alto, como slide de Svelte, pero
+// también se lleva el espacio que la separa de la anterior (el gap del
+// padre): sin eso, al terminar de plegarse quedaba ese hueco y la tarjeta
+// saltaba de golpe el último tramo.
+export function fold(node, { duration = dur("--dur-m"), easing = ease } = {}) {
+  const cs = getComputedStyle(node);
+  const gap = parseFloat(getComputedStyle(node.parentElement).rowGap) || 0;
+  const h = parseFloat(cs.height);
+  const pt = parseFloat(cs.paddingTop), pb = parseFloat(cs.paddingBottom);
+  const bt = parseFloat(cs.borderTopWidth), bb = parseFloat(cs.borderBottomWidth);
+  const mb = parseFloat(cs.marginBottom);
+  return {
+    duration,
+    easing,
+    css: (t) =>
+      `overflow: hidden; opacity: ${Math.min(t * 2, 1)};` +
+      `height: ${t * h}px; padding-top: ${t * pt}px; padding-bottom: ${t * pb}px;` +
+      `border-top-width: ${t * bt}px; border-bottom-width: ${t * bb}px;` +
+      `margin-top: ${(t - 1) * gap}px; margin-bottom: ${t * mb}px;`,
+  };
+}

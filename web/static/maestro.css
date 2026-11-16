@@ -141,8 +141,17 @@ main.responsive {
    (:not(.grid, nav, .row) > :not(progress.max) + :is(…)). En los
    componentes propios el espacio lo da el gap del contenedor: ese margen
    desalinea (el pie de una tarjeta, el segundo gráfico de una fila). */
-:is(.topbar, .svc-card, .svc-foot, .svc-head, .cards, .card-slot, .groups, .group, .group-head, .page-head, .summary, .hw-sections, .hw-section, .hw-tiles, .hw-charts, .hw-cards, .hw-tile, .chart, .chart-head, .hw-host, .hw-host-head, .hw-table, .card-menu-list, .member-row, .mu-grid, .mu-box, .mu-row, .mu-radii, .mu-icons, .login, .login-card, .login-form) > * {
+:is(.topbar, .svc-card, .svc-foot, .svc-head, .cards, .card-slot, .groups, .group, .group-head, .page-head, .summary, .hw-sections, .hw-section, .hw-tiles, .hw-charts, .hw-cards, .hw-tile, .chart, .chart-head, .hw-host, .hw-host-head, .hw-table, .card-menu-list, .member-row, .mu-grid, .mu-box, .mu-row, .mu-radii, .mu-icons, .login, .login-card, .login-form) > :not(.stack-members) {
   margin-block-start: 0 !important;
+}
+/* Los servicios de un stack quedan afuera del !important: la portada de
+   Svelte les anima el margen de arriba al plegarlos (fold, en
+   web/src/portada/motion.js), y una declaración !important le gana a una
+   animación. Beer les pondría 1rem arriba con un selector de
+   especificidad (0,4,1); las clases repetidas suben la de esta regla a
+   (0,5,2) sin !important. */
+article.svc-card.svc-card > ul.stack-members.stack-members.stack-members {
+  margin-block-start: 0;
 }
 .section-title {
   margin-block-start: var(--sp-8) !important;

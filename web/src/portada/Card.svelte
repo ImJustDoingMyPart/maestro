@@ -2,16 +2,17 @@
   Tarjeta de la portada: las mismas partes y clases que la plantilla
   "card" de services.html, así maestro.css la dibuja igual. Lo que se
   mueve:
-    - los servicios de un stack se despliegan con el alto (slide);
+    - los servicios de un stack se despliegan con el alto (fold, en
+      motion.js);
     - el punto de estado, cuando cambia, aparece con el color nuevo;
     - un servicio que se saca del stack viaja a su tarjeta (send/receive,
       el crossfade de la portada).
 -->
 <script>
-  import { slide, scale } from "svelte/transition";
+  import { scale } from "svelte/transition";
   import { flip } from "svelte/animate";
   import Menu from "./Menu.svelte";
-  import { dur, ease } from "./motion.js";
+  import { dur, ease, fold } from "./motion.js";
 
   let { card, live, open, ontogglestack, menu, setmenu, act, send, receive, instant } = $props();
 
@@ -115,7 +116,7 @@
     </nav>
   </div>
   {#if members.length && open}
-    <ul class="stack-members shown" transition:slide={{ duration: dur("--dur-m"), easing: ease }}>
+    <ul class="stack-members shown" transition:fold>
       {#each members as m (m.key || m.name)}
         <li class="member-row" animate:flip={{ duration: flipDur, easing: ease }} in:receive={{ key: m.key }} out:send={{ key: m.key }}>
           {@render dot(m.state, m.stateLabel)}
