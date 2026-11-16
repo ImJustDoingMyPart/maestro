@@ -588,7 +588,9 @@ func topStacks(host string, cs []agent.ContainerStats, svcs map[string]catalog.S
 	return out, 0
 }
 
-func byMem(a, b containerUse) int { return cmp.Or(cmp.Compare(b.mem, a.mem), cmp.Compare(a.Name, b.Name)) }
+func byMem(a, b containerUse) int {
+	return cmp.Or(cmp.Compare(b.mem, a.mem), cmp.Compare(a.Name, b.Name))
+}
 
 func (u *containerUse) format() {
 	u.CPU, u.Mem, u.NetRx, u.NetTx = fmtPct(u.cpu), humanBytes(u.mem), fmtRate(u.rx), fmtRate(u.tx)
