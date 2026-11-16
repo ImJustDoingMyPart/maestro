@@ -51,6 +51,10 @@ type Discovered struct {
 	State  State  // con la misma regla que el monitor (status.Evaluate)
 	Reason string // motivo del estado; vacío si está arriba
 	Detail string // descripción de la unidad, "corrió hace 3 horas", …
+	// InFile es el ID del servicio de maestro.yaml que declara esta misma
+	// unidad (host y unit); vacío si ninguno. Entonces la tarjeta es la
+	// del archivo y la de la bandeja no se suma.
+	InFile string
 }
 
 // Key es la clave de la tarjeta: "found:<host>/<tipo>/<nombre>".
@@ -348,8 +352,10 @@ func (p *Poller) rebuildLocked(at time.Time) {
 		}
 	}
 	services := p.catalog.Build(all, file)
-	for _, d := range found {
-		if p.shown[d.Key()] {
+	declared := declaredUnits(services)
+	for i, d := range found {
+		found[i].InFile = declared[d.Host+"/"+d.Name]
+		if p.shown[d.Key()] && found[i].InFile == "" {
 			services = append(services, foundService(d))
 		}
 	}

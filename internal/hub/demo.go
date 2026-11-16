@@ -90,7 +90,7 @@ func demoLive(now time.Time) []group {
 
 // demoFound son descubiertos inventados para mirar la bandeja.
 var demoFound = []Discovered{
-	{Host: "adguard", Kind: "unit", Name: "AdGuardHome.service", Label: "AdGuardHome.service", State: StateUp, Detail: "AdGuard Home: Network-level blocker"},
+	{Host: "adguard", Kind: "unit", Name: "AdGuardHome.service", Label: "AdGuardHome.service", State: StateUp, Detail: "AdGuard Home: Network-level blocker", InFile: "adguard"},
 	{Host: "adguard", Kind: "unit", Name: "systemd-resolved.service", Label: "systemd-resolved.service", State: StateUp, Detail: "Network Name Resolution"},
 	{Host: "pve", Kind: "lxc", Name: "102", Label: "dns", State: StateUp, Detail: "LXC 102 · 1,0 GB de RAM · 1 núcleo"},
 	{Host: "pve", Kind: "vm", Name: "100", Label: "Debian-Server", State: StateUp, Detail: "VM 100 · 12 GB de RAM · 8 núcleos"},
@@ -135,7 +135,7 @@ func newDemoHandler(logger *slog.Logger, ic *icons.Resolver) (http.Handler, erro
 			Demo:         true,
 			Groups:       groups,
 			Summary:      summarize(groups),
-			FoundPending: len(demoFound) - 1,
+			FoundPending: pending(demoFound, map[string]bool{demoFound[4].Key(): true}),
 			FoundFailing: 0,
 		})
 	})

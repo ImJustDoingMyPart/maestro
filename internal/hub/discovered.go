@@ -48,6 +48,9 @@ func foundRows(found []Discovered, shown map[string]bool) []foundHost {
 	rows := make([]foundRow, 0, len(found))
 	for _, d := range found {
 		r := foundRow{Discovered: d, Key: d.Key(), Href: servicePath(d.Key()), Icon: kindIcon(d.Kind), Shown: shown[d.Key()]}
+		if d.InFile != "" {
+			r.Href, r.Shown = servicePath(d.InFile), true
+		}
 		if r.Label == "" {
 			r.Label = r.Name
 		}
@@ -106,7 +109,7 @@ func kindRank(kind string) int {
 func failingHidden(found []Discovered, shown map[string]bool) int {
 	n := 0
 	for _, d := range found {
-		if !shown[d.Key()] && d.State == StateDown {
+		if !shown[d.Key()] && d.InFile == "" && d.State == StateDown {
 			n++
 		}
 	}
@@ -117,7 +120,7 @@ func failingHidden(found []Discovered, shown map[string]bool) int {
 func pending(found []Discovered, shown map[string]bool) int {
 	n := 0
 	for _, d := range found {
-		if !shown[d.Key()] {
+		if !shown[d.Key()] && d.InFile == "" {
 			n++
 		}
 	}

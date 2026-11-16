@@ -55,8 +55,9 @@ services:
 
   # Check push: el script llama a https://<maestro>/push/<token> (GET o
   # POST) cada vez que termina bien. Si la llamada no llega en interval
-  # (más una gracia de un 10 %), el servicio cae. El token es un secreto:
-  # openssl rand -hex 16.
+  # (más una gracia de un 10 %), el servicio cae. Como en Uptime Kuma,
+  # ?status=down&msg=<motivo> avisa que corrió pero falló. El token es un
+  # secreto: openssl rand -hex 16.
   restic:
     name: Backups
     group: Sistema

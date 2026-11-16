@@ -125,10 +125,10 @@ El agent toma una muestra cada 15 segundos y el hub guarda cada una (una sola ve
 
 El agent lee por D-Bus (el bus del sistema, que deja leer sin ser root) los servicios y timers de systemd cargados y, con `--proxmox` en un host de Proxmox, las LXC y VMs con `pvesh` cada 30 segundos. Todo va a la bandeja (`/discovered`), por host, con lo que falla primero y un filtro.
 
-- **Estado**: parar no es fallar. Un servicio `active` está arriba; `failed` está caído con el motivo (`falló (exit 1)`); `inactive` está **detenido** (punto gris hueco), no caído: muchas unidades del sistema corren una vez y quedan así; arrancando o deteniéndose, sin datos. Un timer se juzga por cómo terminó la última corrida del servicio que dispara (`última corrida falló (exit 1)`) y está detenido si el timer mismo no está activo. Una LXC o VM prendida está arriba, apagada está detenida y pausada, degradada. Un script con timer (Restic) se vigila así, sin push.
+- **Estado**: parar no es fallar. Un servicio `active` está arriba; `failed` está caído con el motivo (`falló (exit 1)`); `inactive` está **detenido** (punto gris hueco), no caído: muchas unidades del sistema corren una vez y quedan así; arrancando o deteniéndose, sin datos. Un timer se juzga por cómo terminó la última corrida del servicio que dispara (`última corrida falló (exit 1)`) y está detenido si el timer mismo no está activo. Una LXC o VM prendida está arriba, apagada está detenida y pausada, degradada. Un script con timer (Restic) se vigila así; un push en la misma unidad declarada en el archivo avisa además si deja de correr.
 - **Mostrar** la pasa a la portada como un servicio más: se renombra, se mueve y se ordena como cualquier tarjeta, sus cambios de estado se guardan y tiene su página (`/services/found:<host>/<tipo>/<nombre>`, por ejemplo `found:vm/timer/restic-backup.timer` o `found:pve/lxc/102`; las LXC y VMs se nombran por VMID, que no cambia). "Volver a la bandeja" (o "Ocultar") la saca.
 - **Una unidad que falla avisa aunque no esté en la portada**: arriba de la portada aparece cuántas hay, con link a la bandeja. Las detenidas no avisan.
-- Una unidad declarada en el archivo (`unit` y `host` en `services`) toma su estado del mismo lugar; si el agent responde y no la tiene, sale caída ("no existe en el host").
+- Una unidad declarada en el archivo (`unit` y `host` en `services`) toma su estado del mismo lugar; si el agent responde y no la tiene, sale caída ("no existe en el host"). No se repite: la tarjeta es la del archivo (con sus checks, por ejemplo un push), y en la bandeja la fila lleva a ella y dice "En el archivo" en vez de "Mostrar". Si ya se mostraba desde la bandeja, el historial de esa tarjeta queda en su página vieja.
 - El journal de las unidades todavía no se muestra.
 
 ## Checks y estado
@@ -137,7 +137,7 @@ Los checks corren en el hub, cada uno en su goroutine. Un servicio tiene como mu
 
 - **HTTP**: un `GET` a la URL. Vale cualquier 2xx, o el código de `expect`. Sigue hasta 10 redirecciones salvo `redirects: false` (entonces el 3xx es la respuesta). Cada vez abre una conexión nueva y no usa el proxy del entorno. En HTTPS guarda el vencimiento del certificado.
 - **TCP**: conecta a `host:puerto` y cierra.
-- **Push**: lo hace un script al terminar bien, con `curl https://<maestro>/push/<token>` (GET o POST, sin login). Si no llega en `interval` más un 10 %, falla, y sigue fallando una vez por intervalo mientras no llegue. Al reiniciar el hub, el plazo se cuenta desde el último push guardado. La ruta responde `ok` exista o no el token, para no servir de oráculo; los tokens desconocidos quedan en el log.
+- **Push**: lo hace un script al terminar bien, con `curl https://<maestro>/push/<token>` (GET o POST, sin login). Si no llega en `interval` más un 10 %, falla, y sigue fallando una vez por intervalo mientras no llegue. Entiende los parámetros de un push de Uptime Kuma: con `?status=down&msg=<motivo>` el script avisa que corrió pero falló, y el servicio cae con ese motivo (de una línea, hasta 200 caracteres); cualquier otro `status` es que salió bien, y `ping` se ignora. Así un script que le avisaba a Kuma pasa a Maestro cambiando solo la URL. Al reiniciar el hub, el plazo se cuenta desde el último push guardado. La ruta responde `ok` exista o no el token, para no servir de oráculo; los tokens desconocidos quedan en el log.
 
 Por defecto, cada 60 s con 10 s de timeout. El timeout nunca pasa del intervalo. Los checks salen del contenedor del hub: en el despliegue de ejemplo está en `caddy_net`, así que `http://jellyfin:8096` resuelve por el DNS de Docker si el servicio está en esa red (igual que en Uptime Kuma).
 
@@ -145,7 +145,7 @@ El estado de un servicio:
 
 | Estado | Cuándo |
 |---|---|
-| Caído | un contenedor no corre; un check HTTP o TCP falló 3 veces seguidas (como Uptime Kuma con 3 reintentos); un push no llegó |
+| Caído | un contenedor no corre; un check HTTP o TCP falló 3 veces seguidas (como Uptime Kuma con 3 reintentos); un push no llegó o avisó una falla |
 | Degradado | un contenedor está `unhealthy` o reinició hace menos de 10 minutos; un check falló menos de 3 veces; un certificado vence en menos de 14 días |
 | Sin datos | el agent de su host no responde y no hay checks con resultados; un contenedor está arrancando (`starting`); un servicio propio cuyos checks todavía no corrieron |
 | Arriba | ninguna de las anteriores |

@@ -85,6 +85,18 @@ func TestAlertText(t *testing.T) {
 			"🔴 <b>Immich &lt;x&gt;</b> se cayó\n🕗 14:32 · 💬 app detenido (exit 137)\n<i>Maestro</i>",
 		},
 		{
+			"push que avisa una falla",
+			store.StateEvent{At: at, From: "up", To: "down", Reason: "push: avisó una falla: B2_FAILED"},
+			"",
+			"🔴 <b>Immich &lt;x&gt;</b> falló\n🕗 14:32 · 💬 push: avisó una falla: B2_FAILED\n<i>Maestro</i>",
+		},
+		{
+			"push que no llega",
+			store.StateEvent{At: at, From: "up", To: "down", Reason: "push: no llegó en 96h"},
+			"",
+			"🔴 <b>Immich &lt;x&gt;</b> dejó de responder\n🕗 14:32 · 💬 push: no llegó en 96h\n<i>Maestro</i>",
+		},
+		{
 			"vuelve",
 			store.StateEvent{At: at, From: "down", To: "up", Reason: "volvió a responder"},
 			"",

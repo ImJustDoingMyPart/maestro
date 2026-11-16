@@ -74,7 +74,10 @@ func alertText(name string, e store.StateEvent, loc *time.Location, link string)
 	switch status.State(e.To) {
 	case status.Down:
 		verb := "se cayó"
-		if strings.HasPrefix(reason, "check ") || strings.HasPrefix(reason, "push:") {
+		switch {
+		case strings.HasPrefix(reason, "push: avisó una falla"):
+			verb = "falló" // el script corrió y dijo que salió mal
+		case strings.HasPrefix(reason, "check "), strings.HasPrefix(reason, "push:"):
 			verb = "dejó de responder"
 		}
 		fmt.Fprintf(&b, "🔴 %s %s", n, verb)

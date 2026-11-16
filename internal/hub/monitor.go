@@ -198,10 +198,11 @@ func (m *Monitor) compact(ctx context.Context) {
 	}
 }
 
-// Push registra la llamada de un script. Dice si el token es de algún
-// check.
-func (m *Monitor) Push(token string) bool {
-	return m.runner.Push(token, m.now())
+// Push registra la llamada de un script; down y msg son el status=down y
+// el msg de Uptime Kuma (el script avisa que falló). Dice si el token es de
+// algún check.
+func (m *Monitor) Push(token string, down bool, msg string) bool {
+	return m.runner.Push(token, checks.Ping{At: m.now(), Down: down, Msg: msg})
 }
 
 // Update recibe una foto nueva del poller: actualiza los servicios, los
