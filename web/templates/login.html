@@ -1,16 +1,20 @@
 {{define "content"}}
 <div class="login">
-  <article class="small-round no-elevate surface-container-low">
-    <nav class="center-align">
-      <i class="primary-text extra">hub</i>
-    </nav>
-    <h5 class="center-align">Maestro</h5>
+  <span class="brand"><span class="brand-mark"><i>hub</i></span><span class="brand-name">Maestro</span></span>
+  <article class="login-card no-elevate">
+    {{if .Setup}}
+    <p class="login-note">Todavía no hay usuarios. Creá el tuyo: es la cuenta del panel, y esta pantalla desaparece apenas exista.</p>
+    {{end}}
     {{if .Error}}
-    <p class="error-text center-align" role="alert">{{.Error}}</p>
+    <article class="small-round no-elevate state-reasons down" role="alert">
+      <nav>
+        <i>error</i>
+        <div class="max">{{.Error}}</div>
+      </nav>
+    </article>
     {{end}}
     {{if .Setup}}
-    <p class="center-align secondary-text">Todavía no hay usuarios. Creá el tuyo: es la cuenta del panel, y esta pantalla desaparece apenas exista.</p>
-    <form method="post" action="/setup">
+    <form method="post" action="/setup" class="login-form">
       <div class="field label border">
         <input type="text" name="username" id="username" autocomplete="username" required autofocus maxlength="64" value="{{.Username}}">
         <label for="username">Usuario</label>
@@ -24,12 +28,10 @@
         <input type="password" name="password2" id="password2" autocomplete="new-password" required minlength="12">
         <label for="password2">Repetila</label>
       </div>
-      <nav class="right-align">
-        <button type="submit">Crear y entrar</button>
-      </nav>
+      <button type="submit" class="btn filled"><i>person_add</i>Crear y entrar</button>
     </form>
     {{else}}
-    <form method="post" action="/login">
+    <form method="post" action="/login" class="login-form">
       <div class="field label border">
         <input type="text" name="username" id="username" autocomplete="username" required autofocus value="{{.Username}}">
         <label for="username">Usuario</label>
@@ -38,9 +40,7 @@
         <input type="password" name="password" id="password" autocomplete="current-password" required>
         <label for="password">Contraseña</label>
       </div>
-      <nav class="right-align">
-        <button type="submit">Entrar</button>
-      </nav>
+      <button type="submit" class="btn filled"><i>login</i>Entrar</button>
     </form>
     {{end}}
   </article>

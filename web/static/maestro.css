@@ -141,7 +141,7 @@ main.responsive {
    (:not(.grid, nav, .row) > :not(progress.max) + :is(…)). En los
    componentes propios el espacio lo da el gap del contenedor: ese margen
    desalinea (el pie de una tarjeta, el segundo gráfico de una fila). */
-:is(.topbar, .svc-card, .svc-foot, .svc-head, .cards, .card-slot, .groups, .group, .group-head, .page-head, .summary, .hw-sections, .hw-section, .hw-tiles, .hw-charts, .hw-cards, .hw-tile, .chart, .chart-head, .hw-host, .hw-host-head, .hw-table, .card-menu-list, .member-row, .mu-grid, .mu-box, .mu-row, .mu-radii, .mu-icons) > * {
+:is(.topbar, .svc-card, .svc-foot, .svc-head, .cards, .card-slot, .groups, .group, .group-head, .page-head, .summary, .hw-sections, .hw-section, .hw-tiles, .hw-charts, .hw-cards, .hw-tile, .chart, .chart-head, .hw-host, .hw-host-head, .hw-table, .card-menu-list, .member-row, .mu-grid, .mu-box, .mu-row, .mu-radii, .mu-icons, .login, .login-card, .login-form) > * {
   margin-block-start: 0 !important;
 }
 .section-title {
@@ -167,7 +167,7 @@ main.responsive {
 
 /* Caja: tarjetas de la portada, mosaicos y tarjetas de Hardware,
    gráficos, la tabla de contenedores y las listas de filas. */
-:is(.svc-card, .hw-tile, article.chart, .hw-table, .rows) {
+:is(.svc-card, .hw-tile, article.chart, .hw-table, .rows, .login-card) {
   border-radius: var(--r-m);
   background: var(--surface-container-low);
 }
@@ -950,10 +950,42 @@ body.editing #services .card-slot > .svc-card {
   display: none;
 }
 
-/* Login: una tarjeta angosta centrada. */
+/* Login: la marca de la barra superior arriba de una caja angosta
+   centrada. El error usa la caja de motivos (state-reasons). */
 .login {
+  display: grid;
+  justify-items: center;
+  gap: var(--sp-6);
   max-inline-size: 24rem;
   margin: var(--sp-16) auto 0;
+}
+.login .brand {
+  margin: 0;
+}
+.login-card {
+  display: grid;
+  gap: var(--sp-4);
+  inline-size: 100%;
+  margin: 0;
+  padding: var(--sp-6);
+}
+.login-card .state-reasons {
+  margin: 0;
+}
+.login-note {
+  margin: 0;
+  font: var(--type-body-m);
+  color: var(--on-surface-variant);
+}
+.login-form {
+  display: grid;
+  gap: var(--sp-4);
+}
+.login-form .field {
+  margin: 0;
+}
+.login-form .btn {
+  justify-self: end;
 }
 
 
