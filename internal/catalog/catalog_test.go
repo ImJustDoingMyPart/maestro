@@ -243,7 +243,7 @@ func TestBuild(t *testing.T) {
 		{
 			name: "unidad systemd sin checks avisa; alert del archivo la apaga",
 			file: map[string]FileService{
-				"restic": {Host: "vm", Unit: "restic-backup.timer"},
+				"restic":  {Host: "vm", Unit: "restic-backup.timer"},
 				"netbird": {Host: "vm", Unit: "netbird.service", Alert: ptr(false)},
 			},
 			want: []Service{
