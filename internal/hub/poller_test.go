@@ -5,12 +5,14 @@ import (
 	"errors"
 	"iter"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/ImJustDoingMyPart/maestro/internal/agent"
+	"github.com/ImJustDoingMyPart/maestro/internal/catalog"
 )
 
 // fakeAgent devuelve lo que se le cargue; se puede cambiar entre vueltas.
@@ -148,6 +150,54 @@ func TestShortImage(t *testing.T) {
 	} {
 		if got := shortImage(in); got != want {
 			t.Errorf("shortImage(%q) = %q, quería %q", in, got, want)
+		}
+	}
+}
+
+// Una unidad declarada en el archivo (host y unit) que también se muestra
+// desde la bandeja no se suma dos veces: la tarjeta es la del archivo, y
+// la bandeja la marca como suya. "nginx" es "nginx.service".
+func TestPollerUnidadDelArchivoNoSeRepite(t *testing.T) {
+	vm := &fakeAgent{sys: &agent.System{Units: []agent.Unit{
+		{Name: "restic-backup.timer", Active: "active"},
+		{Name: "nginx.service", Active: "active"},
+		{Name: "otra.service", Active: "active"},
+	}}}
+	file := map[string]catalog.FileService{
+		"restic": {Name: "Backups", Host: "vm", Unit: "restic-backup.timer"},
+		"nginx":  {Host: "vm", Unit: "nginx"},
+	}
+	p := newPoller(map[string]agentClient{"vm": vm}, file, slog.New(slog.DiscardHandler))
+	p.SetShown(map[string]bool{
+		"found:vm/timer/restic-backup.timer": true,
+		"found:vm/unit/otra.service":         true,
+	})
+	p.poll(context.Background())
+	snap := p.Snapshot()
+
+	var ids []string
+	for _, s := range snap.Services {
+		ids = append(ids, s.ID)
+	}
+	slices.Sort(ids)
+	if want := []string{"found:vm/unit/otra.service", "nginx", "restic"}; !slices.Equal(ids, want) {
+		t.Errorf("servicios = %v, want %v", ids, want)
+	}
+	in := map[string]string{}
+	for _, d := range snap.Discovered {
+		in[d.Key()] = d.InFile
+	}
+	if in["found:vm/timer/restic-backup.timer"] != "restic" || in["found:vm/unit/nginx.service"] != "nginx" || in["found:vm/unit/otra.service"] != "" {
+		t.Errorf("InFile = %v", in)
+	}
+	shown := map[string]bool{"found:vm/unit/otra.service": true}
+	if n := pending(snap.Discovered, shown); n != 0 {
+		t.Errorf("pending = %d: lo del archivo no queda en la bandeja", n)
+	}
+	rows := foundRows(snap.Discovered, shown)
+	for _, r := range rows[0].Rows {
+		if r.Name == "restic-backup.timer" && (!r.Shown || r.Href != servicePath("restic")) {
+			t.Errorf("fila del timer = %+v", r)
 		}
 	}
 }

@@ -140,6 +140,24 @@ func foundService(d Discovered) catalog.Service {
 	}
 }
 
+// declaredUnits son las unidades que declaran los servicios del archivo,
+// por "<host>/<unidad>" con el nombre completo ("nginx" es
+// "nginx.service"), con el ID del servicio.
+func declaredUnits(services []catalog.Service) map[string]string {
+	m := map[string]string{}
+	for _, svc := range services {
+		if svc.Source != catalog.SourceSystemd || isFound(svc.ID) || svc.Host == "" || svc.Unit == "" {
+			continue
+		}
+		name := svc.Unit
+		if !strings.Contains(name, ".") {
+			name += ".service"
+		}
+		m[svc.Host+"/"+name] = svc.ID
+	}
+	return m
+}
+
 // unitFor busca la unidad o el invitado de un servicio en lo que reportó su
 // host. nil si el servicio no sale de una unidad o si el agent no lee esa
 // fuente (sin systemd, no es un Proxmox): eso es "sin datos", no "no
