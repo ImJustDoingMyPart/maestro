@@ -17,6 +17,7 @@ import (
 	"github.com/ImJustDoingMyPart/maestro/internal/icons"
 	"github.com/ImJustDoingMyPart/maestro/internal/status"
 	"github.com/ImJustDoingMyPart/maestro/internal/store"
+	"github.com/ImJustDoingMyPart/maestro/internal/telegram"
 	"github.com/ImJustDoingMyPart/maestro/web"
 )
 
@@ -56,6 +57,16 @@ func Serve(ctx context.Context, opts Options, logger *slog.Logger) error {
 		return fmt.Errorf("monitor: %w", err)
 	}
 	go mon.Run(ctx)
+	if t := cfg.Telegram; t != nil {
+		// La hora de los avisos va en la zona del proceso: TZ en el
+		// compose (el contenedor corre en UTC si no).
+		al := newAlerter(telegram.New(t.Token, t.API), t.Chats(), cfg.PublicURL, st, time.Local, logger)
+		mon.notify = al.Notify
+		go al.Run(ctx)
+		logger.Info("avisos a Telegram", "chats", len(t.Chats()), "zona", time.Local.String())
+	} else {
+		logger.Info("sin telegram en maestro.yaml: las caídas no se avisan")
+	}
 
 	rec := newRecorder(st, logger)
 	go rec.Run(ctx)
@@ -114,6 +125,8 @@ type prefStore interface {
 	SetCardOrder(ctx context.Context, keys []string) error
 	Separated(ctx context.Context) (map[string]bool, error)
 	SetSeparate(ctx context.Context, key string, separate *bool, at time.Time) error
+	Alerts(ctx context.Context) (map[string]bool, error)
+	SetAlert(ctx context.Context, key string, alert *bool, at time.Time) error
 	Externals(ctx context.Context) ([]store.External, error)
 	External(ctx context.Context, id string) (store.External, error)
 	CreateExternal(ctx context.Context, e store.External, name, group string, at time.Time) error
@@ -227,6 +240,7 @@ func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon moni
 	private.HandleFunc("POST /layout/cards", s.orderCards)
 	private.HandleFunc("POST /layout/groups", s.orderGroups)
 	private.HandleFunc("POST /separate", s.separate)
+	private.HandleFunc("POST /alert", s.setAlert)
 	private.HandleFunc("GET /export", s.exportPage)
 	private.HandleFunc("GET /export.yaml", s.exportFile)
 	private.HandleFunc("GET /discovered", s.discoveredPage)

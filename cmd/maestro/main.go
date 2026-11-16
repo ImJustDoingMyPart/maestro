@@ -38,10 +38,11 @@ var version = ""
 const usage = `uso: maestro <comando> [opciones]
 
 comandos:
-  serve     hub web (portada, login, checks)
-  agent     agent de un host (Docker, /proc, systemd)
-  passwd    crea el usuario del panel o le cambia la contraseña
-  version   imprime la versión
+  serve          hub web (portada, login, checks, avisos)
+  agent          agent de un host (Docker, /proc, systemd)
+  passwd         crea el usuario del panel o le cambia la contraseña
+  telegram-test  manda un aviso de prueba a los chats de telegram: en maestro.yaml
+  version        imprime la versión
 
 "maestro <comando> -h" muestra las opciones de cada comando.
 `
@@ -75,6 +76,14 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) error {
 		return runAgent(ctx, rest, stderr)
 	case "passwd":
 		return runPasswd(ctx, rest, os.Stdin, stderr)
+	case "telegram-test":
+		fs := flag.NewFlagSet("telegram-test", flag.ContinueOnError)
+		fs.SetOutput(stderr)
+		cfgPath := fs.String("config", "maestro.yaml", "archivo de configuración")
+		if err := fs.Parse(rest); err != nil {
+			return err
+		}
+		return hub.TelegramTest(ctx, *cfgPath, stdout)
 	case "version":
 		fmt.Fprintln(stdout, currentVersion())
 		return nil

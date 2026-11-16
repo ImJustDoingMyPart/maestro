@@ -282,6 +282,7 @@
     </button>
     {{if .EditHref}}<a href="{{.EditHref}}"><i>tune</i><span>Editar</span></a>{{end}}
     {{if .Separated}}{{template "separateitem" (separateArgs .Key false .SeparateLocked)}}{{end}}
+    {{template "alertitem" .}}
     {{if .Found}}
     <form method="post" action="/discovered/unshow" hx-post="/discovered/unshow" hx-target="#services" hx-swap="outerHTML">
       <input type="hidden" name="key" value="{{.Key}}">
@@ -303,6 +304,7 @@
       <i>edit</i><span>Cambiar nombre</span>
     </button>
     {{template "separateitem" (separateArgs .Key true .SeparateLocked)}}
+    {{template "alertitem" .}}
     {{template "hideitem" .}}
   </div>
 </details>
@@ -315,6 +317,18 @@
   <input type="hidden" name="separate" value="{{if .Out}}1{{else}}0{{end}}">
   <button{{if .Locked}} disabled title="Viene de maestro.yaml"{{end}}>
     {{if .Out}}<i>call_split</i><span>Sacar del stack</span>{{else}}<i>call_merge</i><span>Volver al stack</span>{{end}}
+  </button>
+</form>
+{{end}}
+
+{{/* Prender o apagar los avisos a Telegram. En la tarjeta de un stack
+     cambia todos sus servicios; .Alert es si alguno avisa. */}}
+{{define "alertitem"}}
+<form method="post" action="/alert" hx-post="/alert" hx-target="#services" hx-swap="outerHTML">
+  <input type="hidden" name="key" value="{{.Key}}">
+  <input type="hidden" name="alert" value="{{if .Alert}}0{{else}}1{{end}}">
+  <button{{if .AlertLocked}} disabled title="Viene de maestro.yaml"{{end}}>
+    {{if .Alert}}<i>notifications_off</i><span>Dejar de avisar</span>{{else}}<i>notifications</i><span>Avisar por Telegram</span>{{end}}
   </button>
 </form>
 {{end}}

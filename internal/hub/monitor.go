@@ -61,6 +61,10 @@ type Monitor struct {
 	params status.Params
 	logger *slog.Logger
 	now    func() time.Time
+	// notify recibe cada cambio de estado guardado (el que avisa a
+	// Telegram); nil si no hay a quién avisar. Se llama con mu tomado: no
+	// puede bloquear. Se fija antes de la primera Update.
+	notify func(catalog.Service, store.StateEvent)
 
 	mu         sync.Mutex
 	services   map[string]catalog.Service
@@ -348,6 +352,9 @@ func (m *Monitor) evaluate(id string) {
 	}
 	e.ID = evID
 	m.logger.Info("cambio de estado", "service", id, "from", ev.From, "to", ev.To, "reason", ev.Reason)
+	if m.notify != nil {
+		m.notify(svc, e)
+	}
 	for ch := range m.subs[id] {
 		select {
 		case ch <- e:

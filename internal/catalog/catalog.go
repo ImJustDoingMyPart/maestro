@@ -127,8 +127,11 @@ type Service struct {
 
 	Checks []Check
 	// Alert dice si una caída avisa por Telegram. Si nadie lo declara, es
-	// true cuando el servicio tiene checks.
-	Alert bool
+	// true cuando el servicio tiene checks o sale de una unidad de systemd
+	// (declarada con unit). AlertFromFile: lo fija maestro.yaml, y la
+	// interfaz no lo cambia.
+	Alert         bool
+	AlertFromFile bool
 	// Separate saca al servicio de la tarjeta de su stack en la portada:
 	// va en una tarjeta propia.
 	Separate bool
@@ -228,9 +231,9 @@ func (c *Catalog) Build(containers []Container, file map[string]FileService) []S
 		if len(fs.Checks) > 0 {
 			s.Checks = slices.Clone(fs.Checks)
 		}
-		s.Alert = len(s.Checks) > 0
+		s.Alert = len(s.Checks) > 0 || s.Unit != ""
 		if fs.Alert != nil {
-			s.Alert = *fs.Alert
+			s.Alert, s.AlertFromFile = *fs.Alert, true
 		}
 		out = append(out, s)
 	}
@@ -317,7 +320,7 @@ func (c *Catalog) fromContainers(id string, reps []Container, fs FileService) (S
 		s.Alert = *a
 	}
 	if fs.Alert != nil {
-		s.Alert = *fs.Alert
+		s.Alert, s.AlertFromFile = *fs.Alert, true
 	}
 	if sep := c.boolLabel(labels, "maestro.separate"); sep != nil {
 		s.Separate = *sep

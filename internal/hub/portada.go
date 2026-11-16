@@ -33,8 +33,11 @@ type memberRow struct {
 	// SeparateLocked: separate viene del archivo, no se saca desde acá.
 	SeparateLocked bool
 	HiddenLocked   bool // hidden viene del archivo
-	State          State
-	Reason         string
+	// Alert: avisa por Telegram. AlertLocked: eso viene del archivo.
+	Alert       bool
+	AlertLocked bool
+	State       State
+	Reason      string
 }
 
 // stateRank ordena los estados de peor a mejor, para el semáforo de un
@@ -73,6 +76,9 @@ type uiPrefs struct {
 	Separate map[string]bool
 	// Shown es lo descubierto que se pasó a la portada, por clave.
 	Shown map[string]bool
+	// Alerts prende (true) o apaga (false) los avisos de un servicio,
+	// salvo que el archivo diga otra cosa.
+	Alerts map[string]bool
 
 	// FileStacks y FileGroups son las secciones stacks: y groups: de
 	// maestro.yaml: ganan a lo de la interfaz.
@@ -148,6 +154,7 @@ func buildGroups(services []catalog.Service, statusOf func(id string) status.Sta
 		if v, ok := p.Separate[serviceKey(svc.ID)]; ok && !svc.SeparateFromFile {
 			svc.Separate = v
 		}
+		svc.Alert = alertOn(svc, p.Alerts)
 		if svc.Source != catalog.SourceCompose || svc.Separate {
 			c := singleCard(svc, statusOf(svc.ID))
 			c.Separated = svc.Source == catalog.SourceCompose
@@ -269,6 +276,8 @@ func singleCard(svc catalog.Service, st status.Status) serviceCard {
 		SeparateLocked: svc.SeparateFromFile,
 		EditHref:       editHref(svc),
 		HiddenLocked:   svc.Hidden != nil,
+		Alert:          svc.Alert,
+		AlertLocked:    svc.AlertFromFile,
 		icon:           serviceHint(svc),
 		IconLocked:     svc.IconFromFile,
 	}
@@ -356,11 +365,15 @@ func stackCard(host, project string, members []catalog.Service, statusOf func(st
 	}
 
 	worst := -1
+	c.AlertLocked = true
 	for _, m := range members {
+		c.Alert = c.Alert || m.Alert
+		c.AlertLocked = c.AlertLocked && m.AlertFromFile
 		st := statusOf(m.ID)
 		c.Members = append(c.Members, memberRow{
 			Href: servicePath(m.ID), Name: m.Name, Key: serviceKey(m.ID), NameLocked: m.NameFromFile,
 			SeparateLocked: m.SeparateFromFile, HiddenLocked: m.Hidden != nil,
+			Alert: m.Alert, AlertLocked: m.AlertFromFile,
 			State: State(st.State), Reason: st.Reason(),
 		})
 		if r := stateRank(st.State); r > worst {

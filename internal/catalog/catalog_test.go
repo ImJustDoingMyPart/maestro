@@ -241,6 +241,17 @@ func TestBuild(t *testing.T) {
 			}},
 		},
 		{
+			name: "unidad systemd sin checks avisa; alert del archivo la apaga",
+			file: map[string]FileService{
+				"restic":  {Host: "vm", Unit: "restic-backup.timer"},
+				"netbird": {Host: "vm", Unit: "netbird.service", Alert: ptr(false)},
+			},
+			want: []Service{
+				{ID: "netbird", Source: SourceSystemd, Name: "netbird", Host: "vm", Unit: "netbird.service", AlertFromFile: true},
+				{ID: "restic", Source: SourceSystemd, Name: "restic", Host: "vm", Unit: "restic-backup.timer", Alert: true},
+			},
+		},
+		{
 			name: "servicio externo del archivo, sin nombre usa la clave",
 			file: map[string]FileService{"router": {Group: "Red"}},
 			want: []Service{{ID: "router", Source: SourceExternal, Name: "router", Group: "Red", GroupFromFile: true}},
@@ -289,7 +300,7 @@ func TestBuild(t *testing.T) {
 			want: []Service{func() Service {
 				s := composeService("media-stack", "jellyfin",
 					compose("jellyfin", "media-stack", "jellyfin", merge(withCheck, map[string]string{"maestro.alert": "true"})))
-				s.Checks, s.Alert = labelCheck, false
+				s.Checks, s.Alert, s.AlertFromFile = labelCheck, false, true
 				return s
 			}()},
 		},

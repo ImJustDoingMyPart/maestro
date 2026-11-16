@@ -126,7 +126,8 @@ func humanBytes(b float64) string {
 }
 
 // foundService es el servicio del catálogo de algo descubierto que se
-// muestra.
+// muestra. Avisa por defecto, como una unidad declarada en el archivo: si
+// se trajo a la portada, importa que falle.
 func foundService(d Discovered) catalog.Service {
 	src := catalog.SourceSystemd
 	if d.Kind == "lxc" || d.Kind == "vm" {
@@ -135,6 +136,7 @@ func foundService(d Discovered) catalog.Service {
 	return catalog.Service{
 		ID: d.Key(), Source: src, Name: d.Label, Host: d.Host, Unit: d.Name,
 		Description: foundKindLabel(d.Kind) + " en " + d.Host,
+		Alert:       true,
 	}
 }
 

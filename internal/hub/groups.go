@@ -35,6 +35,9 @@ func (s *server) loadPrefs(ctx context.Context) uiPrefs {
 	if p.Separate, err = s.prefs.Separated(ctx); err != nil {
 		s.logger.Error("leer separados", "err", err)
 	}
+	if p.Alerts, err = s.prefs.Alerts(ctx); err != nil {
+		s.logger.Error("leer avisos", "err", err)
+	}
 	if p.Shown, err = s.prefs.Shown(ctx); err != nil {
 		s.logger.Error("leer mostrados", "err", err)
 	}

@@ -81,6 +81,10 @@ type serviceCard struct {
 	Found bool
 	// HiddenLocked: maestro.yaml dice hidden: false; no se oculta desde acá.
 	HiddenLocked bool
+	// Alert: avisa por Telegram (en un stack, alguno de sus servicios).
+	// AlertLocked: lo fija maestro.yaml (en un stack, para todos).
+	Alert       bool
+	AlertLocked bool
 }
 
 type group struct {

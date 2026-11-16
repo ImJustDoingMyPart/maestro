@@ -30,6 +30,7 @@ type exportService struct {
 	Description string       `yaml:"description,omitempty"`
 	Hidden      *bool        `yaml:"hidden,omitempty"`
 	Separate    *bool        `yaml:"separate,omitempty"`
+	Alert       *bool        `yaml:"alert,omitempty"`
 	Check       *exportCheck `yaml:"check,omitempty"`
 }
 
@@ -83,6 +84,9 @@ func (s *server) exportYAML(ctx context.Context, now time.Time) ([]byte, error) 
 	for k := range p.Separate {
 		keys[k] = true
 	}
+	for k := range p.Alerts {
+		keys[k] = true
+	}
 	for _, e := range externals {
 		keys[serviceKey(e.ID)] = true
 	}
@@ -109,6 +113,9 @@ func (s *server) exportYAML(ctx context.Context, now time.Time) ([]byte, error) 
 			}
 			if v, ok := p.Separate[key]; ok && !svc.SeparateFromFile {
 				out.Separate = &v
+			}
+			if v, ok := p.Alerts[key]; ok && !svc.AlertFromFile {
+				out.Alert = &v
 			}
 			if i := slices.IndexFunc(externals, func(e store.External) bool { return e.ID == rest }); i >= 0 {
 				if s.fileKeys[rest] {

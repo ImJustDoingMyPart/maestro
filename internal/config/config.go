@@ -14,6 +14,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"go.yaml.in/yaml/v4"
 
@@ -38,7 +39,50 @@ type Config struct {
 	// desde un agente. Vacío: la API solo con sesión. Es un secreto: va en
 	// una variable ${...}.
 	APIToken string `yaml:"api_token"`
+	// Telegram es a dónde van los avisos de caídas. nil: no se avisa.
+	Telegram *Telegram `yaml:"telegram"`
+	// PublicURL es la dirección del hub tal como se abre desde afuera
+	// (https://maestro.example.org), para los links de los avisos. Vacía:
+	// los avisos van sin link.
+	PublicURL string `yaml:"public_url"`
 }
+
+// Telegram es el bot que manda los avisos. Token y chat son secretos: van
+// en variables ${...}.
+type Telegram struct {
+	// Token es el de BotFather ("123456:ABC…").
+	Token string `yaml:"token"`
+	// Chat es uno o más chat_id separados por espacios o comas, como el
+	// TELEGRAM_CHATID de notify.sh: un número (negativo en grupos y
+	// canales) o "@canal".
+	Chat string `yaml:"chat"`
+	// API es la dirección de la Bot API; vacía es la de Telegram. Sirve
+	// para un servidor propio (telegram-bot-api) o para probar.
+	API string `yaml:"api"`
+}
+
+// Chats da los destinos de Chat, en orden y sin vacíos.
+func (t Telegram) Chats() []string {
+	return strings.FieldsFunc(t.Chat, func(r rune) bool { return r == ',' || unicode.IsSpace(r) })
+}
+
+// String no muestra el token ni los chats.
+func (t Telegram) String() string {
+	return fmt.Sprintf("{token: [censurado], chats: %d}", len(t.Chats()))
+}
+
+// LogValue hace lo mismo para slog.
+func (t Telegram) LogValue() slog.Value {
+	return slog.GroupValue(slog.String("token", "[censurado]"), slog.Int("chats", len(t.Chats())))
+}
+
+var (
+	// botToken es la forma de un token de BotFather: el ID del bot, ":" y
+	// el secreto.
+	botToken = regexp.MustCompile(`^[0-9]+:[A-Za-z0-9_-]{20,}$`)
+	// chatID es un chat_id numérico o el @nombre de un canal público.
+	chatID = regexp.MustCompile(`^(-?[0-9]+|@[A-Za-z][A-Za-z0-9_]{3,})$`)
+)
 
 // MinAPITokenLen es el largo mínimo del token de la API: da acceso a los
 // informes, con su compose censurado y sus logs.
@@ -225,6 +269,31 @@ func (c *Config) validate() error {
 
 	if c.APIToken != "" && len(c.APIToken) < MinAPITokenLen {
 		add("api_token: tiene que tener al menos %d caracteres (openssl rand -hex 32)", MinAPITokenLen)
+	}
+
+	if t := c.Telegram; t != nil {
+		// Los valores no van en el mensaje: son secretos.
+		if !botToken.MatchString(t.Token) {
+			add("telegram.token: no tiene la forma de un token de BotFather (<número>:<secreto>)")
+		}
+		if len(t.Chats()) == 0 {
+			add("telegram.chat: falta (uno o más chat_id separados por espacios o comas)")
+		}
+		if t.API != "" {
+			if err := checkURL(t.API); err != nil {
+				add("telegram.api: %v", err)
+			}
+		}
+		for i, chat := range t.Chats() {
+			if !chatID.MatchString(chat) {
+				add("telegram.chat: el destino %d no es un chat_id (número o @canal)", i+1)
+			}
+		}
+	}
+	if c.PublicURL != "" {
+		if err := checkURL(c.PublicURL); err != nil {
+			add("public_url: %v", err)
+		}
 	}
 
 	for _, key := range sortedKeys(c.Stacks) {
