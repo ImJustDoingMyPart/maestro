@@ -306,13 +306,6 @@ article.svc-card.svc-card > ul.stack-members.stack-members.stack-members {
   background: var(--secondary-container);
   color: var(--on-secondary-container);
 }
-/* Contorno de foco: Beer lo pone 4 px afuera, y en un botón circular de
-   una tarjeta sobresale del borde. Va justo adentro del círculo (y de
-   cada ítem del menú). Se ve con el teclado, y también con el mouse si lo
-   último fue una tecla (así decide el navegador :focus-visible). */
-:is(.icon-btn, .card-menu-list > *, .card-menu-list > form > button):focus-visible {
-  outline-offset: calc(-1 * var(--sp-hair));
-}
 .icon-btn.off {
   opacity: var(--a-disabled);
   cursor: default;
