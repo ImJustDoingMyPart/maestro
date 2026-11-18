@@ -44,6 +44,9 @@ func (s State) Label() string {
 // serviceCard es lo que la portada necesita de un servicio. Cuando exista
 // internal/catalog, se arma a partir de catalog.Service.
 type serviceCard struct {
+	// UpHref es la acción "up" del stack si está bajado (docker compose
+	// down): la tarjeta muestra Levantar en vez de Abrir. Vacío si no.
+	UpHref      string
 	Href        string // página del servicio; vacío en el demo
 	Name        string
 	Description string

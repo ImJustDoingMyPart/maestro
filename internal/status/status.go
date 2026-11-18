@@ -85,6 +85,10 @@ type Input struct {
 	HostOK     bool
 	Containers []Container // en el orden en que se muestran
 	Checks     []Check     // en el orden en que se muestran
+	// StackDown: el servicio es de un stack bajado (docker compose down),
+	// sin contenedores. Si nada más da un estado, es Stopped con el motivo
+	// "stack bajado", no "sin contenedores".
+	StackDown bool
 }
 
 // Params son los umbrales.
@@ -240,6 +244,8 @@ func Evaluate(in Input, now time.Time, p Params) Status {
 			return Status{Unknown, []string{"sin datos del agent"}}
 		}
 		return Status{Unknown, []string{"sin datos todavía"}}
+	case useContainers && len(in.Containers) == 0 && in.StackDown:
+		return Status{Stopped, []string{"stack bajado"}}
 	case useContainers && len(in.Containers) == 0:
 		return Status{Unknown, []string{"sin contenedores"}}
 	case len(unknown) > 0:

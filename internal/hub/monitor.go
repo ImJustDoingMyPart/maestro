@@ -372,6 +372,7 @@ func buildInput(svc catalog.Service, hostOK bool, unit *status.Unit, restarted f
 		FromContainers: svc.Source == catalog.SourceCompose || svc.Source == catalog.SourceContainer,
 		HostOK:         hostOK,
 		Unit:           unit,
+		StackDown:      svc.StackDown,
 	}
 	for _, c := range svc.Containers {
 		sc := status.Container{Name: c.Name, State: c.State, Health: c.Health, ExitCode: c.ExitCode}

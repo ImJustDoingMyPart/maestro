@@ -27,6 +27,18 @@
     ontogglestack();
   }
   const flipDur = () => (instant() ? 0 : dur("--dur-m"));
+
+  // Levantar un stack bajado: el botón se apaga mientras el hub arranca
+  // la acción (docker compose up -d sigue en el agent).
+  let upping = $state(false);
+  async function up() {
+    upping = true;
+    try {
+      await act("up", { href: card.upHref, name: card.name });
+    } finally {
+      upping = false;
+    }
+  }
 </script>
 
 <!-- Prender o apagar los avisos a Telegram (en un stack, todos sus
@@ -117,7 +129,9 @@
       {:else}
         <span class="icon-btn off" title="No es de compose"><i>description</i></span>
       {/if}
-      {#if card.url}
+      {#if card.upHref && live}
+        <button type="button" class="icon-btn tonal above" disabled={upping} title="Levantar el stack (docker compose up -d)" aria-label={"Levantar " + card.name} onclick={up}><i>play_arrow</i></button>
+      {:else if card.url}
         <a class="icon-btn tonal above" href={card.url} target="_blank" rel="noopener" title={"Abrir " + card.url} aria-label={"Abrir " + card.name}><i>open_in_new</i></a>
       {:else}
         <span class="icon-btn off" title="Sin dirección web"><i>open_in_new</i></span>

@@ -39,6 +39,34 @@ type StackFiles struct {
 	Busy bool `json:"busy"`
 }
 
+// StackInfo es un stack de la carpeta de stacks, corra o no.
+type StackInfo struct {
+	Project  string         `json:"project"`
+	Dir      string         `json:"dir"`
+	Services []StackService `json:"services"`
+	// Err dice por qué no se pudo leer el compose (no pasa docker compose
+	// config); entonces Services está vacío.
+	Err string `json:"error,omitempty"`
+}
+
+// StackService es un servicio del compose con sus labels (sin
+// interpolar), para que un stack bajado conserve su nombre, grupo e ícono.
+type StackService struct {
+	Name   string            `json:"name"`
+	Labels map[string]string `json:"labels,omitempty"`
+}
+
+// StacksResponse es el cuerpo de GET /v1/stacks.
+type StacksResponse struct {
+	Stacks []StackInfo `json:"stacks"`
+}
+
+// StackLister lista los stacks de la carpeta. Lo cumple *stacks.Manager;
+// es aparte de StackSource para no obligar a los dobles de los tests.
+type StackLister interface {
+	List(ctx context.Context) ([]StackInfo, error)
+}
+
 // WriteRequest es el cuerpo de PUT /v1/stacks/{project}/files/{name} y de
 // POST /v1/stacks/{project}/files/{name}/check.
 type WriteRequest struct {
@@ -149,6 +177,20 @@ func ValidProject(p string) bool { return len(p) <= 128 && projectRe.MatchString
 const maxFileSize = 1 << 20
 
 func stackRoutes(mux *http.ServeMux, st StackSource, logErr func(msg string, args ...any)) {
+	if l, ok := st.(StackLister); ok {
+		mux.HandleFunc("GET /v1/stacks", func(w http.ResponseWriter, r *http.Request) {
+			list, err := l.List(r.Context())
+			if err != nil {
+				logErr("listar stacks", "err", err)
+				writeJSON(w, http.StatusBadGateway, ErrorBody{Error: "no se pudo leer la carpeta de stacks"})
+				return
+			}
+			if list == nil {
+				list = []StackInfo{}
+			}
+			writeJSON(w, http.StatusOK, StacksResponse{Stacks: list})
+		})
+	}
 	// project valida el nombre y escribe el 400 si no sirve.
 	project := func(w http.ResponseWriter, r *http.Request) (string, bool) {
 		p := r.PathValue("project")

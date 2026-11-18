@@ -14,6 +14,7 @@ import (
 	"github.com/ImJustDoingMyPart/maestro/internal/agent"
 	"github.com/ImJustDoingMyPart/maestro/internal/catalog"
 	"github.com/ImJustDoingMyPart/maestro/internal/journal"
+	"github.com/ImJustDoingMyPart/maestro/internal/status"
 )
 
 // fakeAgent devuelve lo que se le cargue; se puede cambiar entre vueltas.
@@ -24,6 +25,7 @@ type fakeAgent struct {
 	sys *agent.System
 	// journal contesta Journal; nil: error.
 	journal func(units []string, n int, after string) (journal.Page, error)
+	stacks  []agent.StackInfo // nil: el agent no tiene carpeta de stacks (501)
 }
 
 func (f *fakeAgent) Containers(context.Context) ([]agent.Container, error) {
@@ -212,4 +214,59 @@ func (f *fakeAgent) Journal(_ context.Context, units []string, n int, after stri
 		return journal.Page{}, errors.New("sin journal")
 	}
 	return f.journal(units, n, after)
+}
+
+func (f *fakeAgent) Stacks(context.Context) ([]agent.StackInfo, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.stacks == nil {
+		return nil, errors.New("fakeAgent sin carpeta de stacks")
+	}
+	return f.stacks, nil
+}
+
+// Un stack de la carpeta sin contenedores está bajado: sus servicios salen
+// sin contenedores, con los labels del compose y lo del archivo, y
+// detenidos. Uno con contenedores (aunque estén parados) no.
+func TestPollerStackBajado(t *testing.T) {
+	vm := &fakeAgent{
+		cs: []agent.Container{composeContainer("jellyfin", "media", "jellyfin", "exited", "")},
+		stacks: []agent.StackInfo{
+			{Project: "media", Services: []agent.StackService{{Name: "jellyfin"}}},
+			{Project: "ia-stack", Services: []agent.StackService{
+				{Name: "open-webui", Labels: map[string]string{"homepage.group": "IA", "homepage.name": "Open WebUI"}},
+				{Name: "ollama"},
+			}},
+		},
+	}
+	file := map[string]catalog.FileService{"ia-stack/open-webui": {Checks: []catalog.Check{{Kind: catalog.CheckHTTP, Target: "http://open-webui:8080"}}}}
+	p := newPoller(map[string]agentClient{"vm": vm}, file, slog.New(slog.DiscardHandler))
+	p.poll(context.Background())
+	snap := p.Snapshot()
+	byID := map[string]catalog.Service{}
+	for _, s := range snap.Services {
+		byID[s.ID] = s
+	}
+	if s := byID["media/jellyfin"]; s.StackDown || len(s.Containers) != 1 {
+		t.Errorf("media tiene un contenedor (parado): no está bajado: %+v", s)
+	}
+	w, ok := byID["ia-stack/open-webui"]
+	if !ok || !w.StackDown || w.Containers != nil || w.Group != "IA" || w.Name != "Open WebUI" || w.Host != "vm" || w.Project != "ia-stack" || len(w.Checks) != 1 {
+		t.Fatalf("open-webui bajado = %+v", w)
+	}
+	if _, ok := byID["ia-stack/ollama"]; !ok {
+		t.Error("falta ollama, el otro servicio del stack bajado")
+	}
+	if got := snapStatus(w.ID, snap); got.State != status.Stopped || got.Reason() != "stack bajado" {
+		t.Errorf("estado = %+v", got)
+	}
+
+	// Se levanta: aparecen los contenedores y deja de estar bajado.
+	vm.set(append(vm.cs, composeContainer("open-webui", "ia-stack", "open-webui", "running", "")), nil)
+	p.poll(context.Background())
+	for _, s := range p.Snapshot().Services {
+		if s.Project == "ia-stack" && s.ID == "ia-stack/open-webui" && s.StackDown {
+			t.Error("con contenedores ya no está bajado")
+		}
+	}
 }

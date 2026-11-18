@@ -130,12 +130,26 @@
       case "hide":
         flash(await run("/hidden", p));
         break;
+      case "up": {
+        const err = await post(p.href, {});
+        if (err) {
+          flash(err);
+          break;
+        }
+        flash("Levantando " + p.name + ". La salida está en su pestaña Compose.", true);
+        // Los contenedores aparecen en la próxima vuelta del poller.
+        setTimeout(refresh, 3000);
+        setTimeout(refresh, 10000);
+        break;
+      }
     }
   }
 
   let flashTimer;
-  function flash(msg) {
+  let flashInfo = $state(false); // el aviso no es un error
+  function flash(msg, info = false) {
     if (!msg) return;
+    flashInfo = info;
     layoutError = msg;
     clearTimeout(flashTimer);
     flashTimer = setTimeout(() => (layoutError = ""), 5000);
@@ -412,7 +426,7 @@
 {/if}
 
 {#if layoutError}
-  <div class="snackbar error active" role="alert" transition:fly={{ y: 16, duration: dur("--dur-m"), easing: ease }}>{layoutError}</div>
+  <div class="snackbar active" class:error={!flashInfo} role={flashInfo ? "status" : "alert"} transition:fly={{ y: 16, duration: dur("--dur-m"), easing: ease }}>{layoutError}</div>
 {/if}
 
 {#if dialog?.kind === "rename"}

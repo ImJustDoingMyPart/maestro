@@ -286,6 +286,9 @@ func singleCard(svc catalog.Service, st status.Status) serviceCard {
 	}
 	if svc.Source == catalog.SourceCompose && svc.Project != "" && svc.Host != "" {
 		c.StackHref = stackPath(svc.Host, svc.Project)
+		if svc.StackDown {
+			c.UpHref = c.StackHref + "/actions/up"
+		}
 	}
 	if _, kind, _, ok := parseFound(svc.ID); ok {
 		c.Found, c.Icon = true, kindIcon(kind)
@@ -388,6 +391,14 @@ func stackCard(host, project string, members []catalog.Service, statusOf func(st
 	slices.SortFunc(c.Members, func(a, b memberRow) int {
 		return cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
 	})
+	if !slices.ContainsFunc(members, func(m catalog.Service) bool { return !m.StackDown }) {
+		// Bajado entero: el motivo es del stack, no de uno de sus
+		// servicios.
+		c.UpHref = stackPath(host, project) + "/actions/up"
+		if c.State == StateStopped {
+			c.Reason = "stack bajado"
+		}
+	}
 	return c
 }
 

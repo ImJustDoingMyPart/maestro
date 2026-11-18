@@ -69,8 +69,9 @@ type Manager struct {
 	containers ContainerLister
 	logger     *slog.Logger
 
-	mu   sync.Mutex
-	busy map[string]string // proyecto → operación en curso
+	mu        sync.Mutex
+	busy      map[string]string // proyecto → operación en curso
+	listCache map[string]listed // carpeta → lo que dio List
 }
 
 // New crea un Manager. La raíz tiene que existir.
@@ -100,6 +101,7 @@ func New(opts Options, containers ContainerLister, logger *slog.Logger) (*Manage
 		containers: containers,
 		logger:     logger,
 		busy:       make(map[string]string),
+		listCache:  make(map[string]listed),
 	}
 	return m, nil
 }

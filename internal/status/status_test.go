@@ -45,6 +45,16 @@ func TestEvaluate(t *testing.T) {
 			want: Status{Down, []string{"a reiniciándose (exit 1)", "b: paused", "c: dead"}},
 		},
 		{
+			name: "stack bajado: detenido, salvo que un check diga otra cosa",
+			in:   Input{FromContainers: true, HostOK: true, StackDown: true},
+			want: Status{Stopped, []string{"stack bajado"}},
+		},
+		{
+			name: "stack bajado con su check fallando: caído",
+			in:   Input{FromContainers: true, HostOK: true, StackDown: true, Checks: []Check{{Kind: "http", Results: 3, Failures: 3, Detail: "no resuelve"}}},
+			want: Status{Down, []string{"check http falla: no resuelve"}},
+		},
+		{
 			name: "creado y sin arrancar no es caída",
 			in: Input{FromContainers: true, HostOK: true, Containers: []Container{
 				{Name: "a", State: "created"},

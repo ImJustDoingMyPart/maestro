@@ -31,6 +31,7 @@ type agentClient interface {
 	StackAction(ctx context.Context, project, action string) (iter.Seq2[agent.ActionEvent, error], error)
 	System(ctx context.Context) (agent.System, error)
 	Journal(ctx context.Context, units []string, n int, after string) (journal.Page, error)
+	Stacks(ctx context.Context) ([]agent.StackInfo, error)
 }
 
 // HostStatus es cómo le fue al último pedido a un agent.
@@ -88,6 +89,7 @@ type hostState struct {
 	status     HostStatus
 	containers []agent.Container // los últimos que se conocen, aunque el agent haya dejado de responder
 	system     *agent.System     // la última muestra; nil si el agent no tiene colector
+	stacks     []agent.StackInfo // los stacks de su carpeta; nil si no la tiene
 }
 
 // Poller consulta a los agents cada intervalo y arma la lista de servicios.
@@ -257,6 +259,8 @@ func (p *Poller) poll(ctx context.Context) {
 		err    error
 		sys    *agent.System
 		sysErr error
+		stacks []agent.StackInfo
+		stErr  error
 	}
 	results := make(chan result, len(p.agents))
 
@@ -288,6 +292,7 @@ func (p *Poller) poll(ctx context.Context) {
 			if err == nil {
 				res.sys = &sys
 			}
+			res.stacks, res.stErr = a.Stacks(ctx)
 		}()
 	}
 
@@ -318,6 +323,14 @@ func (p *Poller) poll(ctx context.Context) {
 			h.system = nil // un agent viejo, sin /v1/system
 		default:
 			p.logger.Debug("muestra del host", "host", r.host, "err", r.sysErr)
+		}
+		switch {
+		case r.stErr == nil:
+			h.stacks = r.stacks
+		case isNotImplemented(r.stErr):
+			h.stacks = nil // sin --stacks-dir, o un agent viejo
+		default:
+			p.logger.Debug("stacks del host", "host", r.host, "err", r.stErr)
 		}
 	}
 
@@ -362,7 +375,7 @@ func (p *Poller) rebuildLocked(at time.Time) {
 			}
 		}
 	}
-	services := p.catalog.Build(all, file)
+	services := p.catalog.BuildWithDown(all, file, p.downLocked())
 	declared := declaredUnits(services)
 	for i, d := range found {
 		found[i].InFile = declared[d.Host+"/"+d.Name]
@@ -371,6 +384,34 @@ func (p *Poller) rebuildLocked(at time.Time) {
 		}
 	}
 	p.snap = Snapshot{Services: services, Discovered: found, Hosts: hosts, Systems: systems, At: at}
+}
+
+// downLocked son los servicios de los stacks bajados: los de la carpeta de
+// stacks de cada host que no tienen ningún contenedor ahí (con contenedores
+// detenidos no es bajado: es detenido). Con mu tomado.
+func (p *Poller) downLocked() []catalog.DownService {
+	var out []catalog.DownService
+	for _, name := range slices.Sorted(maps.Keys(p.hosts)) {
+		h := p.hosts[name]
+		if len(h.stacks) == 0 {
+			continue
+		}
+		running := map[string]bool{}
+		for _, c := range h.containers {
+			if proj := c.Labels["com.docker.compose.project"]; proj != "" {
+				running[proj] = true
+			}
+		}
+		for _, st := range h.stacks {
+			if running[st.Project] {
+				continue
+			}
+			for _, svc := range st.Services {
+				out = append(out, catalog.DownService{Host: name, Project: st.Project, Service: svc.Name, Labels: svc.Labels})
+			}
+		}
+	}
+	return out
 }
 
 // SetShown cambia qué descubiertos se muestran (pasan a ser servicios) y

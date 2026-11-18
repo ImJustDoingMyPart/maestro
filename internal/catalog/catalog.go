@@ -3,6 +3,7 @@ package catalog
 import (
 	"cmp"
 	"log/slog"
+	"maps"
 	"net"
 	"slices"
 	"strconv"
@@ -150,6 +151,18 @@ type Service struct {
 	Hidden *bool
 	// FromUI: servicio propio creado desde la interfaz (ver FileService).
 	FromUI bool
+	// StackDown: el servicio es de un stack bajado (docker compose down):
+	// está en el compose de la carpeta de stacks pero no tiene
+	// contenedores. Containers está vacío; lo demás sale de los labels del
+	// compose y del archivo, como siempre.
+	StackDown bool
+}
+
+// DownService es un servicio de un stack sin contenedores, según el
+// compose de la carpeta de stacks de su host.
+type DownService struct {
+	Host, Project, Service string
+	Labels                 map[string]string // los del compose, sin interpolar
 }
 
 // Catalog combina las fuentes. Guarda qué claves de labels desconocidas ya
@@ -195,6 +208,13 @@ func New(logger *slog.Logger) *Catalog {
 //
 // Build puede llamarse desde varias goroutines a la vez.
 func (c *Catalog) Build(containers []Container, file map[string]FileService) []Service {
+	return c.BuildWithDown(containers, file, nil)
+}
+
+// BuildWithDown es Build más los servicios de los stacks bajados: cada uno
+// sale con StackDown, sin contenedores, con lo que digan los labels de su
+// compose y el archivo. Uno cuyo ID ya tiene contenedores no se agrega.
+func (c *Catalog) BuildWithDown(containers []Container, file map[string]FileService, down []DownService) []Service {
 	// Agrupa por ID de servicio sin tocar el slice de entrada.
 	grupos := make(map[string][]Container)
 	for _, ct := range containers {
@@ -203,6 +223,21 @@ func (c *Catalog) Build(containers []Container, file map[string]FileService) []S
 	}
 
 	out := []Service{}
+	for _, d := range down {
+		id := d.Project + "/" + d.Service
+		if _, ok := grupos[id]; ok {
+			continue
+		}
+		labels := maps.Clone(d.Labels)
+		if labels == nil {
+			labels = map[string]string{}
+		}
+		labels["com.docker.compose.project"], labels["com.docker.compose.service"] = d.Project, d.Service
+		if s, ok := c.fromContainers(id, []Container{{Host: d.Host, Name: d.Service, Labels: labels}}, file[id]); ok {
+			s.Containers, s.StackDown = nil, true
+			out = append(out, s)
+		}
+	}
 	for id, reps := range grupos {
 		slices.SortStableFunc(reps, func(a, b Container) int { return cmp.Compare(a.Name, b.Name) })
 		// Solo las claves con "/" (las de compose) pisan a un contenedor.

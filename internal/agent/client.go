@@ -172,6 +172,15 @@ func IsStatus(err error, code int) bool {
 	return errors.As(err, &se) && se.code == code
 }
 
+// Stacks lista los stacks de la carpeta del agent (ver StackLister).
+func (c *Client) Stacks(ctx context.Context) ([]StackInfo, error) {
+	var resp StacksResponse
+	if err := c.get(ctx, "/v1/stacks", &resp); err != nil {
+		return nil, err
+	}
+	return resp.Stacks, nil
+}
+
 // StackFiles lee el compose y el .env de un proyecto.
 func (c *Client) StackFiles(ctx context.Context, project string) (StackFiles, error) {
 	var out StackFiles
