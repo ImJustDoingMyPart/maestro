@@ -7,32 +7,36 @@ Es un solo binario de Go con dos modos:
 - `maestro serve`: el **hub**. Web, login y base SQLite. No toca el socket de Docker: le pide los datos a los agents.
 - `maestro agent`: uno por **host**. Lee Docker (si hay), `/proc`, `/sys` y systemd, edita y levanta los stacks de compose, y responde solo al hub, con un token.
 
-Estado: etapa 7 (hardware, métricas y descubrimiento). Además de lo de abajo, cada host con agent tiene su hardware (CPU, RAM, red, discos, temperaturas, SMART) con historial, cada servicio de Docker su pestaña Métricas, y las unidades y timers de systemd y las LXC y VMs de Proxmox llegan a la bandeja de Descubiertos. Lo de etapas anteriores: Hay portada con login y lista de servicios desde Docker; el semáforo combina el estado de los contenedores con checks HTTP, TCP, DNS y push que corren en el hub, y cada cambio de estado queda guardado. Cada servicio tiene su página con el historial de sus checks, la línea de tiempo (logs en vivo con los cambios de estado intercalados) y, si es de compose, la pestaña Compose para editar el `compose.yml` y el `.env` y correr `up`, `down`, `restart` y `pull`. Cada servicio da además un informe en Markdown, con los secretos censurados, para pegarlo en un agente de IA.
+Estado: las nueve etapas del plan están hechas; reemplaza a Uptime Kuma, Dozzle y Beszel en el server para el que se escribió. La interfaz es una aplicación de Svelte que no recarga al navegar. Además de lo de abajo, cada host con agent tiene su hardware (CPU, RAM, red, discos, temperaturas, SMART) con historial, cada servicio de Docker su pestaña Métricas, y las unidades y timers de systemd y las LXC y VMs de Proxmox llegan a la bandeja de Descubiertos. Lo de etapas anteriores: Hay portada con login y lista de servicios desde Docker; el semáforo combina el estado de los contenedores con checks HTTP, TCP, DNS y push que corren en el hub, y cada cambio de estado queda guardado. Cada servicio tiene su página con el historial de sus checks, la línea de tiempo (logs en vivo con los cambios de estado intercalados) y, si es de compose, la pestaña Compose para editar el `compose.yml` y el `.env` y correr `up`, `down`, `restart` y `pull`. Cada servicio da además un informe en Markdown, con los secretos censurados, para pegarlo en un agente de IA.
 
 ## Desarrollo
 
-Requiere Go 1.27. No hace falta Node.
+Requiere Go 1.27. Node hace falta solo para regenerar la interfaz (`go generate ./web`); `go build` no lo usa.
 
 ```sh
 go vet ./... && go test -race ./...
 go build -o maestro ./cmd/maestro
 ```
 
-### JavaScript
+### Interfaz
 
-El JavaScript propio está en `web/src/` y [esbuild](https://esbuild.github.io/) lo junta en `web/static/gen/`, que va commiteado para que `go build` alcance. esbuild está escrito en Go y figura como herramienta en `go.mod`, así que después de tocar `web/src/` se regenera con:
+La interfaz es una aplicación de [Svelte](https://svelte.dev/) 5 en `web/src/app/`, más los módulos de `web/src/` que usa (el visor de logs, el editor de Compose con [CodeMirror 6](https://codemirror.net/), los gráficos con [uPlot](https://github.com/leeoniya/uPlot)). La arma `internal/sveltebuild`: [esbuild](https://esbuild.github.io/) (escrito en Go, herramienta de `go.mod`) con un plugin que compila cada `.svelte` con el compilador de Svelte, que sí necesita Node. La salida va a `web/static/gen/app/` y se commitea, así `go build` alcanza. Después de tocar `web/src/`:
 
 ```sh
 go generate ./web
 ```
 
-Hay un bundle por página: `logs.js` (el visor) y `compose.js` (el editor, que solo se carga en la pestaña Compose). El editor usa [CodeMirror 6](https://codemirror.net/), que se publica en npm. Para no depender de Node, `go generate` corre antes `internal/npmfetch`, que baja a `web/node_modules/` (ignorado por git) las versiones fijas de `web/npm.lock` y verifica el sha512 de cada tarball. El lockfile lista todos los paquetes, también los transitivos; para agregar o actualizar uno:
+Sale en módulos ES con code splitting: `main.js` es la aplicación y el editor y los gráficos son chunks aparte que el navegador baja solo al entrar a Compose o a un gráfico.
+
+Cada página de la aplicación está en la misma URL de dos formas: sin más, el shell (`web/templates/app.html`, que monta la aplicación); con `Accept: application/json`, los datos de la página. Al tocar un link propio la aplicación cambia la URL con `pushState`, pide esos datos y dibuja la página nueva, sin recargar. Solo el login es una página aparte.
+
+Los paquetes de npm no se instalan con npm: `go generate` corre antes `internal/npmfetch`, que baja a `web/node_modules/` (ignorado por git) las versiones fijas de `web/npm.lock` y verifica el sha512 de cada tarball. El lockfile lista todos los paquetes, también los transitivos; para agregar o actualizar uno:
 
 ```sh
 go run ./internal/npmfetch -lock web/npm.lock -add @codemirror/view@6.43.15
 ```
 
-Un test de `web` falla si el bundle commiteado no sale de `web/src/` tal como está (si no están los paquetes de npm, se saltea). La lógica pura del visor (niveles, buffer) tiene tests aparte que sí necesitan Node: `node --test web/src/`.
+Un test de `web` falla si el bundle commiteado no sale de `web/src/` tal como está (sin Node o sin los paquetes de npm, se saltea). La lógica pura del visor (niveles, buffer) tiene tests aparte: `node --test web/src/`.
 
 ### Portada de prueba
 
@@ -97,7 +101,7 @@ Cada tarjeta lleva el logo de su aplicación, de [dashboard-icons](https://githu
 
 ## Página de un servicio
 
-Tocar una tarjeta de la portada lleva a `/services/<id>` (por ejemplo `/services/media-stack/jellyfin`). Muestra de dónde sale el servicio, su host y sus contenedores, y la pestaña Actividad con los logs en vivo.
+Tocar una tarjeta de la portada lleva a `/services/<id>` (por ejemplo `/services/media-stack/jellyfin`). Muestra de dónde sale el servicio, su host y sus contenedores, y la pestaña Actividad con los logs en vivo. En una unidad de systemd, los logs son su journal (un timer trae también el de su servicio): el agent lo lee con `journalctl`, el del PATH o, en un contenedor, el del host montado en `--hostfs` (el agent necesita el grupo `systemd-journal` del host), y el hub pide las líneas nuevas cada 3 segundos.
 
 ### Logs
 
@@ -180,7 +184,9 @@ docker compose run --rm hub telegram-test --config /config/maestro.yaml
 
 `/stacks/<host>/<proyecto>`, enlazada desde la página de cada servicio de compose. Se nombra por stack y no por servicio porque después de un `down` el stack no tiene contenedores ni servicios, y hay que poder levantarlo de nuevo: el agent lo encuentra igual por `<stacks-dir>/<proyecto>/compose.yml`.
 
-- **Editor** con resaltado de YAML y de `.env`, indentación, plegado y buscar y reemplazar (`Ctrl+F`). `Ctrl+S` guarda. Si hay cambios sin guardar, el navegador avisa antes de salir.
+**Stacks bajados**: el agent lista los stacks de `--stacks-dir` con sus servicios (`docker compose config`, guardado hasta que cambie el archivo), y los que no tienen ningún contenedor siguen en la portada, en su grupo, como Detenidos con el motivo "stack bajado" y un botón Levantar (`up -d`) en lugar de Abrir. No avisan, salvo que tengan un check en `maestro.yaml` que falle: entonces caen y avisan como cualquier otro.
+
+- **Editor** con resaltado de YAML y de `.env`, indentación, plegado y buscar y reemplazar (`Ctrl+F`). `Ctrl+S` guarda. Si hay cambios sin guardar, se avisa antes de salir (de la página o del navegador).
 - **Mientras se edita**, después de un segundo sin teclear, el archivo se revisa con la misma validación (sin escribir nada). Los problemas quedan subrayados en su línea, con un punto en el margen, y listados debajo del editor con una explicación en castellano y el mensaje original de compose. Son errores (rojo: compose rechaza el archivo) o avisos (ámbar: compose lo acepta, pero algo no va a andar como parece, por ejemplo una variable que no está en el `.env` y queda vacía, o un `$` dentro de una contraseña, que compose lee como variable y hay que escribir `$$`). Lo que se pega en el compose llega con las tabulaciones de la sangría cambiadas por espacios.
 - **Guardar** valida primero con `docker compose config` sobre una copia temporal al lado del archivo (las rutas relativas del compose se resuelven igual). Si falla, no se escribe nada y los errores quedan marcados en el editor. Si pasa, se muestra el diff, con los avisos si los hay, y se pide confirmar.
 - La escritura es atómica (temporal en la misma carpeta y `rename`) y conserva permisos y dueño; un `.env` nuevo se crea con `0600`. Si el archivo cambió en el disco desde que se abrió la página, no se pisa: se avisa.
@@ -295,7 +301,8 @@ El token va siempre en `MAESTRO_AGENT_TOKEN` (no en un flag: se vería en `ps`).
 
 ## Seguridad
 
-- Login desde la primera versión. Las contraseñas se guardan como hashes argon2id. La sesión es un token aleatorio en una cookie `HttpOnly`, `Secure` y `SameSite=Lax`, y en la base solo queda su hash.
+- Login desde la primera versión, con un límite de 10 intentos fallidos cada 15 minutos por IP (la última de `X-Forwarded-For`, que pone el proxy).
+- `Content-Security-Policy`: el JavaScript sale solo de `/static`, sin nada en línea ni `eval`. Las contraseñas se guardan como hashes argon2id. La sesión es un token aleatorio en una cookie `HttpOnly`, `Secure` y `SameSite=Lax`, y en la base solo queda su hash.
 - Los POST de otro origen se rechazan con `http.CrossOriginProtection`.
 - El agent no se publica y exige un token Bearer. El token se compara en tiempo constante y no se muestra en los logs.
 - Montar el socket con `:ro` no hace que la API de Docker sea de solo lectura. El agent levanta y baja stacks y edita sus compose: quien controle el agent (o el hub, que le habla con el token) tiene el equivalente a root en ese host. Por eso el login, el agent sin publicar y el acceso solo detrás del proxy.
@@ -306,3 +313,7 @@ El token va siempre en `MAESTRO_AGENT_TOKEN` (no en un flag: se vería en `ps`).
 - El informe para IA sale censurado siempre. Con el token de la API se puede pedir sin sesión: el token se compara en tiempo constante y uno equivocado queda en el log con la IP.
 - Las líneas de log se insertan como texto, nunca como HTML: un contenedor no puede meter marcado en la página.
 - `/push/<token>` no pide login: el token es la credencial. Se compara en tiempo constante contra todos los tokens, sin cortar en el primero, y la respuesta es la misma exista o no. El token viaja en la URL, así que queda en el log de acceso del proxy si está activado.
+
+## Licencia
+
+MIT (`LICENSE`). Lo de terceros que va embebido, con sus licencias, en `THIRD_PARTY.md`.
