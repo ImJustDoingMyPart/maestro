@@ -107,7 +107,11 @@ func detail(svc catalog.Service, st status.Status) serviceDetail {
 		d.Source = "contenedor suelto"
 	case catalog.SourceSystemd:
 		d.Source = "systemd · " + svc.Unit
-		d.NoLogs = "Los logs de las unidades de systemd (el journal) todavía no se muestran. Abajo, sus cambios de estado."
+		if svc.Unit != "" && svc.Host != "" {
+			d.LogsURL = "/logs/" + escapeID(svc.ID) // el journal de la unidad
+		} else {
+			d.NoLogs = "Sin unidad ni host: no hay journal que mostrar. Abajo, sus cambios de estado."
+		}
 	case catalog.SourceGuest:
 		_, kind, vmid, _ := parseFound(svc.ID)
 		d.Source = foundKindLabel(kind) + " " + vmid

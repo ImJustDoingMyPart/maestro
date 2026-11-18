@@ -13,6 +13,7 @@ import (
 
 	"github.com/ImJustDoingMyPart/maestro/internal/agent"
 	"github.com/ImJustDoingMyPart/maestro/internal/catalog"
+	"github.com/ImJustDoingMyPart/maestro/internal/journal"
 )
 
 // fakeAgent devuelve lo que se le cargue; se puede cambiar entre vueltas.
@@ -21,6 +22,8 @@ type fakeAgent struct {
 	cs  []agent.Container
 	err error
 	sys *agent.System
+	// journal contesta Journal; nil: error.
+	journal func(units []string, n int, after string) (journal.Page, error)
 }
 
 func (f *fakeAgent) Containers(context.Context) ([]agent.Container, error) {
@@ -200,4 +203,13 @@ func TestPollerUnidadDelArchivoNoSeRepite(t *testing.T) {
 			t.Errorf("fila del timer = %+v", r)
 		}
 	}
+}
+
+func (f *fakeAgent) Journal(_ context.Context, units []string, n int, after string) (journal.Page, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.journal == nil {
+		return journal.Page{}, errors.New("sin journal")
+	}
+	return f.journal(units, n, after)
 }

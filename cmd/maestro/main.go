@@ -24,6 +24,7 @@ import (
 	"github.com/ImJustDoingMyPart/maestro/internal/collect"
 	"github.com/ImJustDoingMyPart/maestro/internal/docker"
 	"github.com/ImJustDoingMyPart/maestro/internal/httpserver"
+	"github.com/ImJustDoingMyPart/maestro/internal/journal"
 	"github.com/ImJustDoingMyPart/maestro/internal/hub"
 	"github.com/ImJustDoingMyPart/maestro/internal/stacks"
 	"github.com/ImJustDoingMyPart/maestro/internal/store"
@@ -240,7 +241,17 @@ func runAgent(ctx context.Context, args []string, stderr io.Writer) error {
 	col := collect.New(opts)
 	go col.Run(ctx)
 
-	h, err := agent.NewHandler(containers, stacksSrc, col, token, logger)
+	var hopts []agent.HandlerOption
+	if *useSystemd {
+		// El journal de las unidades: journalctl del PATH o, en un
+		// contenedor, el del host en --hostfs.
+		j := journal.New(*hostFS)
+		if !j.Available() {
+			logger.Warn("sin journalctl: el journal de las unidades no se va a ver")
+		}
+		hopts = append(hopts, agent.WithJournal(j))
+	}
+	h, err := agent.NewHandler(containers, stacksSrc, col, token, logger, hopts...)
 	if err != nil {
 		return fmt.Errorf("agent: %w", err)
 	}

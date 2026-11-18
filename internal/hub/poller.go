@@ -17,6 +17,7 @@ import (
 	"github.com/ImJustDoingMyPart/maestro/internal/agent"
 	"github.com/ImJustDoingMyPart/maestro/internal/catalog"
 	"github.com/ImJustDoingMyPart/maestro/internal/config"
+	"github.com/ImJustDoingMyPart/maestro/internal/journal"
 )
 
 // agentClient es lo que el hub necesita de un agent. Lo cumple
@@ -29,6 +30,7 @@ type agentClient interface {
 	WriteStackFile(ctx context.Context, project, name, content, hash string) (agent.WriteResult, error)
 	StackAction(ctx context.Context, project, action string) (iter.Seq2[agent.ActionEvent, error], error)
 	System(ctx context.Context) (agent.System, error)
+	Journal(ctx context.Context, units []string, n int, after string) (journal.Page, error)
 }
 
 // HostStatus es cómo le fue al último pedido a un agent.
@@ -154,6 +156,15 @@ func (p *Poller) Logs(ctx context.Context, host, containerID string, opts agent.
 		return nil, fmt.Errorf("el host %q no tiene agent", host)
 	}
 	return a.Logs(ctx, containerID, opts)
+}
+
+// Journal pide el journal de unas unidades al agent de host.
+func (p *Poller) Journal(ctx context.Context, host string, units []string, n int, after string) (journal.Page, error) {
+	a, err := p.agent(host)
+	if err != nil {
+		return journal.Page{}, err
+	}
+	return a.Journal(ctx, units, n, after)
 }
 
 // errNoAgent es un host que no está en la config.

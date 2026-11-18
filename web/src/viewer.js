@@ -269,7 +269,8 @@ export class Viewer {
       c: ev.c || "",
       text,
       lower: null, // en minúsculas, se calcula al buscar por primera vez
-      level: detectLevel(text),
+      // El journal trae el nivel (lvl, de la prioridad de syslog); Docker no.
+      level: ev.lvl === "error" ? ERROR : ev.lvl === "warn" ? WARN : detectLevel(text),
     });
     if (this.pending.length > MAX_PENDING) this.pending.splice(0, this.pending.length - MAX_PENDING);
     this.schedule();

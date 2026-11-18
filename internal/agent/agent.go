@@ -9,8 +9,11 @@ import (
 	"iter"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/ImJustDoingMyPart/maestro/internal/journal"
 )
 
 // Container es un contenedor tal como viaja del agent al hub.
@@ -68,12 +71,17 @@ const requestTimeout = 15 * time.Second
 // nil (un host sin Docker): /v1/containers da una lista vacía y los logs,
 // 501. stacks puede ser nil (el agent corre sin --stacks-dir): las rutas de
 // stacks contestan 501. sys puede ser nil (tests): /v1/system contesta 501.
-func NewHandler(src ContainerSource, stacks StackSource, sys SystemSource, token string, logger *slog.Logger) (http.Handler, error) {
+func NewHandler(src ContainerSource, stacks StackSource, sys SystemSource, token string, logger *slog.Logger, opts ...HandlerOption) (http.Handler, error) {
 	if len(token) < MinTokenLen {
 		return nil, ErrWeakToken
 	}
+	var o handlerOptions
+	for _, f := range opts {
+		f(&o)
+	}
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v1/journal", handleJournal(o.journal, logger.Error))
 	mux.HandleFunc("GET /v1/containers", func(w http.ResponseWriter, r *http.Request) {
 		if src == nil {
 			writeJSON(w, http.StatusOK, ContainersResponse{Containers: []Container{}})
@@ -116,6 +124,61 @@ func NewHandler(src ContainerSource, stacks StackSource, sys SystemSource, token
 	}
 
 	return requireToken(token, mux), nil
+}
+
+// JournalSource lee el journal de systemd. Lo cumple *journal.Reader.
+type JournalSource interface {
+	Available() bool
+	Read(ctx context.Context, units []string, n int, after string) (journal.Page, error)
+}
+
+// HandlerOption agrega a NewHandler lo que no todos los agents tienen.
+type HandlerOption func(*handlerOptions)
+
+type handlerOptions struct {
+	journal JournalSource
+}
+
+// WithJournal sirve GET /v1/journal.
+func WithJournal(j JournalSource) HandlerOption {
+	return func(o *handlerOptions) { o.journal = j }
+}
+
+// handleJournal atiende GET /v1/journal?unit=a&unit=b&n=200&after=<cursor>:
+// las líneas del journal de esas unidades (ver journal.Reader.Read). Sin
+// journalctl, 501.
+func handleJournal(j JournalSource, logErr func(string, ...any)) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if j == nil || !j.Available() {
+			writeJSON(w, http.StatusNotImplemented, ErrorBody{Error: "este agent no puede leer el journal (no encontró journalctl)"})
+			return
+		}
+		q := r.URL.Query()
+		units := q["unit"]
+		for _, u := range units {
+			if !journal.ValidUnit(u) {
+				writeJSON(w, http.StatusBadRequest, ErrorBody{Error: "unidad inválida"})
+				return
+			}
+		}
+		if len(units) == 0 || len(units) > 4 {
+			writeJSON(w, http.StatusBadRequest, ErrorBody{Error: "hacen falta entre 1 y 4 unidades"})
+			return
+		}
+		n, _ := strconv.Atoi(q.Get("n"))
+		ctx, cancel := context.WithTimeout(r.Context(), requestTimeout)
+		defer cancel()
+		p, err := j.Read(ctx, units, n, q.Get("after"))
+		if err != nil {
+			logErr("leer el journal", "units", units, "err", err)
+			writeJSON(w, http.StatusBadGateway, ErrorBody{Error: err.Error()})
+			return
+		}
+		if p.Entries == nil {
+			p.Entries = []journal.Entry{}
+		}
+		writeJSON(w, http.StatusOK, p)
+	}
 }
 
 // requireToken exige "Authorization: Bearer <token>".

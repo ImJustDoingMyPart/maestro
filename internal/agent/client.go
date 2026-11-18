@@ -10,8 +10,11 @@ import (
 	"iter"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/ImJustDoingMyPart/maestro/internal/journal"
 )
 
 // Client habla con un agent. Lo usa el hub.
@@ -76,6 +79,21 @@ func (c *Client) Logs(ctx context.Context, id string, opts LogOptions) (iter.Seq
 			}
 		}
 	}, nil
+}
+
+// Journal pide las líneas del journal de unas unidades (ver
+// journal.Reader.Read).
+func (c *Client) Journal(ctx context.Context, units []string, n int, after string) (journal.Page, error) {
+	q := url.Values{"unit": units}
+	if n > 0 {
+		q.Set("n", strconv.Itoa(n))
+	}
+	if after != "" {
+		q.Set("after", after)
+	}
+	var p journal.Page
+	err := c.get(ctx, "/v1/journal?"+q.Encode(), &p)
+	return p, err
 }
 
 func (c *Client) get(ctx context.Context, path string, out any) error {

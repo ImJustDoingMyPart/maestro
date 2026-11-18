@@ -44,6 +44,10 @@ type logEvent struct {
 	Stream    string    `json:"stream"`
 	Line      string    `json:"line"`
 	Container string    `json:"c,omitempty"`
+	// Level es el nivel cuando la fuente lo dice ("error", "warn"): el
+	// journal tiene la prioridad de syslog. Vacío: el visor lo adivina por
+	// el texto.
+	Level string `json:"lvl,omitempty"`
 }
 
 // streamLogs atiende GET /logs/{id...}: los logs de un servicio como
@@ -66,6 +70,10 @@ func (s *server) streamLogs(w http.ResponseWriter, r *http.Request) {
 	svc, ok := findService(s.poller.Snapshot(), r.PathValue("id"))
 	if !ok {
 		http.Error(w, "servicio inexistente", http.StatusNotFound)
+		return
+	}
+	if svc.Source == catalog.SourceSystemd && svc.Unit != "" && len(svc.Containers) == 0 {
+		s.streamJournal(w, r, svc)
 		return
 	}
 	cs := svc.Containers
