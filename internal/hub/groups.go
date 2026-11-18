@@ -251,7 +251,7 @@ const maxLayoutKeys = 500
 // orden en el grupo "group" ("Otros" o vacío es sin grupo). Las que venían
 // de otro grupo (se arrastraron de uno a otro) cambian de grupo, salvo que
 // el suyo venga del archivo: entonces no se guarda nada y responde 409.
-// Lo llama web/static/services.js con fetch; responde 204.
+// Lo llama la portada con fetch; responde 204.
 func (s *server) orderCards(w http.ResponseWriter, r *http.Request) {
 	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	if err := r.ParseForm(); err != nil {

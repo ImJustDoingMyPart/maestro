@@ -1,7 +1,5 @@
 <!--
-  Tarjeta de la portada: las mismas partes y clases que la plantilla
-  "card" de services.html, así maestro.css la dibuja igual. Lo que se
-  mueve:
+  Tarjeta de la portada. Lo que se mueve:
     - los servicios de un stack se despliegan con el alto (fold, en
       motion.js);
     - el punto de estado, cuando cambia, aparece con el color nuevo;

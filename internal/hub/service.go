@@ -26,12 +26,9 @@ type serviceDetail struct {
 	StackURL    string // pestaña Compose; vacío si no es de compose
 	LogsURL     string // vacío si el servicio no tiene logs que mostrar
 	NoLogs      string // por qué no hay logs, si LogsURL está vacío
-	ChecksURL   string // fragmento con el historial de checks; vacío si no tiene
-	LiveURL     string // fragmento con contenedores, motivos y semáforo
 	ReportURL   string // informe para IA
 	PageURL     string // la página (pestaña Actividad)
 	MetricsURL  string // pestaña Métricas; vacío si no tiene contenedores
-	OOB         bool   // se arma para el fragmento: el semáforo va con hx-swap-oob
 	Checks      []checkPanel
 	// Events son los cambios de estado recientes, para un servicio sin logs
 	// (la línea de tiempo de los que tienen logs va por el visor).
@@ -50,21 +47,18 @@ func (s *server) servicePage(w http.ResponseWriter, r *http.Request) {
 	svc, ok := s.lookup(r.Context(), r.PathValue("id"))
 	if !ok {
 		s.page(w, r, http.StatusNotFound, pageData{
-			Title: "No existe", Active: "services", ShowNav: true,
+			Title: "No existe",
 		})
 		return
 	}
 	d := detail(svc, s.mon.Status(svc.ID))
 	d.Logo, d.Icon = logoFor(s.icons, serviceHint(svc).withOverride(s.chosenIcons(r.Context())[serviceKey(svc.ID)], svc.IconFromFile), d.Icon)
-	if len(svc.Checks) > 0 {
-		d.ChecksURL = "/fragments/checks/" + escapeID(svc.ID)
-	}
 	d.Checks, d.Events = s.checkPanels(r, svc)
 	if d.LogsURL != "" {
 		d.Events = nil
 	}
 	s.page(w, r, http.StatusOK, pageData{
-		Title: svc.Name, Active: "services", ShowNav: true, Svc: &d,
+		Title: svc.Name, Svc: &d,
 	})
 }
 
@@ -74,14 +68,14 @@ func (s *server) metricsPage(w http.ResponseWriter, r *http.Request) {
 	svc, ok := s.lookup(r.Context(), r.PathValue("id"))
 	if !ok || len(svc.Containers) == 0 {
 		s.page(w, r, http.StatusNotFound, pageData{
-			Title: "No existe", Active: "services", ShowNav: true,
+			Title: "No existe",
 		})
 		return
 	}
 	d := detail(svc, s.mon.Status(svc.ID))
 	d.Logo, d.Icon = logoFor(s.icons, serviceHint(svc).withOverride(s.chosenIcons(r.Context())[serviceKey(svc.ID)], svc.IconFromFile), d.Icon)
 	s.page(w, r, http.StatusOK, pageData{
-		Title: svc.Name, Active: "services", ShowNav: true, Svc: &d, Tab: "metrics", Charts: serviceCharts(svc),
+		Title: svc.Name, Svc: &d, Tab: "metrics", Charts: serviceCharts(svc),
 	})
 }
 
@@ -95,7 +89,6 @@ func detail(svc catalog.Service, st status.Status) serviceDetail {
 		State:       State(st.State),
 		Reasons:     st.Reasons,
 		Host:        svc.Host,
-		LiveURL:     "/fragments/service/" + escapeID(svc.ID),
 		ReportURL:   "/api/services/" + escapeID(svc.ID) + reportSuffix,
 		PageURL:     servicePath(svc.ID),
 	}

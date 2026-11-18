@@ -705,7 +705,7 @@ header.page-head {
   background: var(--surface-container-highest);
   overflow: hidden;
 }
-/* El logo se dibuja en un cuadrado de 2.125rem; web/static/icons.js lo
+/* El logo se dibuja en un cuadrado de 2.125rem; web/src/app/lib/logos.js lo
    corre y escala para que el dibujo quede centrado y ocupe el 86 %. */
 .svc-icon img {
   display: block;
@@ -909,10 +909,9 @@ body.light .svc-icon img.mono { filter: none; }
 
 /* ---------- Modo edición ---------- */
 
-/* body.editing (lo pone web/static/services.js) muestra los controles de
-   los grupos, los grupos vacíos y la barra de abajo. */
+/* body.editing (lo ponen las páginas con modo edición) muestra los
+   controles de los grupos, los grupos vacíos y la barra de abajo. */
 body:not(.editing) .edit-only,
-body.editing .view-only,
 body:not(.editing) .group.empty {
   display: none !important;
 }
@@ -1254,9 +1253,6 @@ body.editing #services .card-slot > .svc-card {
 
 /* Etapa 4: estado combinado y checks. */
 
-/* Motivo del estado en la tarjeta de la portada. */
-.state-reason.down     { color: var(--error); }
-.state-reason.degraded { color: var(--status-warn); }
 
 /* Motivos en la página del servicio. */
 .state-reasons {
@@ -1313,9 +1309,6 @@ body.editing #services .card-slot > .svc-card {
 .log-line.state-up { border-inline-start-color: var(--status-up); }
 
 
-.rename-dialog {
-  min-inline-size: min(24rem, 90vw);
-}
 
 
 /* Diálogo del informe para IA, cuando no se pudo copiar solo. */
@@ -1331,12 +1324,7 @@ body.editing #services .card-slot > .svc-card {
   white-space: pre;
 }
 
-/* Formulario de un servicio externo: los campos de HTTP solo con HTTP
-   elegido (sin JavaScript, con :has). */
-.external-form:has(input[name=kind][value=tcp]:checked) .http-only,
-.external-form:has(input[name=kind][value=http]:checked) .tcp-only {
-  display: none;
-}
+/* Formulario de un servicio externo. */
 .external-form .check-kind {
   margin-block: var(--sp-2) var(--sp-4);
 }
@@ -1358,10 +1346,6 @@ body.editing #services .card-slot > .svc-card {
 .found-filter .field {
   margin: 0;
   min-width: 12rem;
-}
-a.found-failing {
-  display: block;
-  color: inherit;
 }
 
 .export-yaml {
@@ -1799,11 +1783,6 @@ a.hw-row:hover {
   .hw-row {
     grid-template-columns: minmax(0, 1fr) 4rem 5rem;
   }
-}
-.hw-more {
-  margin: var(--sp-2) 0 0;
-  color: var(--on-surface-variant);
-  font: var(--type-caption);
 }
 .hw-errors {
   margin-block-start: var(--sp-6);

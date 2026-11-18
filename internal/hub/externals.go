@@ -108,7 +108,7 @@ func (s *server) renderExternal(w http.ResponseWriter, r *http.Request, code int
 	if f.ID != "" {
 		title = f.Name
 	}
-	s.page(w, r, code, pageData{Title: title, Active: "services", ShowNav: true, Ext: &f})
+	s.page(w, r, code, pageData{Title: title, Ext: &f})
 }
 
 // newExternalPage atiende GET /externals/new.

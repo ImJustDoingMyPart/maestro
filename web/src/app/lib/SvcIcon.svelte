@@ -1,7 +1,6 @@
 <!--
   Ícono de un servicio: el logo de la aplicación (internal/icons, con su
-  variante oscura si la tiene) o uno de Material Symbols. Es el partial
-  "svcicon" de las plantillas.
+  variante oscura si la tiene) o uno de Material Symbols.
 -->
 <script>
   let { logo = null, icon = "deployed_code" } = $props();

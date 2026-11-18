@@ -125,14 +125,12 @@ func summarize(groups []group) summary {
 	return s
 }
 
-// pageData es lo que recibe la plantilla layout y, a través de ella, el
-// bloque "content" de cada página.
+// pageData son los datos de una página: el JSON que pide la aplicación y,
+// en el login, lo que recibe la plantilla.
 type pageData struct {
-	Title   string
-	Active  string // destino resaltado en la navegación
-	ShowNav bool   // false en el login
-	Demo    bool
-	Live    bool // la grilla se refresca sola (no en el demo)
+	Title string
+	Demo  bool
+	Live  bool // la grilla se refresca sola (no en el demo)
 
 	Svc   *serviceDetail // página de un servicio; nil si no existe
 	Ext   *externalForm  // alta o edición de un servicio externo
@@ -152,7 +150,6 @@ type pageData struct {
 	Hidden       []hiddenRow    // página de ocultos
 	HostProblems []HostStatus
 	Updated      time.Time // hora de la última vuelta del poller; cero si no hubo
-	OOB          bool      // fragmento de la portada: la hora del encabezado va con hx-swap-oob
 	Muestra      *muestra  // página del muestrario
 
 	// Login

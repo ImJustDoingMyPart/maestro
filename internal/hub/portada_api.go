@@ -6,7 +6,7 @@ import (
 )
 
 // La portada hecha con Svelte (web/src/portada) pide sus datos en JSON a
-// /api/portada: lo mismo que servicesData le da a la plantilla, con nombres
+// /api/portada: lo que arma servicesData, con nombres
 // en minúscula.
 
 type apiPortada struct {
@@ -93,7 +93,7 @@ type apiMember struct {
 	Reason         string `json:"reason"`
 }
 
-// portadaJSON pasa los datos de la plantilla a los del JSON.
+// portadaJSON pasa los datos de la portada al JSON.
 func portadaJSON(d pageData) apiPortada {
 	out := apiPortada{
 		Live:         d.Live,

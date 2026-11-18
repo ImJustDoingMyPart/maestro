@@ -1,7 +1,7 @@
 <!--
   Tarjeta de Hardware (hwCard de internal/hub/hardware.go): mosaicos,
   almacenamiento, discos, LXC y VMs, con las mismas partes en el mismo
-  lugar. Es el partial "hwcard".
+  lugar.
 -->
 <script>
   import SvcIcon from "./SvcIcon.svelte";

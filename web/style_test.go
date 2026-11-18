@@ -157,13 +157,17 @@ func TestEstiloTokensDefinidos(t *testing.T) {
 	}
 }
 
-// Las plantillas no llevan estilos en línea: un style="" es una medida
+// Las plantillas y los componentes no llevan estilos en línea: un style="" es una medida
 // fuera de la escala. Se permite solo con un valor que sale de los datos
 // (el ancho de una barra de uso).
 func TestPlantillasSinEstilosEnLinea(t *testing.T) {
-	files, err := filepath.Glob("templates/*.html")
-	if err != nil {
-		t.Fatal(err)
+	var files []string
+	for _, pat := range []string{"templates/*.html", "src/app/*.svelte", "src/app/*/*.svelte"} {
+		m, err := filepath.Glob(pat)
+		if err != nil {
+			t.Fatal(err)
+		}
+		files = append(files, m...)
 	}
 	style := regexp.MustCompile(`style="([^"]*)"`)
 	for _, f := range files {

@@ -1,4 +1,4 @@
-// Package web embebe las plantillas y los archivos estáticos en el binario.
+// Package web embebe las plantillas (el shell y el login) y los archivos estáticos en el binario.
 //
 // La interfaz es una aplicación de Svelte (src/app/, más los módulos de
 // src/ que usa: el visor de logs, el editor de Compose, los gráficos). La

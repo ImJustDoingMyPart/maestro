@@ -213,5 +213,5 @@ func (s *server) hiddenPage(w http.ResponseWriter, r *http.Request) {
 		rows = append(rows, row)
 	}
 	slices.SortFunc(rows, func(a, b hiddenRow) int { return cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)) })
-	s.page(w, r, http.StatusOK, pageData{Title: "Ocultos", Active: "services", ShowNav: true, Hidden: rows})
+	s.page(w, r, http.StatusOK, pageData{Title: "Ocultos", Hidden: rows})
 }

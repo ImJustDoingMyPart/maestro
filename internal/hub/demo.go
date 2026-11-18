@@ -52,7 +52,7 @@ var demoGroups = []group{
 	}},
 }
 
-// demoLive es demoGroups con claves (la portada de Svelte las usa para
+// demoLive es demoGroups con claves (la portada las usa para
 // seguir cada tarjeta) y un estado que cambia cada 15 segundos: en cada
 // vuelta una tarjeta distinta se cae o se recupera, y en Immich un
 // servicio distinto se degrada. Sirve para mirar las animaciones de

@@ -294,7 +294,7 @@ func (s *server) hardwarePage(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.page(w, r, http.StatusOK, pageData{
-		Title: "Hardware", Active: "hardware", ShowNav: true,
+		Title:    "Hardware",
 		Hardware: hw, HWHost: sel, Live: editable,
 	})
 }

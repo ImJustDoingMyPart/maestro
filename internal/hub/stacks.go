@@ -101,7 +101,7 @@ func (s *server) stackPage(w http.ResponseWriter, r *http.Request) {
 	if sp.From != nil {
 		title = sp.From.Name
 	}
-	s.page(w, r, code, pageData{Title: title + " · Compose", Active: "services", ShowNav: true, Stack: &sp})
+	s.page(w, r, code, pageData{Title: title + " · Compose", Stack: &sp})
 }
 
 // fileRequest es el cuerpo JSON de validar y guardar.

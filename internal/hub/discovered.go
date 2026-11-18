@@ -138,7 +138,7 @@ func (s *server) discoveredPage(w http.ResponseWriter, r *http.Request) {
 	found := foundRows(snap.Discovered, shown)
 	decorateFound(s.icons, found, s.chosenIcons(r.Context()))
 	s.page(w, r, http.StatusOK, pageData{
-		Title: "Descubiertos", Active: "services", ShowNav: true,
+		Title: "Descubiertos",
 		Found: found, FoundPending: pending(snap.Discovered, shown),
 	})
 }

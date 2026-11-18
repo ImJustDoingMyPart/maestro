@@ -284,7 +284,7 @@ func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon moni
 // contentSecurityPolicy: el JavaScript sale solo de /static (nada en
 // línea, nada de eval), y los pedidos, las fuentes y los formularios van
 // solo al hub. Los estilos en línea sí: los ponen Svelte (transiciones),
-// CodeMirror, uPlot y la barra de uso de las plantillas. Las imágenes
+// CodeMirror, uPlot y la barra de uso. Las imágenes
 // pueden venir de afuera porque un ícono puede ser una URL
 // (homepage.icon: https://…); data: es para los SVG que arma Beer CSS.
 const contentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
@@ -306,7 +306,7 @@ func securityHeaders(next http.Handler) http.Handler {
 // portadaPage es la portada hecha con Svelte: la página trae solo el
 // lugar donde se monta; los datos llegan de /api/portada.
 func (s *server) portadaPage(w http.ResponseWriter, r *http.Request) {
-	s.page(w, r, http.StatusOK, pageData{Title: "Servicios", Active: "services", ShowNav: true, Live: true})
+	s.page(w, r, http.StatusOK, pageData{Title: "Servicios", Live: true})
 }
 
 // servicesData arma la grilla desde la última foto del poller.

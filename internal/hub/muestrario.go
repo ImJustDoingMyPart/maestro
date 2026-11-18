@@ -54,7 +54,7 @@ func muestraData(ic *icons.Resolver) pageData {
 	}
 	// Una hora fija para "Actualizado" del encabezado de la portada.
 	updated := time.Date(2026, 11, 13, 21, 5, 48, 0, time.UTC)
-	return pageData{Title: "Muestrario", ShowNav: true, Muestra: m, Updated: updated}
+	return pageData{Title: "Muestrario", Muestra: m, Updated: updated}
 }
 
 func (s *server) muestrarioPage(w http.ResponseWriter, r *http.Request) {

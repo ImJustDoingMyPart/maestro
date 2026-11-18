@@ -73,7 +73,7 @@ func TestPortadaAPI(t *testing.T) {
 	}
 }
 
-// El JSON lleva el interruptor de avisos como la plantilla clásica.
+// El JSON lleva el interruptor de avisos.
 func TestPortadaAPIAvisos(t *testing.T) {
 	c := cardJSON(serviceCard{Key: "stack:vm/a", Alert: true, Members: []memberRow{{Key: "service:a/x", AlertLocked: true}}})
 	if !c.Alert || c.AlertLocked || !c.Members[0].AlertLocked || c.Members[0].Alert {
