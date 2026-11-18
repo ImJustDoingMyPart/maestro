@@ -285,6 +285,16 @@ func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon moni
 	return securityHeaders(csrf.Handler(mux)), nil
 }
 
+// contentSecurityPolicy: el JavaScript sale solo de /static (nada en
+// línea, nada de eval), y los pedidos, las fuentes y los formularios van
+// solo al hub. Los estilos en línea sí: los ponen Svelte (transiciones),
+// CodeMirror, uPlot y la barra de uso de las plantillas. Las imágenes
+// pueden venir de afuera porque un ícono puede ser una URL
+// (homepage.icon: https://…); data: es para los SVG que arma Beer CSS.
+const contentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; " +
+	"img-src 'self' data: https: http:; font-src 'self'; connect-src 'self'; object-src 'none'; " +
+	"base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+
 // securityHeaders agrega los headers que no dependen de la página.
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -292,6 +302,7 @@ func securityHeaders(next http.Handler) http.Handler {
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("X-Frame-Options", "DENY") // nadie puede meter el panel en un iframe
 		h.Set("Referrer-Policy", "same-origin")
+		h.Set("Content-Security-Policy", contentSecurityPolicy)
 		next.ServeHTTP(w, r)
 	})
 }

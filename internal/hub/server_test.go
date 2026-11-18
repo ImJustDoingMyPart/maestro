@@ -173,7 +173,8 @@ func TestRecorridoDeLogin(t *testing.T) {
 			t.Errorf("falta %q en la portada", want)
 		}
 	}
-	if res.Header.Get("X-Frame-Options") != "DENY" || res.Header.Get("X-Content-Type-Options") != "nosniff" {
+	if res.Header.Get("X-Frame-Options") != "DENY" || res.Header.Get("X-Content-Type-Options") != "nosniff" ||
+		!strings.Contains(res.Header.Get("Content-Security-Policy"), "script-src 'self';") {
 		t.Error("faltan headers de seguridad")
 	}
 
