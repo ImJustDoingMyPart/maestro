@@ -91,15 +91,27 @@ func (c *Client) Containers(ctx context.Context) ([]agent.Container, error) {
 	return out, nil
 }
 
+// exitReplay es cuánto para atrás se le piden a Docker los eventos "die"
+// al arrancar: el exit code de los reinicios vive en memoria del agent, y
+// así un agent recién reiniciado recupera el de la última hora (Docker
+// guarda los eventos recientes mientras el daemon no reinicie). Un
+// reinicio cuenta como reciente durante 10 minutos en el hub.
+const exitReplay = time.Hour
+
 // WatchExits escucha los eventos "die" de Docker y guarda el exit code de
-// cada contenedor, hasta que se cancele ctx. Si el stream de eventos se
-// corta (Docker reinició, se cayó el socket), lo vuelve a abrir con
-// espera creciente.
+// cada contenedor, hasta que se cancele ctx. Al abrir el stream pide
+// también los de la última hora (exitReplay). Si se corta (Docker
+// reinició, se cayó el socket), lo vuelve a abrir con espera creciente,
+// desde el último evento visto: no se pierde lo que pasó en el medio.
 func (c *Client) WatchExits(ctx context.Context, logger *slog.Logger) {
 	wait := time.Second
+	since := time.Now().Add(-exitReplay)
 	for {
 		opened := time.Now()
-		err := c.watchOnce(ctx)
+		last, err := c.watchOnce(ctx, since)
+		if !last.IsZero() {
+			since = last
+		}
 		if ctx.Err() != nil {
 			return
 		}
@@ -116,23 +128,28 @@ func (c *Client) WatchExits(ctx context.Context, logger *slog.Logger) {
 	}
 }
 
-func (c *Client) watchOnce(ctx context.Context) error {
+// watchOnce sigue el stream desde since hasta que se corta. Devuelve la
+// hora del último evento que guardó (cero si ninguno).
+func (c *Client) watchOnce(ctx context.Context, since time.Time) (time.Time, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel() // cierra el stream si se sale por un error
 	res := c.api.Events(ctx, client.EventsListOptions{
+		Since:   strconv.FormatInt(since.Unix(), 10),
 		Filters: make(client.Filters).Add("type", "container").Add("event", "die"),
 	})
+	var last time.Time
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return last, ctx.Err()
 		case err := <-res.Err:
-			return err
+			return last, err
 		case m := <-res.Messages:
 			if id, e, ok := exitFromEvent(m); ok {
 				c.mu.Lock()
 				c.exits[id] = e
 				c.mu.Unlock()
+				last = e.at
 			}
 		}
 	}
