@@ -15,6 +15,7 @@ import (
 	"time"
 
 	sd "github.com/coreos/go-systemd/v22/dbus"
+	"golang.org/x/sys/unix"
 
 	"github.com/ImJustDoingMyPart/maestro/internal/agent"
 )
@@ -87,6 +88,13 @@ func (r *Reader) Units(ctx context.Context) ([]agent.Unit, error) {
 			u.Triggers, _ = p["Unit"].(string)
 			u.LastRun = usec(p["LastTriggerUSec"])
 			u.NextRun = usec(p["NextElapseUSecRealtime"])
+			if next := monotonicUsec(p["NextElapseUSecMonotonic"], monotonicNow()); u.NextRun.IsZero() || (!next.IsZero() && next.Before(u.NextRun)) {
+				// Un timer con OnBootSec u OnUnitActiveSec (sin
+				// OnCalendar) vence en tiempo monotónico: desde el
+				// arranque del host. Si tiene los dos, el que llegue
+				// antes.
+				u.NextRun = next
+			}
 			if u.Triggers != "" {
 				u.Result, u.ExitStatus = serviceResult(ctx, c, u.Triggers)
 			}
@@ -109,6 +117,27 @@ func serviceResult(ctx context.Context, c *sd.Conn, name string) (string, int) {
 	res, _ := p["Result"].(string)
 	st, _ := p["ExecMainStatus"].(int32)
 	return res, int(st)
+}
+
+// monotonicUsec pasa un vencimiento en el reloj monotónico (µs desde el
+// arranque) a la hora de pared, con now el reloj monotónico actual. Cero
+// si no hay. El reloj monotónico es el del kernel: en un contenedor es el
+// mismo que en el host.
+func monotonicUsec(v any, now time.Duration) time.Time {
+	n, ok := v.(uint64)
+	if !ok || n == 0 || n == ^uint64(0) || now <= 0 {
+		return time.Time{}
+	}
+	return time.Now().Add(time.Duration(n)*time.Microsecond - now).Truncate(time.Second)
+}
+
+// monotonicNow es CLOCK_MONOTONIC; 0 si no se pudo leer.
+func monotonicNow() time.Duration {
+	var ts unix.Timespec
+	if unix.ClockGettime(unix.CLOCK_MONOTONIC, &ts) != nil {
+		return 0
+	}
+	return time.Duration(ts.Nano())
 }
 
 // usec pasa una propiedad en microsegundos Unix a time.Time; cero si no
