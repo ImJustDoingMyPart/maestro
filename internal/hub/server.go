@@ -163,8 +163,16 @@ type server struct {
 	layout   fileLayout      // stacks: y groups: del archivo
 	pages    pages
 	icons    *icons.Resolver // nil: sin logos (tests)
+	logins   *failLimiter    // intentos fallidos de login por IP
 	logger   *slog.Logger
 }
+
+// Límite de logins fallidos por IP: después de loginMaxFails dentro de
+// loginWindow, la IP espera a que el más viejo salga de la ventana.
+const (
+	loginMaxFails = 10
+	loginWindow   = 15 * time.Minute
+)
 
 // handlerOption agrega a newHandler lo que los tests no necesitan.
 type handlerOption func(*server)
@@ -179,7 +187,7 @@ func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon moni
 	if err != nil {
 		return nil, err
 	}
-	s := &server{poller: poller, logs: logs, stacks: stacks, mon: mon, prefs: prefs, runs: newRunStore(), sessions: sessions, apiToken: apiToken, pages: p, logger: logger}
+	s := &server{poller: poller, logs: logs, stacks: stacks, mon: mon, prefs: prefs, runs: newRunStore(), sessions: sessions, apiToken: apiToken, pages: p, logins: newFailLimiter(loginMaxFails, loginWindow), logger: logger}
 	for _, o := range opts {
 		o(s)
 	}
@@ -422,8 +430,21 @@ func (s *server) login(w http.ResponseWriter, r *http.Request) {
 	}
 	username, password := r.PostFormValue("username"), r.PostFormValue("password")
 
+	ip := clientIP(r)
+	if blocked, wait := s.logins.Blocked(ip); blocked {
+		mins := int(wait/time.Minute) + 1
+		s.logger.Warn("login frenado por intentos fallidos", "user", username, "ip", ip)
+		w.Header().Set("Retry-After", fmt.Sprint(int(wait/time.Second)+1))
+		s.pages.renderCode(w, s.logger, http.StatusTooManyRequests, "login", pageData{
+			Title: "Entrar", Username: username,
+			Error: fmt.Sprintf("Demasiados intentos fallidos. Probá de nuevo en %d %s.", mins, map[bool]string{true: "minuto", false: "minutos"}[mins == 1]),
+		})
+		return
+	}
+
 	err := s.sessions.Login(r.Context(), w, username, password)
 	if errors.Is(err, auth.ErrBadCredentials) {
+		s.logins.Fail(ip)
 		// Queda en el log con la IP (detrás de Caddy, la de Caddy más el
 		// X-Forwarded-For), por si hace falta mirar intentos repetidos.
 		s.logger.Warn("login fallido", "user", username, "remote", r.RemoteAddr,
@@ -438,6 +459,7 @@ func (s *server) login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "error interno", http.StatusInternalServerError)
 		return
 	}
+	s.logins.Reset(ip)
 	s.logger.Info("login", "user", username)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
