@@ -28,3 +28,23 @@ func TestAvisos(t *testing.T) {
 		t.Errorf("avisos = %v", got)
 	}
 }
+
+func TestOutbox(t *testing.T) {
+	s, _ := openTest(t)
+	ctx := context.Background()
+	now := time.Unix(1_800_000_000, 0)
+	a, err := s.AddOutbox(ctx, OutboxItem{Created: now, Chat: 0, Service: "media/jellyfin", Text: "uno"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddOutbox(ctx, OutboxItem{Created: now.Add(time.Second), Chat: 1, Service: "x", Text: "dos"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.DeleteOutbox(ctx, a); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.Outbox(ctx)
+	if err != nil || len(got) != 1 || got[0].Text != "dos" || got[0].Chat != 1 || !got[0].Created.Equal(now.Add(time.Second)) {
+		t.Fatalf("Outbox = %+v, %v", got, err)
+	}
+}

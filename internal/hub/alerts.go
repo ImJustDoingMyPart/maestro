@@ -183,28 +183,107 @@ func (a *alerter) Notify(svc catalog.Service, ev store.StateEvent) {
 	}
 }
 
-// Run manda los avisos encolados hasta que se cancele ctx.
+// outboxStore guarda los avisos que esperan salir, para que sobrevivan a
+// un reinicio del hub. Lo cumple *store.Store; sin él (tests), los avisos
+// esperan solo en memoria.
+type outboxStore interface {
+	AddOutbox(ctx context.Context, it store.OutboxItem) (int64, error)
+	Outbox(ctx context.Context) ([]store.OutboxItem, error)
+	DeleteOutbox(ctx context.Context, id int64) error
+}
+
+// outboxMaxAge es cuánto puede esperar un aviso guardado. Uno más viejo,
+// encontrado al arrancar, ya no se manda: avisaría tarde algo que
+// probablemente ya cambió.
+const outboxMaxAge = 6 * time.Hour
+
+// Run manda los avisos encolados hasta que se cancele ctx. Con la base,
+// cada aviso armado se guarda antes de mandarse y se borra al salir: los
+// manda otra goroutine, en orden, y al arrancar sigue con los que
+// quedaron de antes del reinicio.
 func (a *alerter) Run(ctx context.Context) {
+	ob, _ := a.prefs.(outboxStore)
+	if ob == nil {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case n := <-a.queue:
+				a.deliver(ctx, n)
+			}
+		}
+	}
+	wake := make(chan struct{}, 1)
+	go a.sendOutbox(ctx, ob, wake)
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case n := <-a.queue:
-			a.deliver(ctx, n)
+			text, ok := a.compose(ctx, n)
+			if !ok {
+				continue
+			}
+			for i := range a.chats {
+				if _, err := ob.AddOutbox(ctx, store.OutboxItem{Created: time.Now(), Chat: i, Service: n.svc.ID, Text: text}); err != nil {
+					// Sin la base, se manda igual desde acá.
+					a.logger.Error("guardar el aviso", "service", n.svc.ID, "err", err)
+					a.sendOne(ctx, a.chats[i], n.svc.ID, n.ev.To, text)
+				}
+			}
+			select {
+			case wake <- struct{}{}:
+			default: // ya está avisada
+			}
 		}
 	}
 }
 
-// deliver decide si el cambio avisa (con lo de la interfaz de ahora) y lo
-// manda a cada chat.
-func (a *alerter) deliver(ctx context.Context, n alertNote) {
+// sendOutbox manda lo guardado, del más viejo al más nuevo, y espera a
+// que haya más.
+func (a *alerter) sendOutbox(ctx context.Context, ob outboxStore, wake <-chan struct{}) {
+	for {
+		items, err := ob.Outbox(ctx)
+		if err != nil && ctx.Err() == nil {
+			a.logger.Error("leer los avisos guardados", "err", err)
+		}
+		for _, it := range items {
+			if ctx.Err() != nil {
+				return
+			}
+			switch {
+			case time.Since(it.Created) > outboxMaxAge:
+				a.logger.Warn("aviso guardado demasiado viejo: no se manda", "service", it.Service, "de", it.Created)
+			case it.Chat < 0 || it.Chat >= len(a.chats):
+				a.logger.Warn("aviso guardado para un chat que ya no está en maestro.yaml", "service", it.Service)
+			default:
+				a.sendOne(ctx, a.chats[it.Chat], it.Service, "", it.Text)
+				if ctx.Err() != nil {
+					return // a medio mandar: queda guardado para el próximo arranque
+				}
+			}
+			if err := ob.DeleteOutbox(ctx, it.ID); err != nil {
+				a.logger.Error("borrar un aviso mandado", "err", err)
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-wake:
+		}
+	}
+}
+
+// compose decide si el cambio avisa (con lo de la interfaz de ahora) y
+// arma el texto.
+func (a *alerter) compose(ctx context.Context, n alertNote) (string, bool) {
 	key := serviceKey(n.svc.ID)
 	ui, err := a.prefs.Alerts(ctx)
 	if err != nil {
 		a.logger.Error("leer avisos de la interfaz", "err", err)
 	}
 	if !alertOn(n.svc, ui) {
-		return
+		return "", false
 	}
 	if !n.svc.NameFromFile {
 		if names, err := a.prefs.Names(ctx); err != nil {
@@ -217,15 +296,28 @@ func (a *alerter) deliver(ctx context.Context, n alertNote) {
 	if a.publicURL != "" {
 		link = a.publicURL + servicePath(n.svc.ID)
 	}
-	text := alertText(alertName(n.svc), n.ev, a.loc, link)
-	for _, chat := range a.chats {
-		if err := a.sendRetrying(ctx, chat, text); err != nil {
-			// Sin el chat en el log: es parte de la configuración secreta.
-			a.logger.Error("aviso a Telegram perdido", "service", n.svc.ID, "to", n.ev.To, "err", err)
-			continue
-		}
-		a.logger.Info("aviso a Telegram", "service", n.svc.ID, "from", n.ev.From, "to", n.ev.To)
+	return alertText(alertName(n.svc), n.ev, a.loc, link), true
+}
+
+// deliver arma el aviso y lo manda a cada chat, sin guardarlo.
+func (a *alerter) deliver(ctx context.Context, n alertNote) {
+	text, ok := a.compose(ctx, n)
+	if !ok {
+		return
 	}
+	for _, chat := range a.chats {
+		a.sendOne(ctx, chat, n.svc.ID, n.ev.To, text)
+	}
+}
+
+// sendOne manda un aviso a un chat con reintentos y deja el resultado en
+// el log (sin el chat: es parte de la configuración secreta).
+func (a *alerter) sendOne(ctx context.Context, chat, service, to, text string) {
+	if err := a.sendRetrying(ctx, chat, text); err != nil {
+		a.logger.Error("aviso a Telegram perdido", "service", service, "to", to, "err", err)
+		return
+	}
+	a.logger.Info("aviso a Telegram", "service", service, "to", to)
 }
 
 // sendRetrying manda text a chat y reintenta lo que puede pasar solo (la

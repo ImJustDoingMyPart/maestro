@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -334,5 +335,62 @@ func TestInterruptorDeAvisos(t *testing.T) {
 	}
 	if code := post("service:no/existe", "1"); code != http.StatusNotFound {
 		t.Errorf("POST de un servicio que no existe = %d, quiero 404", code)
+	}
+}
+
+// Un aviso que espera reintento queda en la base: si el hub se reinicia
+// en ese rato, el próximo lo manda al arrancar. Uno demasiado viejo no.
+func TestAvisoSobreviveAlReinicio(t *testing.T) {
+	st, _ := openStore(t)
+	svc := catalog.Service{ID: "web/app", Source: catalog.SourceCompose, Project: "web", Name: "app", Alert: true}
+	down := store.StateEvent{Service: svc.ID, At: time.Unix(0, 0), From: "up", To: "down", Reason: "app detenido"}
+
+	// Primer hub: Telegram caído, y se apaga mientras espera reintentar.
+	caido := &fakeSender{errs: []error{&telegram.Error{Code: 502}, &telegram.Error{Code: 502}}}
+	a1 := newAlerter(caido, []string{"111"}, "", st, time.UTC, slog.New(slog.DiscardHandler))
+	ctx1, stop1 := context.WithCancel(context.Background())
+	esperando := make(chan struct{})
+	a1.wait = func(ctx context.Context, d time.Duration) bool {
+		close(esperando)
+		<-ctx.Done()
+		return false
+	}
+	go a1.Run(ctx1)
+	a1.Notify(svc, down)
+	select {
+	case <-esperando:
+	case <-time.After(2 * time.Second):
+		t.Fatal("el primer hub no intentó mandar")
+	}
+	stop1()
+	time.Sleep(50 * time.Millisecond)
+	if items, _ := st.Outbox(context.Background()); len(items) != 1 {
+		t.Fatalf("guardados después del apagado: %d, quería 1", len(items))
+	}
+	// Uno viejo, de antes de outboxMaxAge, no se manda.
+	st.AddOutbox(context.Background(), store.OutboxItem{Created: time.Now().Add(-outboxMaxAge - time.Minute), Chat: 0, Service: "x", Text: "viejo"})
+
+	// Segundo hub: Telegram anda.
+	ok := &fakeSender{}
+	a2 := newAlerter(ok, []string{"111"}, "", st, time.UTC, slog.New(slog.DiscardHandler))
+	ctx2, stop2 := context.WithCancel(context.Background())
+	defer stop2()
+	go a2.Run(ctx2)
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		items, _ := st.Outbox(context.Background())
+		ok.mu.Lock()
+		sent := slices.Clone(ok.sent)
+		ok.mu.Unlock()
+		if len(items) == 0 && len(sent) == 1 {
+			if !strings.HasPrefix(sent[0], "111|🔴 <b>app (web)</b> se cayó") {
+				t.Errorf("mandado: %q", sent)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("guardados %d, mandados %q", len(items), sent)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
