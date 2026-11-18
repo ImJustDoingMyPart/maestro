@@ -165,3 +165,26 @@ func TestSample(t *testing.T) {
 }
 
 func itoa(n int) string { return strconv.Itoa(n) }
+
+func TestInLXC(t *testing.T) {
+	dir := t.TempDir()
+	proc := filepath.Join(dir, "proc")
+	os.MkdirAll(filepath.Join(proc, "1"), 0o755)
+	run := filepath.Join(dir, "container")
+
+	if InLXC(proc, run) {
+		t.Error("sin pistas no es una LXC")
+	}
+	os.WriteFile(filepath.Join(proc, "1/environ"), []byte("PATH=/bin\x00container=lxc\x00container_ttys=pts/1\x00"), 0o600)
+	if !InLXC(proc, run) {
+		t.Error("container=lxc en el entorno del proceso 1")
+	}
+	os.WriteFile(filepath.Join(proc, "1/environ"), []byte("container=docker\x00"), 0o600)
+	if InLXC(proc, run) {
+		t.Error("Docker no es una LXC")
+	}
+	os.WriteFile(run, []byte("lxc\n"), 0o644)
+	if !InLXC(proc, run) {
+		t.Error("/run/systemd/container dice lxc")
+	}
+}

@@ -72,6 +72,10 @@ type Options struct {
 type Collector struct {
 	opts Options
 	log  *slog.Logger
+	// lxc: el agent corre en una LXC, que ve los sensores y los contadores
+	// de disco del host (/sys/class/hwmon y /proc/diskstats no están
+	// separados por contenedor). Se omiten: ya salen en el host.
+	lxc bool
 
 	// Lo que solo toca la goroutine de Run, sin lock.
 	prev       *rawSample
@@ -105,9 +109,31 @@ func New(opts Options) *Collector {
 	if opts.Logger == nil {
 		opts.Logger = slog.New(slog.DiscardHandler)
 	}
-	c := &Collector{opts: opts, log: opts.Logger}
+	c := &Collector{opts: opts, log: opts.Logger, lxc: InLXC(opts.Proc, "/run/systemd/container")}
+	if c.lxc {
+		c.log.Info("corriendo en una LXC: sin temperaturas ni contadores de disco (son los del host)")
+	}
 	c.cur.Docker = opts.Docker != nil
 	return c
+}
+
+// InLXC dice si el proceso corre en una LXC: systemd lo deja escrito en
+// /run/systemd/container, y el entorno del proceso 1 lo trae como
+// container=lxc (leerlo pide root, como corre el agent nativo).
+func InLXC(proc, runContainer string) bool {
+	if b, err := os.ReadFile(runContainer); err == nil && strings.TrimSpace(string(b)) == "lxc" {
+		return true
+	}
+	b, err := os.ReadFile(filepath.Join(proc, "1/environ"))
+	if err != nil {
+		return false
+	}
+	for _, kv := range strings.Split(string(b), "\x00") {
+		if kv == "container=lxc" {
+			return true
+		}
+	}
+	return false
 }
 
 func cmpOr(a, b string) string {
@@ -324,13 +350,13 @@ func (c *Collector) hostMetrics(prev, cur *rawSample) *agent.HostMetrics {
 	}
 	for _, d := range cur.disks {
 		p, ok := beforeDisk[d.Name]
-		if !ok || !procfs.WholeDisk(d.Name) {
+		if !ok || !procfs.WholeDisk(d.Name) || c.lxc {
 			continue
 		}
 		m.Disks = append(m.Disks, agent.DiskRate{Name: d.Name, Read: procfs.Rate(p.ReadBytes, d.ReadBytes, el), Write: procfs.Rate(p.WriteBytes, d.WriteBytes, el)})
 	}
 	m.FS = c.filesystems()
-	if temps, err := procfs.ReadHwmon(os.DirFS(filepath.Join(c.opts.Sys, "class/hwmon"))); err == nil {
+	if temps, err := procfs.ReadHwmon(os.DirFS(filepath.Join(c.opts.Sys, "class/hwmon"))); err == nil && !c.lxc {
 		// Dos chips con el mismo nombre (dos módulos de RAM, dos GPUs) dan
 		// sensores con el mismo chip y nombre: el segundo lleva " (2)",
 		// así cada uno es una serie distinta.
