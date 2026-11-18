@@ -12,12 +12,14 @@ import (
 // interfaz con datos inventados: botones, insignias, chips, estados y
 // cajas, en claro y en oscuro. Sirve para ver de un vistazo si algo se
 // salió de su familia (criterio en PLAN.md, "Coherencia visual") y para
-// aprobar la estética de una sola vez. Usa las plantillas reales ("card",
-// "hwcard", "statepill"): lo que se ve acá es lo que se ve en las páginas.
+// aprobar la estética de una sola vez. Es una página de la aplicación
+// (web/src/app/pages/Muestrario.svelte) y usa sus componentes reales (la
+// tarjeta de la portada, HwCard, StatePill): lo que se ve acá es lo que se
+// ve en las páginas.
 
 // muestra son los datos del muestrario.
 type muestra struct {
-	Cards  []serviceCard
+	Cards  []apiCard // en la forma de /api/portada, la que dibuja la tarjeta
 	Tiles  []hwCard
 	States []State
 	Rows   []hiddenRow
@@ -32,8 +34,12 @@ func muestraData(ic *icons.Resolver) pageData {
 	if ic != nil {
 		decorateGroups(ic, groups, nil)
 	}
+	var cards []apiCard
+	for _, c := range groups[0].Services {
+		cards = append(cards, cardJSON(c))
+	}
 	m := &muestra{
-		Cards: groups[0].Services,
+		Cards: cards,
 		Tiles: []hwCard{
 			{Icon: "memory", Title: "CPU", Value: "23", Unit: "%", HasBar: true, Pct: 23, Sub: "8 núcleos · carga 1,84"},
 			{Icon: "memory_alt", Title: "Memoria", Value: "14,2", Unit: "GB", HasBar: true, Pct: 93, Warn: true, Sub: "de 15,3 GB"},
@@ -52,5 +58,5 @@ func muestraData(ic *icons.Resolver) pageData {
 }
 
 func (s *server) muestrarioPage(w http.ResponseWriter, r *http.Request) {
-	s.pages.render(w, s.logger, "muestrario", muestraData(s.icons))
+	s.page(w, r, http.StatusOK, muestraData(s.icons))
 }

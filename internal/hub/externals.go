@@ -108,7 +108,7 @@ func (s *server) renderExternal(w http.ResponseWriter, r *http.Request, code int
 	if f.ID != "" {
 		title = f.Name
 	}
-	s.pages.renderCode(w, s.logger, code, "external", pageData{Title: title, Active: "services", ShowNav: true, Ext: &f})
+	s.page(w, r, code, pageData{Title: title, Active: "services", ShowNav: true, Ext: &f})
 }
 
 // newExternalPage atiende GET /externals/new.
@@ -121,7 +121,7 @@ func (s *server) editExternalPage(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	e, err := s.prefs.External(r.Context(), id)
 	if errors.Is(err, store.ErrNotFound) {
-		http.NotFound(w, r)
+		s.page(w, r, http.StatusNotFound, pageData{Title: "No existe"})
 		return
 	} else if err != nil {
 		s.logger.Error("leer externo", "id", id, "err", err)

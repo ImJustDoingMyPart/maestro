@@ -2,6 +2,7 @@ package hub
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -91,6 +92,57 @@ func loggedIn(t *testing.T, srv *httptest.Server) *http.Client {
 	return c
 }
 
+// getPage pide una página de la aplicación como la pide su router: la
+// misma URL con Accept: application/json, que trae los datos de la página.
+func getPage(t *testing.T, c *http.Client, u string) (*http.Response, string) {
+	t.Helper()
+	req, _ := http.NewRequest(http.MethodGet, u, nil)
+	req.Header.Set("Accept", "application/json")
+	res, err := c.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return res, body(t, res)
+}
+
+// portadaBody es el JSON de la portada (/api/portada).
+func portadaBody(t *testing.T, c *http.Client, srv *httptest.Server) string {
+	t.Helper()
+	res, err := c.Get(srv.URL + "/api/portada")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return body(t, res)
+}
+
+// portadaData es la portada decodificada.
+func portadaData(t *testing.T, c *http.Client, srv *httptest.Server) apiPortada {
+	t.Helper()
+	var p apiPortada
+	if err := json.Unmarshal([]byte(portadaBody(t, c, srv)), &p); err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// findAPICard busca una tarjeta (o un servicio dentro de una de stack) por
+// su clave; devuelve el grupo en que está.
+func findAPICard(p apiPortada, key string) (card apiCard, member *apiMember, group string, ok bool) {
+	for _, g := range p.Groups {
+		for _, c := range g.Cards {
+			if c.Key == key {
+				return c, nil, g.Name, true
+			}
+			for _, m := range c.Members {
+				if m.Key == key {
+					return c, &m, g.Name, true
+				}
+			}
+		}
+	}
+	return apiCard{}, nil, "", false
+}
+
 func postForm(t *testing.T, c *http.Client, u string, form url.Values, origin string) *http.Response {
 	t.Helper()
 	req, _ := http.NewRequest(http.MethodPost, u, strings.NewReader(form.Encode()))
@@ -120,22 +172,17 @@ func TestRecorridoDeLogin(t *testing.T) {
 	srv := testServer(t, snap)
 	c := client(t)
 
-	// Sin sesión: la portada manda al login y el fragmento avisa a htmx.
-	res, _ := c.Get(srv.URL + "/clasica")
-	res.Body.Close()
-	if res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != "/login" {
-		t.Fatalf("GET / sin sesión = %d %s", res.StatusCode, res.Header.Get("Location"))
-	}
-	req, _ := http.NewRequest(http.MethodGet, srv.URL+"/fragments/services", nil)
-	req.Header.Set("HX-Request", "true")
-	res, _ = c.Do(req)
-	res.Body.Close()
-	if res.StatusCode != http.StatusUnauthorized || res.Header.Get("HX-Redirect") != "/login" {
-		t.Errorf("fragmento sin sesión = %d, HX-Redirect %q", res.StatusCode, res.Header.Get("HX-Redirect"))
+	// Sin sesión: la portada y sus datos mandan al login.
+	for _, u := range []string{"/", "/api/portada", "/hardware"} {
+		res, _ := c.Get(srv.URL + u)
+		res.Body.Close()
+		if res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != "/login" {
+			t.Fatalf("GET %s sin sesión = %d %s", u, res.StatusCode, res.Header.Get("Location"))
+		}
 	}
 
 	// El login se ve, sin la navegación.
-	res, _ = c.Get(srv.URL + "/login")
+	res, _ := c.Get(srv.URL + "/login")
 	if b := body(t, res); !strings.Contains(b, `name="password"`) || strings.Contains(b, "topbar") {
 		t.Error("la página de login no es la esperada")
 	}
@@ -160,30 +207,26 @@ func TestRecorridoDeLogin(t *testing.T) {
 		t.Fatalf("login correcto = %d %s", res.StatusCode, res.Header.Get("Location"))
 	}
 
-	// La portada muestra los servicios, el semáforo y el agent caído.
-	res, _ = c.Get(srv.URL + "/clasica")
-	b := body(t, res)
-	for _, want := range []string{
-		"Jellyfin", "Media", "jellyfin/jellyfin", "https://jellyfin.example.org",
-		"Otros", "suelto", "1 arriba", "1 caído",
-		"El agent de lxc no responde", "connection refused",
-		`hx-get="/fragments/services"`, "Actualizado",
-	} {
-		if !strings.Contains(b, want) {
-			t.Errorf("falta %q en la portada", want)
-		}
+	// La portada es el shell de la aplicación, con los headers de
+	// seguridad; sus datos traen los servicios, el semáforo y el agent
+	// caído.
+	res, _ = c.Get(srv.URL + "/")
+	if b := body(t, res); !strings.Contains(b, `<div id="app"`) || !strings.Contains(b, "/static/gen/app/main.js") {
+		t.Errorf("la portada no es el shell de la aplicación:\n%.300s", b)
 	}
 	if res.Header.Get("X-Frame-Options") != "DENY" || res.Header.Get("X-Content-Type-Options") != "nosniff" ||
 		!strings.Contains(res.Header.Get("Content-Security-Policy"), "script-src 'self';") {
 		t.Error("faltan headers de seguridad")
 	}
-
-	// El fragmento es solo la grilla.
-	res, _ = c.Get(srv.URL + "/fragments/services")
-	if b := body(t, res); !strings.HasPrefix(strings.TrimSpace(b), `<div id="services"`) || strings.Contains(b, "<html") {
-		t.Errorf("el fragmento no es solo la grilla:\n%.200s", b)
-	} else if !strings.Contains(b, `id="updated" class="updated" title="Se actualiza cada 15 segundos" hx-swap-oob="true">Actualizado`) {
-		t.Error("el fragmento tiene que traer la hora del encabezado con hx-swap-oob")
+	b := portadaBody(t, c, srv)
+	for _, want := range []string{
+		"Jellyfin", "Media", "https://jellyfin.example.org",
+		"Otros", "suelto", `"up":1`, `"down":1`,
+		`"hostProblems":[{"name":"lxc","err":"connection refused"`,
+	} {
+		if !strings.Contains(b, want) {
+			t.Errorf("falta %q en la portada", want)
+		}
 	}
 
 	// Ya logueado, /login manda a la portada.
@@ -196,7 +239,7 @@ func TestRecorridoDeLogin(t *testing.T) {
 	// Logout: la sesión deja de servir.
 	res = postForm(t, c, srv.URL+"/logout", nil, srv.URL)
 	res.Body.Close()
-	res, _ = c.Get(srv.URL + "/clasica")
+	res, _ = c.Get(srv.URL + "/api/portada")
 	res.Body.Close()
 	if res.StatusCode != http.StatusSeeOther {
 		t.Errorf("GET / después del logout = %d, quería 303", res.StatusCode)

@@ -90,23 +90,28 @@ func TestGruposDesdeLaInterfaz(t *testing.T) {
 		res := postForm(t, c, srv.URL+path, form, srv.URL)
 		return res.StatusCode, body(t, res)
 	}
-	portada := func() string {
+	groupNamed := func(name string) (apiGroup, int) {
 		t.Helper()
-		res, _ := c.Get(srv.URL + "/clasica")
-		return body(t, res)
+		for i, g := range portadaData(t, c, srv).Groups {
+			if g.Name == name {
+				return g, i
+			}
+		}
+		return apiGroup{}, -1
 	}
 
 	if code, _ := post("/groups", url.Values{"name": {" Media "}}); code != http.StatusSeeOther {
 		t.Fatalf("crear grupo = %d", code)
 	}
-	b := portada()
-	if i, j := strings.Index(b, `data-group="Web"`), strings.Index(b, `data-group="Media"`); i < 0 || j < i {
+	if _, i := groupNamed("Web"); i < 0 {
+		t.Error("falta Web")
+	} else if _, j := groupNamed("Media"); j < i {
 		t.Error("el grupo nuevo no va al final")
 	}
 	if code, _ := post("/groups", url.Values{"name": {"Web"}}); code != http.StatusConflict {
 		t.Errorf("crear uno que ya sale de los labels = %d", code)
 	}
-	if !strings.Contains(b, `class="group empty" data-group="Media"`) || !strings.Contains(b, `<option value="Media">`) {
+	if g, _ := groupNamed("Media"); !g.Empty {
 		t.Error("el grupo nuevo no sale vacío en la portada")
 	}
 	for name, tc := range map[string]struct {
@@ -133,18 +138,24 @@ func TestGruposDesdeLaInterfaz(t *testing.T) {
 	if code, _ := post("/groups/move", url.Values{"key": {"service:cfg/app"}, "group": {"Media"}}); code != http.StatusConflict {
 		t.Errorf("mover una tarjeta con grupo del archivo = %d", code)
 	}
-	b = portada()
-	for _, want := range []string{`data-group="Media"`, `data-group="Nuevo"`, `data-set-group="Media"`, "El grupo viene de maestro.yaml"} {
-		if !strings.Contains(b, want) {
-			t.Errorf("la portada no tiene %q", want)
-		}
+	p := portadaData(t, c, srv)
+	if card, _, g, _ := findAPICard(p, "service:a/web"); g != "Media" || card.Group != "Media" {
+		t.Errorf("web está en %q (Group %q), quería Media", g, card.Group)
+	}
+	if _, _, g, _ := findAPICard(p, "service:c/db"); g != "Nuevo" {
+		t.Errorf("db está en %q, quería Nuevo", g)
+	}
+	if card, _, _, _ := findAPICard(p, "service:cfg/app"); !card.GroupLocked {
+		t.Error("la del archivo no tiene el grupo fijo")
 	}
 
 	// Renombrar Web (que sale de los labels) y después borrarlo.
 	if code, _ := post("/groups/rename", url.Values{"name": {"Web"}, "to": {"Sitios"}}); code != http.StatusSeeOther {
 		t.Fatalf("renombrar = %d", code)
 	}
-	if b := portada(); strings.Contains(b, `data-group="Web"`) || !strings.Contains(b, `data-group="Sitios"`) {
+	if _, i := groupNamed("Web"); i >= 0 {
+		t.Error("renombrar Web no lo cambió")
+	} else if _, j := groupNamed("Sitios"); j < 0 {
 		t.Error("renombrar Web no lo cambió")
 	}
 	if code, _ := post("/groups/rename", url.Values{"name": {"Fijo"}, "to": {"X"}}); code != http.StatusConflict {
@@ -153,21 +164,14 @@ func TestGruposDesdeLaInterfaz(t *testing.T) {
 	if code, _ := post("/groups/delete", url.Values{"name": {"No existe"}}); code != http.StatusNotFound {
 		t.Errorf("borrar uno que no existe = %d", code)
 	}
-	// Con htmx responde la grilla.
-	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/groups/delete", strings.NewReader("name=Sitios"))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Origin", srv.URL)
-	req.Header.Set("HX-Request", "true")
-	res, err := c.Do(req)
-	if err != nil {
-		t.Fatal(err)
+	if code, _ := post("/groups/delete", url.Values{"name": {"Sitios"}}); code != http.StatusSeeOther {
+		t.Fatalf("borrar = %d", code)
 	}
-	b = body(t, res)
-	if res.StatusCode != 200 || !strings.HasPrefix(strings.TrimSpace(b), `<div id="services"`) || strings.Contains(b, `data-group="Sitios"`) {
-		t.Errorf("borrar con htmx: %d\n%.300s", res.StatusCode, b)
+	if _, i := groupNamed("Sitios"); i >= 0 {
+		t.Error("el grupo borrado sigue")
 	}
-	if !strings.Contains(b, `data-key="service:b/api"`) {
-		t.Error("las tarjetas del grupo borrado no pasaron a Otros")
+	if _, _, g, _ := findAPICard(portadaData(t, c, srv), "service:b/api"); g != "Otros" {
+		t.Errorf("las tarjetas del grupo borrado no pasaron a Otros: %q", g)
 	}
 
 	if code, _ := post("/groups/rename", url.Values{"name": {"Otros"}, "to": {"X"}}); code != http.StatusConflict {
@@ -224,15 +228,12 @@ func TestOrdenarArrastrando(t *testing.T) {
 		t.Errorf("solo Otros = %d", code)
 	}
 
-	res, _ := c.Get(srv.URL + "/clasica")
-	b := body(t, res)
 	var keys, groups []string
-	for _, part := range strings.Split(b, `<section class="group`)[1:] {
-		i := strings.Index(part, `data-group="`) + len(`data-group="`)
-		groups = append(groups, part[i:i+strings.Index(part[i:], `"`)])
-	}
-	for _, part := range strings.Split(b, `class="card-slot" data-key="`)[1:] {
-		keys = append(keys, part[:strings.Index(part, `"`)])
+	for _, g := range portadaData(t, c, srv).Groups {
+		groups = append(groups, g.Name)
+		for _, card := range g.Cards {
+			keys = append(keys, card.Key)
+		}
 	}
 	if got, want := strings.Join(groups, " "), "Web Fijo"; got != want {
 		t.Errorf("grupos = %s, quería %s", got, want)
@@ -266,11 +267,11 @@ func TestSacarDelStack(t *testing.T) {
 	}
 	cards := func() string {
 		t.Helper()
-		res, _ := c.Get(srv.URL + "/clasica")
-		b := body(t, res)
 		var keys []string
-		for _, part := range strings.Split(b, `class="card-slot" data-key="`)[1:] {
-			keys = append(keys, part[:strings.Index(part, `"`)])
+		for _, g := range portadaData(t, c, srv).Groups {
+			for _, card := range g.Cards {
+				keys = append(keys, card.Key)
+			}
 		}
 		return strings.Join(keys, " ")
 	}
@@ -284,9 +285,8 @@ func TestSacarDelStack(t *testing.T) {
 	if got := cards(); got != "stack:vm/p service:p/uno service:router" {
 		t.Errorf("después de sacar: %s", got)
 	}
-	res, _ := c.Get(srv.URL + "/clasica")
-	if b := body(t, res); !strings.Contains(b, "Volver al stack") || !strings.Contains(b, "Sacar del stack") {
-		t.Error("faltan las opciones de sacar y volver")
+	if card, _, _, _ := findAPICard(portadaData(t, c, srv), "service:p/uno"); !card.Separated {
+		t.Error("la sacada no está marcada para volver al stack")
 	}
 	if code := post(url.Values{"key": {"service:p/uno"}, "separate": {"0"}}); code != http.StatusSeeOther {
 		t.Fatalf("volver = %d", code)

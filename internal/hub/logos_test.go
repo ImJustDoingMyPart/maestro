@@ -34,12 +34,10 @@ func TestCambiarIcono(t *testing.T) {
 		t.Fatalf("guardar = %d %s", res.StatusCode, res.Header.Get("Location"))
 	}
 	// Sin resolver de logos en el test, "router" queda como Material Symbol.
-	res, _ := c.Get(srv.URL + "/discovered")
-	if b := body(t, res); !strings.Contains(b, `<i>router</i>`) || !strings.Contains(b, `data-icon="router"`) {
+	if _, b := getPage(t, c, srv.URL+"/discovered"); !strings.Contains(b, `"Icon":"router"`) || !strings.Contains(b, `"IconSet":"router"`) {
 		t.Error("la bandeja no usa el ícono elegido")
 	}
-	res, _ = c.Get(srv.URL + "/hardware?host=pve")
-	if b := body(t, res); !strings.Contains(b, `<i>router</i>`) {
+	if _, b := getPage(t, c, srv.URL+"/hardware?host=pve"); !strings.Contains(b, `"Icon":"router"`) {
 		t.Error("la tarjeta de la LXC no usa el ícono elegido")
 	}
 
@@ -52,8 +50,7 @@ func TestCambiarIcono(t *testing.T) {
 	}
 	// Vacío vuelve al de siempre.
 	set("", "/")
-	res, _ = c.Get(srv.URL + "/discovered")
-	if b := body(t, res); strings.Contains(b, `<i>router</i>`) {
+	if _, b := getPage(t, c, srv.URL+"/discovered"); strings.Contains(b, `"Icon":"router"`) {
 		t.Error("vacío no sacó el ícono elegido")
 	}
 }

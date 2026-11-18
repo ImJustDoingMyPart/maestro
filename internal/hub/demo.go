@@ -98,12 +98,23 @@ var demoFound = []Discovered{
 	{Host: "vm", Kind: "unit", Name: "netbird.service", Label: "netbird.service", State: StateUp, Detail: "NetBird"},
 }
 
-// newDemoHandler arma las rutas del modo --demo: la portada con servicios
-// falsos, Hardware vacío y los estáticos. Sin login ni agents.
+// newDemoHandler arma las rutas del modo --demo: la aplicación con
+// servicios falsos en la portada, Descubiertos con datos inventados,
+// Hardware vacío y el muestrario. Sin login ni agents.
 func newDemoHandler(logger *slog.Logger, ic *icons.Resolver) (http.Handler, error) {
-	p, err := parsePages(web.Templates, "portada", "services", "hardware", "discovered", "muestrario")
+	p, err := parsePages(web.Templates, "app")
 	if err != nil {
 		return nil, err
+	}
+	// page es server.page sin server: el shell o el JSON de la página.
+	page := func(w http.ResponseWriter, r *http.Request, data pageData) {
+		data.Demo = true
+		w.Header().Add("Vary", "Accept")
+		if wantsJSON(r) {
+			writeJSON(w, http.StatusOK, data)
+			return
+		}
+		p.renderCode(w, logger, http.StatusOK, "app", pageData{Title: data.Title, Demo: true})
 	}
 
 	mux := http.NewServeMux()
@@ -112,7 +123,7 @@ func newDemoHandler(logger *slog.Logger, ic *icons.Resolver) (http.Handler, erro
 
 	// "GET /{$}" solo coincide con "/" exacto; sin {$}, "/" atrapa todo.
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
-		p.render(w, logger, "portada", pageData{Title: "Servicios", Active: "services", ShowNav: true, Demo: true, Live: true})
+		page(w, r, pageData{Title: "Servicios"})
 	})
 	mux.HandleFunc("GET /api/portada", func(w http.ResponseWriter, r *http.Request) {
 		groups := demoLive(time.Now())
@@ -122,38 +133,16 @@ func newDemoHandler(logger *slog.Logger, ic *icons.Resolver) (http.Handler, erro
 			FoundPending: len(demoFound) - 1, Updated: time.Now(),
 		}))
 	})
-	mux.HandleFunc("GET /clasica", func(w http.ResponseWriter, r *http.Request) {
-		groups := slices.Clone(demoGroups)
-		for i := range groups {
-			groups[i].Services = slices.Clone(groups[i].Services)
-		}
-		decorateGroups(ic, groups, nil)
-		p.render(w, logger, "services", pageData{
-			Title:        "Servicios",
-			Active:       "services",
-			ShowNav:      true,
-			Demo:         true,
-			Groups:       groups,
-			Summary:      summarize(groups),
-			FoundPending: pending(demoFound, map[string]bool{demoFound[4].Key(): true}),
-			FoundFailing: 0,
-		})
-	})
 	mux.HandleFunc("GET /discovered", func(w http.ResponseWriter, r *http.Request) {
 		found := foundRows(demoFound, map[string]bool{demoFound[4].Key(): true})
 		decorateFound(ic, found, nil)
-		p.render(w, logger, "discovered", pageData{
-			Title: "Descubiertos", Active: "services", ShowNav: true, Demo: true,
-			Found: found,
-		})
+		page(w, r, pageData{Title: "Descubiertos", Found: found})
 	})
 	mux.HandleFunc("GET /muestrario", func(w http.ResponseWriter, r *http.Request) {
-		d := muestraData(ic)
-		d.Demo = true
-		p.render(w, logger, "muestrario", d)
+		page(w, r, muestraData(ic))
 	})
 	mux.HandleFunc("GET /hardware", func(w http.ResponseWriter, r *http.Request) {
-		p.render(w, logger, "hardware", pageData{Title: "Hardware", Active: "hardware", ShowNav: true, Demo: true})
+		page(w, r, pageData{Title: "Hardware"})
 	})
 	return mux, nil
 }

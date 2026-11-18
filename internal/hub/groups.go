@@ -79,13 +79,10 @@ func parseSmallForm(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
-// gridOrHome responde a un cambio de la portada: con htmx, la grilla nueva;
-// sin JavaScript, vuelve a la portada.
+// gridOrHome responde a un cambio de la portada: vuelve a ella (la
+// aplicación no sigue la redirección: cuenta como que salió bien y pide
+// los datos de nuevo).
 func (s *server) gridOrHome(w http.ResponseWriter, r *http.Request) {
-	if r.Header.Get("HX-Request") == "true" {
-		s.servicesFragment(w, r)
-		return
-	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 

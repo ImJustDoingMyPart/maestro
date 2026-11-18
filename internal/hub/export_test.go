@@ -47,20 +47,14 @@ func hubWith(t *testing.T, cfg *config.Config, containers []agent.Container) (*h
 // y nombre (sin el orden de las tarjetas, que no se exporta).
 func portadaDe(t *testing.T, srv *httptest.Server, c *http.Client) string {
 	t.Helper()
-	res, _ := c.Get(srv.URL + "/clasica")
-	b := body(t, res)
 	var out []string
-	for _, sec := range strings.Split(b, `<section class="group`)[1:] {
-		i := strings.Index(sec, `data-group="`) + len(`data-group="`)
-		name := sec[i : i+strings.Index(sec[i:], `"`)]
+	for _, g := range portadaData(t, c, srv).Groups {
 		var cards []string
-		for _, part := range strings.Split(sec, `class="card-slot" data-key="`)[1:] {
-			key := part[:strings.Index(part, `"`)]
-			j := strings.Index(part, `title="`) + len(`title="`)
-			cards = append(cards, key+"="+part[j:j+strings.Index(part[j:], `"`)])
+		for _, card := range g.Cards {
+			cards = append(cards, card.Key+"="+card.Name)
 		}
 		slicesSort(cards)
-		out = append(out, name+"["+strings.Join(cards, ", ")+"]")
+		out = append(out, g.Name+"["+strings.Join(cards, ", ")+"]")
 	}
 	return strings.Join(out, " ")
 }
@@ -158,8 +152,7 @@ func TestExportarYVolverACargar(t *testing.T) {
 	if res.StatusCode != http.StatusConflict {
 		t.Errorf("mostrar un oculto del archivo = %d", res.StatusCode)
 	}
-	res, _ = c2.Get(srv2.URL + "/hidden")
-	if b := body(t, res); !strings.Contains(b, "lo oculta maestro.yaml") {
+	if _, b := getPage(t, c2, srv2.URL+"/hidden"); !strings.Contains(b, `"Locked":true`) {
 		t.Error("la lista de ocultos no marca los del archivo")
 	}
 }
@@ -167,8 +160,8 @@ func TestExportarYVolverACargar(t *testing.T) {
 func TestExportarVacio(t *testing.T) {
 	srv := testServer(t, Snapshot{})
 	c := loggedIn(t, srv)
-	res, _ := c.Get(srv.URL + "/export")
-	if b := body(t, res); res.StatusCode != 200 || !strings.Contains(b, "Todavía no se configuró nada") {
+	res, b := getPage(t, c, srv.URL+"/export")
+	if res.StatusCode != 200 || !strings.Contains(b, "Todavía no se configuró nada") {
 		t.Errorf("export vacío: %d\n%.500s", res.StatusCode, b)
 	}
 }

@@ -110,28 +110,23 @@ func TestPaginaDeStack(t *testing.T) {
 	srv := testServerWith(t, stackSnap(), nil, fs)
 	c := loggedIn(t, srv)
 
-	res, err := c.Get(srv.URL + "/stacks/vm/media?svc=media/jellyfin")
-	if err != nil {
-		t.Fatal(err)
-	}
-	b := body(t, res)
+	res, b := getPage(t, c, srv.URL+"/stacks/vm/media?svc=media/jellyfin")
 	if res.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d", res.StatusCode)
 	}
 	for _, want := range []string{
-		"&lt;script&gt;",                  // el contenido va escapado
-		`data-hash="sha256:1"`,            // con el hash para guardar
-		"tiene 2 servicios",               // avisa que actúa sobre todo el stack
-		`href="/services/media/jellyfin"`, // pestaña Actividad del servicio de origen
-		"compose.yml",                     // nombre del archivo en la pestaña
-		"/static/gen/compose.js",
+		`\u003cscript\u003e`, // el contenido, escapado en el JSON
+		`"hash":"sha256:1"`,  // con el hash para guardar
+		`"From":{"Name":"Jellyfin","Href":"/services/media/jellyfin"}`, // pestaña Actividad del servicio de origen
+		`"path":"/srv/media/compose.yml"`,                              // nombre del archivo en la pestaña
 	} {
 		if !strings.Contains(b, want) {
-			t.Errorf("falta %q en la página", want)
+			t.Errorf("falta %q en la página:\n%s", want, b)
 		}
 	}
-	if strings.Contains(b, "<script>\"") {
-		t.Error("el contenido del compose salió sin escapar")
+	var page struct{ Stack stackPage }
+	if err := json.Unmarshal([]byte(b), &page); err != nil || len(page.Stack.Services) != 2 {
+		t.Errorf("tiene que traer los 2 servicios del stack: %v %+v", err, page.Stack.Services)
 	}
 
 	for path, want := range map[string]int{
@@ -145,8 +140,7 @@ func TestPaginaDeStack(t *testing.T) {
 		}
 	}
 	fs.err = agent.ErrStackNotFound
-	res, _ = c.Get(srv.URL + "/stacks/vm/media")
-	if b := body(t, res); res.StatusCode != http.StatusNotFound || !strings.Contains(b, "no encuentra el stack") {
+	if res, b := getPage(t, c, srv.URL+"/stacks/vm/media"); res.StatusCode != http.StatusNotFound || !strings.Contains(b, "no encuentra el stack") {
 		t.Errorf("stack inexistente: %d", res.StatusCode)
 	}
 }
@@ -224,8 +218,7 @@ func TestAccion(t *testing.T) {
 	}
 	// Mientras sigue, la página del stack la muestra.
 	fs.files = agent.StackFiles{Files: []agent.StackFile{{Name: agent.FileCompose, Path: "/x/compose.yml"}}}
-	res, _ := c.Get(srv.URL + "/stacks/vm/media")
-	if b := body(t, res); !strings.Contains(b, `data-run="`+runURL+`"`) {
+	if _, b := getPage(t, c, srv.URL+"/stacks/vm/media"); !strings.Contains(b, `"Run":"`+runURL+`"`) {
 		t.Error("la página no muestra la acción en curso")
 	}
 	cancel() // el navegador se va; la acción sigue
@@ -254,7 +247,7 @@ func TestAccion(t *testing.T) {
 	if code, _ := postJSON(t, c, srv, "/stacks/vm/media/actions/rm", nil); code != http.StatusNotFound {
 		t.Errorf("acción desconocida = %d", code)
 	}
-	res, _ = c.Get(srv.URL + "/runs/no-existe")
+	res, _ := c.Get(srv.URL + "/runs/no-existe")
 	res.Body.Close()
 	if res.StatusCode != http.StatusNotFound {
 		t.Errorf("run inexistente = %d", res.StatusCode)

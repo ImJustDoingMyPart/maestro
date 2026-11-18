@@ -183,7 +183,7 @@ func withIcons(r *icons.Resolver) handlerOption {
 }
 
 func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon monitorView, prefs prefStore, sessions *auth.Sessions, apiToken string, logger *slog.Logger, opts ...handlerOption) (http.Handler, error) {
-	p, err := parsePages(web.Templates, "portada", "services", "service", "stack", "hardware", "login", "hidden", "external", "discovered", "export", "muestrario")
+	p, err := parsePages(web.Templates, "app", "login")
 	if err != nil {
 		return nil, err
 	}
@@ -224,8 +224,6 @@ func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon moni
 	// Portada nueva (Svelte, rama de prueba) y la de antes, para comparar.
 	private.HandleFunc("GET /{$}", s.portadaPage)
 	private.HandleFunc("GET /api/portada", s.portadaAPI)
-	private.HandleFunc("GET /clasica", s.servicesPage)
-	private.HandleFunc("GET /fragments/services", s.servicesFragment)
 	private.HandleFunc("GET /hardware", s.hardwarePage)
 	private.HandleFunc("POST /hardware/order", s.hwOrder)
 	private.HandleFunc("POST /hardware/hidden", s.hwHidden)
@@ -266,8 +264,6 @@ func newHandler(poller snapshotter, logs logOpener, stacks stackClient, mon moni
 	private.HandleFunc("GET /services/{id...}", s.servicePage)
 	private.HandleFunc("GET /logs/{id...}", s.streamLogs)
 	private.HandleFunc("GET /metrics/{id...}", s.metricsPage)
-	private.HandleFunc("GET /fragments/checks/{id...}", s.checksFragment)
-	private.HandleFunc("GET /fragments/service/{id...}", s.liveFragment)
 	// Un stack se nombra por host y proyecto, no por servicio: después de
 	// un down no le quedan contenedores ni servicios, y hay que poder
 	// levantarlo de nuevo.
@@ -307,22 +303,10 @@ func securityHeaders(next http.Handler) http.Handler {
 	})
 }
 
-func (s *server) servicesPage(w http.ResponseWriter, r *http.Request) {
-	data := s.servicesData(r.Context())
-	data.Title, data.Active, data.ShowNav = "Servicios", "services", true
-	s.pages.render(w, s.logger, "services", data)
-}
-
 // portadaPage es la portada hecha con Svelte: la página trae solo el
 // lugar donde se monta; los datos llegan de /api/portada.
 func (s *server) portadaPage(w http.ResponseWriter, r *http.Request) {
-	s.pages.render(w, s.logger, "portada", pageData{Title: "Servicios", Active: "services", ShowNav: true, Live: true})
-}
-
-func (s *server) servicesFragment(w http.ResponseWriter, r *http.Request) {
-	data := s.servicesData(r.Context())
-	data.OOB = true
-	s.pages.renderFragment(w, s.logger, "services", "gridfragment", data)
+	s.page(w, r, http.StatusOK, pageData{Title: "Servicios", Active: "services", ShowNav: true, Live: true})
 }
 
 // servicesData arma la grilla desde la última foto del poller.

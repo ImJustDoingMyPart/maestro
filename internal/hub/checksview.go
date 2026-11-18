@@ -47,21 +47,6 @@ type eventRow struct {
 	Reason string
 }
 
-// checksFragment atiende /fragments/checks/{id...}: el panel de checks que
-// la página del servicio vuelve a pedir cada minuto.
-func (s *server) checksFragment(w http.ResponseWriter, r *http.Request) {
-	svc, ok := s.lookup(r.Context(), r.PathValue("id"))
-	if !ok {
-		http.Error(w, "servicio inexistente", http.StatusNotFound)
-		return
-	}
-	d := detail(svc, s.mon.Status(svc.ID))
-	d.Logo, d.Icon = logoFor(s.icons, serviceHint(svc).withOverride(s.chosenIcons(r.Context())[serviceKey(svc.ID)], svc.IconFromFile), d.Icon)
-	d.ChecksURL = "/fragments/checks/" + escapeID(svc.ID)
-	d.Checks, _ = s.checkPanels(r, svc)
-	s.pages.renderFragment(w, s.logger, "service", "checks", pageData{Svc: &d})
-}
-
 // checkPanels arma los paneles de los checks del servicio y los cambios de
 // estado de historySpan.
 func (s *server) checkPanels(r *http.Request, svc catalog.Service) ([]checkPanel, []eventRow) {

@@ -21,8 +21,8 @@ type hiddenRow struct {
 	Locked bool // lo oculta maestro.yaml: no se muestra desde la interfaz
 }
 
-// hide atiende POST /hidden: oculta la tarjeta de la clave "key". Con htmx
-// devuelve la grilla nueva; sin JavaScript, vuelve a la portada.
+// hide atiende POST /hidden: oculta la tarjeta de la clave "key" y vuelve
+// a la portada.
 func (s *server) hide(w http.ResponseWriter, r *http.Request) {
 	key, ok := s.prefKey(w, r)
 	if !ok {
@@ -35,10 +35,6 @@ func (s *server) hide(w http.ResponseWriter, r *http.Request) {
 	if err := s.prefs.Hide(r.Context(), key, time.Now()); err != nil {
 		s.logger.Error("ocultar", "key", key, "err", err)
 		http.Error(w, "no se pudo ocultar", http.StatusInternalServerError)
-		return
-	}
-	if r.Header.Get("HX-Request") == "true" {
-		s.servicesFragment(w, r)
 		return
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
@@ -109,7 +105,7 @@ func (s *server) nameFromFile(key string) bool {
 }
 
 // rename atiende POST /names: cambia el nombre de una tarjeta. Vacío
-// vuelve al original. Con htmx devuelve la grilla nueva.
+// vuelve al original.
 func (s *server) rename(w http.ResponseWriter, r *http.Request) {
 	key, ok := s.prefKey(w, r)
 	if !ok {
@@ -127,10 +123,6 @@ func (s *server) rename(w http.ResponseWriter, r *http.Request) {
 	if err := s.prefs.SetName(r.Context(), key, name, time.Now()); err != nil {
 		s.logger.Error("cambiar nombre", "key", key, "err", err)
 		http.Error(w, "no se pudo cambiar el nombre", http.StatusInternalServerError)
-		return
-	}
-	if r.Header.Get("HX-Request") == "true" {
-		s.servicesFragment(w, r)
 		return
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
@@ -221,5 +213,5 @@ func (s *server) hiddenPage(w http.ResponseWriter, r *http.Request) {
 		rows = append(rows, row)
 	}
 	slices.SortFunc(rows, func(a, b hiddenRow) int { return cmp.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name)) })
-	s.pages.render(w, s.logger, "hidden", pageData{Title: "Ocultos", Active: "services", ShowNav: true, Hidden: rows})
+	s.page(w, r, http.StatusOK, pageData{Title: "Ocultos", Active: "services", ShowNav: true, Hidden: rows})
 }

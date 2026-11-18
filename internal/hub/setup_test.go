@@ -67,7 +67,7 @@ func TestCrearPrimerUsuario(t *testing.T) {
 	if res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != "/" {
 		t.Fatalf("setup = %d %s", res.StatusCode, res.Header.Get("Location"))
 	}
-	res, _ = c.Get(srv.URL + "/clasica")
+	res, _ = c.Get(srv.URL + "/api/portada")
 	res.Body.Close()
 	if res.StatusCode != http.StatusOK {
 		t.Errorf("después de crear, la portada = %d (¿no quedó la sesión?)", res.StatusCode)

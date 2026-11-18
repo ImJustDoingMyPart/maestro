@@ -107,30 +107,24 @@ func TestOcultarYMostrar(t *testing.T) {
 	srv := testServer(t, snap)
 	c := loggedIn(t, srv)
 
-	res, _ := c.Get(srv.URL + "/clasica")
-	b := body(t, res)
-	for _, want := range []string{`data-key="stack:vm/immich"`, "2 servicios", `value="service:immich/redis"`, "/stacks/vm/immich"} {
+	b := portadaBody(t, c, srv)
+	for _, want := range []string{`"key":"stack:vm/immich"`, "2 servicios", `"key":"service:immich/redis"`, "/stacks/vm/immich"} {
 		if !strings.Contains(b, want) {
 			t.Errorf("la portada no tiene %q", want)
 		}
 	}
 
-	// Ocultar con htmx devuelve la grilla nueva.
-	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/hidden", strings.NewReader("key=stack%3Avm%2Fimmich"))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Origin", srv.URL)
-	req.Header.Set("HX-Request", "true")
-	res, err := c.Do(req)
-	if err != nil {
-		t.Fatal(err)
+	res := postForm(t, c, srv.URL+"/hidden", url.Values{"key": {"stack:vm/immich"}}, srv.URL)
+	res.Body.Close()
+	if res.StatusCode != http.StatusSeeOther {
+		t.Errorf("ocultar = %d", res.StatusCode)
 	}
-	b = body(t, res)
-	if res.StatusCode != 200 || strings.Contains(b, `data-key="stack:vm/immich"`) || !strings.Contains(b, "1 oculto") {
-		t.Errorf("ocultar con htmx: %d\n%.300s", res.StatusCode, b)
+	b = portadaBody(t, c, srv)
+	if strings.Contains(b, `"key":"stack:vm/immich"`) || !strings.Contains(b, `"hiddenCount":1`) {
+		t.Errorf("después de ocultar:\n%.300s", b)
 	}
 
-	res, _ = c.Get(srv.URL + "/hidden")
-	b = body(t, res)
+	_, b = getPage(t, c, srv.URL+"/hidden")
 	if !strings.Contains(b, "immich (vm)") || !strings.Contains(b, "stack de 2 servicios") {
 		t.Errorf("la página de ocultos no lo lista:\n%.500s", b)
 	}
@@ -141,8 +135,7 @@ func TestOcultarYMostrar(t *testing.T) {
 	if res.StatusCode != http.StatusSeeOther || res.Header.Get("Location") != "/hidden" {
 		t.Errorf("mostrar = %d %s", res.StatusCode, res.Header.Get("Location"))
 	}
-	res, _ = c.Get(srv.URL + "/clasica")
-	if b := body(t, res); !strings.Contains(b, `data-key="stack:vm/immich"`) {
+	if b := portadaBody(t, c, srv); !strings.Contains(b, `"key":"stack:vm/immich"`) {
 		t.Error("después de mostrar, el stack no volvió")
 	}
 
@@ -211,9 +204,8 @@ func TestCambiarNombre(t *testing.T) {
 		t.Errorf("renombrar un nombre del archivo = %d", res.StatusCode)
 	}
 
-	res, _ = c.Get(srv.URL + "/clasica")
-	b := body(t, res)
-	for _, want := range []string{">Fotos<", ">Mi web<", "Del archivo", `data-set-name="Fotos"`, "El nombre viene de maestro.yaml"} {
+	b := portadaBody(t, c, srv)
+	for _, want := range []string{`"name":"Fotos"`, `"name":"Mi web"`, "Del archivo", `"nameLocked":true`} {
 		if !strings.Contains(b, want) {
 			t.Errorf("la portada no tiene %q", want)
 		}
@@ -222,15 +214,13 @@ func TestCambiarNombre(t *testing.T) {
 		t.Error("un nombre de la interfaz pisó al del archivo")
 	}
 	// La página del servicio también usa el nombre nuevo.
-	res, _ = c.Get(srv.URL + "/services/solo/web")
-	if b := body(t, res); !strings.Contains(b, "Mi web") {
+	if _, b := getPage(t, c, srv.URL+"/services/solo/web"); !strings.Contains(b, "Mi web") {
 		t.Error("la página del servicio no usa el nombre nuevo")
 	}
 
 	// Vacío vuelve al original.
 	rename("service:solo/web", "")
-	res, _ = c.Get(srv.URL + "/clasica")
-	if b := body(t, res); strings.Contains(b, "Mi web") || !strings.Contains(b, ">web<") {
+	if b := portadaBody(t, c, srv); strings.Contains(b, "Mi web") || !strings.Contains(b, `"name":"web"`) {
 		t.Error("el nombre vacío no volvió al original")
 	}
 

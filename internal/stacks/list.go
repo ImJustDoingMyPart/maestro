@@ -107,7 +107,7 @@ func (m *Manager) describe(ctx context.Context, dir, file string) agent.StackInf
 		return info
 	}
 	var cfg struct {
-		Name     string                     `json:"name"`
+		Name     string `json:"name"`
 		Services map[string]struct {
 			Labels map[string]string `json:"labels"`
 		} `json:"services"`

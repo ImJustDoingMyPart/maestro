@@ -293,7 +293,7 @@ func (s *server) hardwarePage(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	s.pages.render(w, s.logger, "hardware", pageData{
+	s.page(w, r, http.StatusOK, pageData{
 		Title: "Hardware", Active: "hardware", ShowNav: true,
 		Hardware: hw, HWHost: sel, Live: editable,
 	})

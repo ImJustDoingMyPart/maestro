@@ -61,7 +61,10 @@ export class Viewer {
     this.win = root.querySelector(".log-window");
     this.bottomBtn = root.querySelector(".log-bottom");
     this.statusEl = root.querySelector(".log-status");
-    this.dialog = document.querySelector(".log-detail");
+    // El diálogo de una línea: el del visor o, si no trae, el de la página.
+    this.dialog = root.querySelector(".log-detail") || document.querySelector(".log-detail");
+    // Todo lo que se escucha afuera del visor se suelta en destroy().
+    this.ac = new AbortController();
 
     this.buf = new LogBuffer(CAP);
     this.pending = [];
@@ -77,6 +80,16 @@ export class Viewer {
     this.bind();
     this.fitHeight();
     if (this.opts.autoconnect) this.connect();
+  }
+
+  // destroy cierra el stream y suelta lo que se escuchaba afuera: la
+  // página que lo montó se va (navegación sin recargar).
+  destroy() {
+    this.destroyed = true;
+    this.ac.abort();
+    if (this.es) this.es.close();
+    cancelAnimationFrame(this.frame);
+    if (this.dialog?.open) this.dialog.close();
   }
 
   // open conecta el visor a otro stream, desde cero.
@@ -153,14 +166,15 @@ export class Viewer {
       }
     });
 
-    window.addEventListener("resize", () => { this.fitHeight(); this.schedule(); });
+    const signal = this.ac.signal;
+    window.addEventListener("resize", () => { this.fitHeight(); this.schedule(); }, { signal });
     // El navegador del celular corta las conexiones de una pestaña en
     // segundo plano; al volver, si el stream murió, se reabre.
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible" && this.es && this.es.readyState === EventSource.CLOSED && !this.ended) {
         this.connect();
       }
-    });
+    }, { signal });
   }
 
   addReplicaSelect() {
@@ -244,7 +258,7 @@ export class Viewer {
       } else {
         // Cerrado del todo: la sesión venció (el login devuelve HTML) o el
         // servicio ya no existe.
-        this.setStatus("down", "Desconectado", () => location.reload());
+        this.setStatus("down", "Desconectado", () => this.connect());
         if (this.opts.onEnd) this.opts.onEnd(null);
       }
     };

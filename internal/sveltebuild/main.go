@@ -5,9 +5,15 @@
 // que está escrito en JavaScript y necesita Node. Node hace falta solo
 // para go generate: la salida se commitea y go build no lo usa.
 //
+// Sale en módulos ES con code splitting: lo que se importa con import()
+// (el editor de Compose con CodeMirror, los gráficos con uPlot) queda en un
+// chunk aparte que el navegador baja solo al usarlo. La carpeta de salida
+// se vacía antes: los chunks llevan un hash en el nombre y los viejos no
+// tienen que quedar embebidos.
+//
 // Uso (desde web/, como lo llama //go:generate):
 //
-//	sveltebuild -outdir static/gen src/portada.js
+//	sveltebuild -outdir static/gen/app src/app/main.js
 package main
 
 import (
@@ -23,8 +29,12 @@ import (
 )
 
 func main() {
-	outdir := flag.String("outdir", "static/gen", "carpeta de salida")
+	outdir := flag.String("outdir", "static/gen/app", "carpeta de salida")
 	flag.Parse()
+	if err := os.RemoveAll(*outdir); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 	if flag.NArg() == 0 {
 		fmt.Fprintln(os.Stderr, "uso: sveltebuild -outdir <carpeta> <entrada.js>...")
 		os.Exit(2)
@@ -52,7 +62,10 @@ func main() {
 		Bundle:            true,
 		Outdir:            *outdir,
 		Write:             true,
-		Format:            api.FormatIIFE,
+		Format:            api.FormatESModule,
+		Splitting:         true,
+		EntryNames:        "[name]",
+		ChunkNames:        "chunk-[hash]",
 		Platform:          api.PlatformBrowser,
 		Target:            api.ES2022,
 		MinifyWhitespace:  true,

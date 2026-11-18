@@ -6,10 +6,9 @@
 //   data-unit    pct, cores (porcentaje de un núcleo), bytes, rate
 //                (bytes/s), temp o plain
 //   data-stack   si está, las series se dibujan apiladas (suma)
-// Un elemento con data-ranges tiene botones con data-range (1h, 24h, …):
-// el elegido se recuerda en el navegador y cambia todos los gráficos.
+// El rango (1h, 24h, …) es uno para todos los gráficos: lo cambia
+// setRange y se recuerda en el navegador.
 import uPlot from "uplot";
-import "uplot/dist/uPlot.min.css";
 
 const RANGE_KEY = "maestro.chartRange";
 const REFRESH_MS = 60_000;
@@ -128,6 +127,7 @@ async function load(el) {
     el.querySelector(".chart-msg")?.replaceChildren("No se pudieron leer los datos.");
     return;
   }
+  if (!charts.has(el)) return; // se desmontó mientras esperaba
   draw(el, spec, data);
 }
 
@@ -267,28 +267,34 @@ function draw(el, spec, data) {
   el._plot = new uPlot(opts, [data.t, ...values], box);
 }
 
+// Los gráficos montados (mountChart) y quién escucha el rango.
+const charts = new Set();
+const rangeListeners = new Set();
+let timer = 0;
+
 function loadAll() {
-  for (const el of document.querySelectorAll("[data-chart]")) load(el);
+  for (const el of charts) load(el);
 }
 
-function setupRanges() {
-  for (const nav of document.querySelectorAll("[data-ranges]")) {
-    const buttons = nav.querySelectorAll("[data-range]");
-    const mark = () => buttons.forEach((b) => b.classList.toggle("active", b.dataset.range === range));
-    mark();
-    buttons.forEach((b) =>
-      b.addEventListener("click", () => {
-        range = b.dataset.range;
-        try {
-          localStorage.setItem(RANGE_KEY, range);
-        } catch {}
-        document.querySelectorAll("[data-ranges]").forEach((n) =>
-          n.querySelectorAll("[data-range]").forEach((x) => x.classList.toggle("active", x.dataset.range === range)),
-        );
-        loadAll();
-      }),
-    );
-  }
+// getRange es el rango elegido (1h, 6h, 24h, 7d, 30d, 1y).
+export function getRange() {
+  return range;
+}
+
+// setRange cambia el rango de todos los gráficos y lo recuerda.
+export function setRange(r) {
+  range = r;
+  try {
+    localStorage.setItem(RANGE_KEY, range);
+  } catch {}
+  rangeListeners.forEach((f) => f(range));
+  loadAll();
+}
+
+// onRange avisa cada cambio de rango; devuelve con qué dejar de escuchar.
+export function onRange(f) {
+  rangeListeners.add(f);
+  return () => rangeListeners.delete(f);
 }
 
 // Al cambiar el ancho (girar el celular, achicar la ventana) se ajusta el
@@ -300,17 +306,36 @@ const resize = new ResizeObserver((entries) => {
   }
 });
 
-function init() {
-  setupRanges();
-  for (const el of document.querySelectorAll("[data-chart] .chart-plot")) resize.observe(el);
-  // Los ejes se miden con la fuente de la página: se espera a que cargue.
-  (document.fonts?.ready ?? Promise.resolve()).then(loadAll);
-  setInterval(() => {
-    if (!document.hidden) loadAll();
-  }, REFRESH_MS);
-  // El tema (claro u oscuro) cambia los colores: se redibuja.
-  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", loadAll);
-}
+// El tema (claro u oscuro) cambia los colores: se redibuja.
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", loadAll);
 
-if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
-else init();
+// mountChart dibuja el gráfico de el (un elemento con data-chart, ver
+// arriba) y lo refresca cada minuto hasta destroy. Sirve de action de
+// Svelte: update vuelve a pedir los datos (cambiaron las series).
+export function mountChart(el) {
+  charts.add(el);
+  const plot = el.querySelector(".chart-plot");
+  resize.observe(plot);
+  // Los ejes se miden con la fuente de la página: se espera a que cargue.
+  (document.fonts?.ready ?? Promise.resolve()).then(() => charts.has(el) && load(el));
+  if (!timer) {
+    timer = setInterval(() => {
+      if (!document.hidden) loadAll();
+    }, REFRESH_MS);
+  }
+  return {
+    update() {
+      load(el);
+    },
+    destroy() {
+      charts.delete(el);
+      resize.unobserve(plot);
+      el._plot?.destroy();
+      el._plot = null;
+      if (!charts.size) {
+        clearInterval(timer);
+        timer = 0;
+      }
+    },
+  };
+}

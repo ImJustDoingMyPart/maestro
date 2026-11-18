@@ -1,0 +1,25 @@
+{{/* Shell de la aplicación (web/src/app): todas las páginas menos el login
+     y el muestrario. La barra de navegación y la página las dibuja Svelte
+     en #app, con los datos de la misma URL pedida como JSON. */}}
+{{define "layout"}}<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>{{.Title}} · Maestro</title>
+  <link rel="stylesheet" href="/static/beercss-5.0.3/beer.min.css">
+  <link rel="preload" href="/static/fonts/google-sans-flex-5.3.2/google-sans-flex-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/static/beercss-5.0.3/material-symbols-outlined.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/maestro.css">
+  <link rel="stylesheet" href="/static/gen/app/main.css">
+  <script type="module" src="/static/beercss-5.0.3/beer.min.js"></script>
+  <script src="/static/sortable-1.15.7.min.js" defer></script>
+  <script type="module" src="/static/gen/app/main.js"></script>
+</head>
+<body>
+  <div id="app"{{if .Demo}} data-demo{{end}}></div>
+  <noscript><main class="responsive"><p>Maestro necesita JavaScript.</p></main></noscript>
+</body>
+</html>
+{{end}}

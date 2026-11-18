@@ -161,16 +161,18 @@ async function post(url, body) {
   return [res.status, await res.json()];
 }
 
-class Compose {
+export class Compose {
   constructor(root) {
     this.root = root;
+    // Lo que se escucha afuera del editor se suelta en destroy().
+    this.ac = new AbortController();
     this.base = root.dataset.base;
     this.msg = root.querySelector(".compose-msg");
     this.saveBtn = root.querySelector("[data-save]");
     this.revertBtn = root.querySelector("[data-revert]");
     this.pathEl = root.querySelector(".editor-path");
-    this.diffDialog = document.querySelector(".diff-dialog");
-    this.downDialog = document.querySelector(".down-dialog");
+    this.diffDialog = root.querySelector(".diff-dialog") || document.querySelector(".diff-dialog");
+    this.downDialog = root.querySelector(".down-dialog") || document.querySelector(".down-dialog");
     this.actionBtns = [...root.querySelectorAll("[data-action]")];
     this.busyNote = root.querySelector(".compose-busy");
     this.checkEl = root.querySelector(".editor-check");
@@ -221,15 +223,16 @@ class Compose {
     this.msg.querySelector("[data-dismiss]").addEventListener("click", () => { this.msg.hidden = true; });
 
     // Ctrl+S / Cmd+S guarda en vez de bajar la página.
+    const signal = this.ac.signal;
     document.addEventListener("keydown", (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "s") {
         e.preventDefault();
         if (!this.saveBtn.disabled) this.save();
       }
-    });
+    }, { signal });
     window.addEventListener("beforeunload", (e) => {
       if (this.dirtyFiles().length) e.preventDefault();
-    });
+    }, { signal });
 
     for (const b of this.actionBtns) {
       b.addEventListener("click", () => {
@@ -240,6 +243,21 @@ class Compose {
     for (const d of [this.diffDialog, this.downDialog]) {
       d.querySelector("[data-cancel]").addEventListener("click", () => d.close());
     }
+  }
+
+  // dirty dice si hay cambios sin guardar (para no irse sin avisar).
+  dirty() {
+    return this.dirtyFiles().length > 0;
+  }
+
+  // destroy suelta el editor, el visor de la salida y lo que se escuchaba
+  // afuera: la página se va sin recargar.
+  destroy() {
+    this.ac.abort();
+    for (const f of Object.values(this.files)) clearTimeout(f.timer);
+    this.viewer.destroy();
+    this.view.destroy();
+    for (const d of [this.diffDialog, this.downDialog]) if (d?.open) d.close();
   }
 
   // Archivos
@@ -523,5 +541,3 @@ class Compose {
   }
 }
 
-const root = document.querySelector(".compose");
-if (root) new Compose(root);

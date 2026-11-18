@@ -152,9 +152,8 @@ func UserFrom(ctx context.Context) (store.User, bool) {
 }
 
 // RequireLogin deja pasar solo peticiones con una sesión vigente. Al resto
-// las manda a /login: con un redirect común si es una página, con el header
-// HX-Redirect si la pidió htmx (un redirect común metería la página de
-// login adentro del fragmento).
+// las manda a /login con un redirect (la aplicación, que pide con fetch, ve
+// que terminó en /login y va ahí).
 func (s *Sessions) RequireLogin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u, err := s.userFromRequest(r)
@@ -162,11 +161,6 @@ func (s *Sessions) RequireLogin(next http.Handler) http.Handler {
 			if !errors.Is(err, store.ErrNotFound) {
 				s.logger.Error("leer sesión", "err", err)
 				http.Error(w, "error interno", http.StatusInternalServerError)
-				return
-			}
-			if r.Header.Get("HX-Request") == "true" {
-				w.Header().Set("HX-Redirect", "/login")
-				w.WriteHeader(http.StatusUnauthorized)
 				return
 			}
 			http.Redirect(w, r, "/login", http.StatusSeeOther)

@@ -66,10 +66,10 @@ func TestPortadaAPI(t *testing.T) {
 		}
 	}
 
-	// La portada nueva es la página de "/"; la de antes sigue en /clasica.
+	// "/" es el shell de la aplicación, que pide estos datos.
 	res, _ = c.Get(srv.URL + "/")
-	if b := body(t, res); !strings.Contains(b, `id="portada"`) || !strings.Contains(b, "/static/gen/portada.js") {
-		t.Error("/ no monta la portada de Svelte")
+	if b := body(t, res); !strings.Contains(b, `id="app"`) || !strings.Contains(b, "/static/gen/app/main.js") {
+		t.Error("/ no monta la aplicación")
 	}
 }
 

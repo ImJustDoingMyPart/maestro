@@ -196,7 +196,7 @@ func (s *server) exportPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "error interno", http.StatusInternalServerError)
 		return
 	}
-	s.pages.render(w, s.logger, "export", pageData{Title: "Exportar", Active: "services", ShowNav: true, Export: string(out)})
+	s.page(w, r, http.StatusOK, pageData{Title: "Exportar", Active: "services", ShowNav: true, Export: string(out)})
 }
 
 // exportFile atiende GET /export.yaml: el mismo YAML para bajar.

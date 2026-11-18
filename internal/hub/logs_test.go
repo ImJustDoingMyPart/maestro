@@ -445,29 +445,22 @@ func TestPaginaDeServicio(t *testing.T) {
 	srv := testServerLogs(t, snap, &fakeLogs{})
 	c := loggedIn(t, srv)
 
-	res, _ := c.Get(srv.URL + "/clasica")
-	if b := body(t, res); !strings.Contains(b, `href="/services/media/jellyfin"`) {
+	if b := portadaBody(t, c, srv); !strings.Contains(b, `"href":"/services/media/jellyfin"`) {
 		t.Error("la tarjeta de la portada no enlaza a la página del servicio")
 	}
 
-	res, _ = c.Get(srv.URL + "/services/media/jellyfin")
-	b := body(t, res)
-	for _, want := range []string{"Jellyfin", `data-stream="/logs/media/jellyfin"`, "/static/gen/logs.js", "Actividad", "compose · media"} {
+	_, b := getPage(t, c, srv.URL+"/services/media/jellyfin")
+	for _, want := range []string{"Jellyfin", `"LogsURL":"/logs/media/jellyfin"`, `"MetricsURL":"/metrics/media/jellyfin"`, "compose · media"} {
 		if !strings.Contains(b, want) {
 			t.Errorf("falta %q en la página", want)
 		}
 	}
-	if strings.Contains(b, "data-replicas") {
-		t.Error("con un solo contenedor no hay selector de réplicas")
-	}
 
-	res, _ = c.Get(srv.URL + "/services/router")
-	if b := body(t, res); !strings.Contains(b, "no tiene logs") || strings.Contains(b, "logs.js") {
+	if _, b := getPage(t, c, srv.URL+"/services/router"); !strings.Contains(b, "no tiene logs") || !strings.Contains(b, `"LogsURL":""`) {
 		t.Error("un servicio externo no tiene visor de logs")
 	}
 
-	res, _ = c.Get(srv.URL + "/services/no-existe")
-	if b := body(t, res); res.StatusCode != http.StatusNotFound || !strings.Contains(b, "no existe") {
+	if res, b := getPage(t, c, srv.URL+"/services/no-existe"); res.StatusCode != http.StatusNotFound || !strings.Contains(b, `"Svc":null`) {
 		t.Errorf("servicio inexistente = %d", res.StatusCode)
 	}
 }

@@ -134,12 +134,12 @@ func TestRequireLogin(t *testing.T) {
 	tests := []struct {
 		name       string
 		cookie     *http.Cookie
-		htmx       bool
+		json       bool // como pide la aplicación
 		wantCode   int
-		wantHeader string // Location o HX-Redirect
+		wantHeader string // Location
 	}{
 		{"sin cookie", nil, false, http.StatusSeeOther, "/login"},
-		{"sin cookie, htmx", nil, true, http.StatusUnauthorized, "/login"},
+		{"sin cookie, la aplicación", nil, true, http.StatusSeeOther, "/login"},
 		{"cookie inventada", &http.Cookie{Name: CookieName, Value: "inventada"}, false, http.StatusSeeOther, "/login"},
 		{"cookie válida", cookie, false, http.StatusTeapot, ""},
 	}
@@ -149,8 +149,8 @@ func TestRequireLogin(t *testing.T) {
 			if tt.cookie != nil {
 				req.AddCookie(tt.cookie)
 			}
-			if tt.htmx {
-				req.Header.Set("HX-Request", "true")
+			if tt.json {
+				req.Header.Set("Accept", "application/json")
 			}
 			rec := httptest.NewRecorder()
 			protegido.ServeHTTP(rec, req)
@@ -158,11 +158,7 @@ func TestRequireLogin(t *testing.T) {
 				t.Errorf("código = %d, quería %d", rec.Code, tt.wantCode)
 			}
 			if tt.wantHeader != "" {
-				got := rec.Header().Get("Location")
-				if tt.htmx {
-					got = rec.Header().Get("HX-Redirect")
-				}
-				if got != tt.wantHeader {
+				if got := rec.Header().Get("Location"); got != tt.wantHeader {
 					t.Errorf("redirect = %q, quería %q", got, tt.wantHeader)
 				}
 			}

@@ -7,7 +7,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net/http"
-	"path"
+	"strings"
 	"time"
 
 	"github.com/ImJustDoingMyPart/maestro/internal/icons"
@@ -161,54 +161,41 @@ type pageData struct {
 	Setup    bool // no hay usuarios: el formulario crea el primero
 }
 
-// funcs son las funciones que pueden usar las plantillas.
-var funcs = template.FuncMap{
-	// separateArgs arma los datos del ítem "Sacar del stack" / "Volver al
-	// stack" del menú.
-	"separateArgs": func(key string, out, locked bool) map[string]any {
-		return map[string]any{"Key": key, "Out": out, "Locked": locked}
-	},
-	// pill arma los datos del partial "statepill". state es any porque
-	// llega como State o como texto ("down").
-	"pill": func(state any, label, title string) map[string]any {
-		return map[string]any{"State": fmt.Sprint(state), "Label": label, "Title": title}
-	},
-	"list": func(v ...string) []string { return v }, // una lista fija en la plantilla
-	"base": path.Base,                               // nombre de un archivo sin la carpeta
-	// localTime escribe una hora como <time> que web/static/localtime.js
-	// pasa a la zona del navegador. layout es "time" (15:04:05) o
-	// "datetime" (02/01 15:04).
-	"localTime": func(t time.Time, layout string) template.HTML {
-		fallback := t.UTC().Format("15:04:05") + " UTC"
-		if layout == "datetime" {
-			fallback = t.UTC().Format("02/01 15:04") + " UTC"
-		}
-		return template.HTML(fmt.Sprintf(`<time datetime="%s" data-local="%s">%s</time>`,
-			t.UTC().Format(time.RFC3339), template.HTMLEscapeString(layout), fallback))
-	},
-}
-
-// pages tiene una plantilla compilada por página: cada una es layout.html y
-// partials.html más el archivo de la página, que define el bloque "content". Se compilan por
-// separado porque todas definen "content" y en un mismo conjunto chocarían.
+// pages tiene una plantilla compilada por página: layout.html más el
+// archivo de la página (el login), o app.html sola (el shell de la
+// aplicación, que define su propio "layout").
 type pages map[string]*template.Template
 
 func parsePages(tfs fs.FS, names ...string) (pages, error) {
 	p := make(pages, len(names))
 	for _, name := range names {
-		files := []string{"layout.html", "partials.html"}
-		// El muestrario usa la tarjeta de la portada: lleva services.html
-		// antes que el suyo, que redefine "content" y "scripts".
-		if name == "muestrario" {
-			files = append(files, "services.html")
-		}
-		t, err := template.New(name).Funcs(funcs).ParseFS(tfs, append(files, name+".html")...)
+		files := []string{"layout.html", name + ".html"}
+		t, err := template.New(name).ParseFS(tfs, files...)
 		if err != nil {
 			return nil, fmt.Errorf("plantilla %s: %w", name, err)
 		}
 		p[name] = t
 	}
 	return p, nil
+}
+
+// page responde una página de la aplicación (web/src/app). La misma URL
+// sirve las dos cosas: con Accept: application/json, data en JSON (lo que
+// pide el router de la aplicación al navegar); si no, el shell, que monta
+// la aplicación y vuelve a pedir la URL como JSON. code va en las dos.
+func (s *server) page(w http.ResponseWriter, r *http.Request, code int, data pageData) {
+	w.Header().Add("Vary", "Accept")
+	if wantsJSON(r) {
+		w.Header().Set("Cache-Control", "no-store")
+		writeJSON(w, code, data)
+		return
+	}
+	s.pages.renderCode(w, s.logger, code, "app", pageData{Title: data.Title, Demo: data.Demo})
+}
+
+// wantsJSON dice si el pedido es del router de la aplicación.
+func wantsJSON(r *http.Request) bool {
+	return strings.Contains(r.Header.Get("Accept"), "application/json")
 }
 
 // render ejecuta primero en un buffer: si la plantilla falla a la mitad, el
@@ -233,30 +220,5 @@ func (p pages) renderCode(w http.ResponseWriter, logger *slog.Logger, code int, 
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(code)
-	_, _ = buf.WriteTo(w)
-}
-
-// renderFragment ejecuta solo el bloque block de la página, sin el layout:
-// es lo que htmx pide para reemplazar una parte.
-func (p pages) renderFragment(w http.ResponseWriter, logger *slog.Logger, page, block string, data pageData) {
-	p.renderFragmentData(w, logger, page, block, data)
-}
-
-// renderFragmentData es renderFragment para un bloque que no recibe
-// pageData.
-func (p pages) renderFragmentData(w http.ResponseWriter, logger *slog.Logger, page, block string, data any) {
-	t, ok := p[page]
-	if !ok {
-		logger.Error("página inexistente", "page", page)
-		http.Error(w, "error interno", http.StatusInternalServerError)
-		return
-	}
-	var buf bytes.Buffer
-	if err := t.ExecuteTemplate(&buf, block, data); err != nil {
-		logger.Error("render", "page", page, "block", block, "err", err)
-		http.Error(w, "error interno", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = buf.WriteTo(w)
 }

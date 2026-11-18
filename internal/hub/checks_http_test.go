@@ -78,9 +78,8 @@ func TestPortadaConEstadoCombinado(t *testing.T) {
 	}
 	srv := testServer(t, snap)
 	c := loggedIn(t, srv)
-	res, _ := c.Get(srv.URL + "/clasica")
-	b := body(t, res)
-	for _, want := range []string{"Degradado", "enfermo unhealthy", "1 degradado", "parado detenido (exit 137)", `<time datetime=`} {
+	b := portadaBody(t, c, srv)
+	for _, want := range []string{`"stateLabel":"Degradado"`, "enfermo unhealthy", `"degraded":1`, "parado detenido (exit 137)", `"updated":"`} {
 		if !strings.Contains(b, want) {
 			t.Errorf("la portada no tiene %q", want)
 		}
@@ -108,11 +107,10 @@ func TestPaginaConChecks(t *testing.T) {
 	srv := testServerMon(t, snap, nil, nil, mon)
 	c := loggedIn(t, srv)
 
-	res, _ := c.Get(srv.URL + "/services/red/router")
-	b := body(t, res)
+	_, b := getPage(t, c, srv.URL+"/services/red/router")
 	for _, want := range []string{
-		`hx-get="/fragments/checks/red/router"`, "https://192.168.0.1/", "timeout (10s)", "10,0 s",
-		"50,0 %", "(4 días)", "cert-warn", "Todavía no corrió", "bar partial", "Push",
+		"https://192.168.0.1/", "timeout (10s)", "10,0 s",
+		"50,0 %", "(4 días)", `"CertWarn":true`, `"LastAt":"0001-01-01T00:00:00Z"`, `"Class":"partial"`, "Push",
 		"check http falla: timeout (10s)", // el evento, en la lista (externo, sin logs)
 	} {
 		if !strings.Contains(b, want) {
@@ -121,12 +119,6 @@ func TestPaginaConChecks(t *testing.T) {
 	}
 	if strings.Contains(b, "secreto-secreto-1") {
 		t.Error("la página muestra el token push")
-	}
-
-	res, _ = c.Get(srv.URL + "/fragments/checks/red/router")
-	b = body(t, res)
-	if !strings.HasPrefix(strings.TrimSpace(b), `<section id="checks"`) || strings.Contains(b, "<html") {
-		t.Errorf("el fragmento no es solo el panel:\n%.200s", b)
 	}
 }
 
@@ -166,7 +158,9 @@ func TestStreamConCambiosDeEstado(t *testing.T) {
 	}
 }
 
-func TestFragmentoDeEstado(t *testing.T) {
+// La página de un servicio trae sus contenedores, motivos y semáforo (la
+// aplicación la vuelve a pedir cada 15 s); uno que no existe da 404.
+func TestPaginaDeServicioEnVivo(t *testing.T) {
 	snap := Snapshot{
 		Hosts: []HostStatus{{Name: "vm", OK: true}},
 		Services: []catalog.Service{{ID: "a/parado", Source: catalog.SourceCompose, Name: "Parado", Host: "vm",
@@ -175,26 +169,23 @@ func TestFragmentoDeEstado(t *testing.T) {
 	srv := testServer(t, snap)
 	c := loggedIn(t, srv)
 
-	res, _ := c.Get(srv.URL + "/services/a/parado")
-	b := body(t, res)
-	if !strings.Contains(b, `hx-get="/fragments/service/a/parado"`) || strings.Contains(b, "hx-swap-oob") {
-		t.Error("la página tiene que pedir el fragmento y no llevar oob")
-	}
-
-	res, _ = c.Get(srv.URL + "/fragments/service/a/parado")
-	b = body(t, res)
-	for _, want := range []string{`id="svc-live"`, "parado detenido (exit 1)", `id="svc-status"`, `hx-swap-oob="true"`, "Caído"} {
+	res, b := getPage(t, c, srv.URL+"/services/a/parado")
+	for _, want := range []string{`"State":"down"`, "parado detenido (exit 1)", `"Name":"parado"`} {
 		if !strings.Contains(b, want) {
-			t.Errorf("el fragmento no tiene %q", want)
+			t.Errorf("la página no tiene %q", want)
 		}
 	}
-	if strings.Contains(b, "<html") {
-		t.Error("el fragmento trae la página entera")
+	if res.Header.Get("Content-Type") != "application/json" {
+		t.Errorf("Content-Type = %q", res.Header.Get("Content-Type"))
 	}
 
-	res, _ = c.Get(srv.URL + "/fragments/service/no/existe")
-	res.Body.Close()
-	if res.StatusCode != http.StatusNotFound {
-		t.Errorf("servicio inexistente = %d", res.StatusCode)
+	res, b = getPage(t, c, srv.URL+"/services/no/existe")
+	if res.StatusCode != http.StatusNotFound || !strings.Contains(b, `"Svc":null`) {
+		t.Errorf("servicio inexistente = %d %s", res.StatusCode, b)
+	}
+	// Sin Accept: application/json, la misma URL es el shell.
+	res, _ = c.Get(srv.URL + "/services/no/existe")
+	if b := body(t, res); res.StatusCode != http.StatusNotFound || !strings.Contains(b, `<div id="app"`) {
+		t.Errorf("shell de un inexistente = %d", res.StatusCode)
 	}
 }

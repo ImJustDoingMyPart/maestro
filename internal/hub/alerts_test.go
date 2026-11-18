@@ -297,14 +297,18 @@ func TestInterruptorDeAvisos(t *testing.T) {
 	// next es lo que haría el ítem del menú de key: "1" prender, "0" apagar.
 	next := func(key string) string {
 		t.Helper()
-		res, _ := c.Get(srv.URL + "/clasica")
-		b := body(t, res)
-		mark := `value="` + key + `">` + "\n" + `  <input type="hidden" name="alert" value="`
-		i := strings.Index(b, mark)
-		if i < 0 {
-			t.Fatalf("no está el ítem de avisos de %s", key)
+		card, m, _, ok := findAPICard(portadaData(t, c, srv), key)
+		if !ok {
+			t.Fatalf("no está la tarjeta %s", key)
 		}
-		return b[i+len(mark) : i+len(mark)+1]
+		alert := card.Alert
+		if m != nil {
+			alert = m.Alert
+		}
+		if alert {
+			return "0"
+		}
+		return "1"
 	}
 
 	// El stack de immich: server sin checks no avisa, db lo apaga el

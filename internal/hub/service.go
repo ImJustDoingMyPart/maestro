@@ -49,7 +49,7 @@ type containerRow struct {
 func (s *server) servicePage(w http.ResponseWriter, r *http.Request) {
 	svc, ok := s.lookup(r.Context(), r.PathValue("id"))
 	if !ok {
-		s.pages.renderCode(w, s.logger, http.StatusNotFound, "service", pageData{
+		s.page(w, r, http.StatusNotFound, pageData{
 			Title: "No existe", Active: "services", ShowNav: true,
 		})
 		return
@@ -63,7 +63,7 @@ func (s *server) servicePage(w http.ResponseWriter, r *http.Request) {
 	if d.LogsURL != "" {
 		d.Events = nil
 	}
-	s.pages.render(w, s.logger, "service", pageData{
+	s.page(w, r, http.StatusOK, pageData{
 		Title: svc.Name, Active: "services", ShowNav: true, Svc: &d,
 	})
 }
@@ -73,14 +73,14 @@ func (s *server) servicePage(w http.ResponseWriter, r *http.Request) {
 func (s *server) metricsPage(w http.ResponseWriter, r *http.Request) {
 	svc, ok := s.lookup(r.Context(), r.PathValue("id"))
 	if !ok || len(svc.Containers) == 0 {
-		s.pages.renderCode(w, s.logger, http.StatusNotFound, "service", pageData{
+		s.page(w, r, http.StatusNotFound, pageData{
 			Title: "No existe", Active: "services", ShowNav: true,
 		})
 		return
 	}
 	d := detail(svc, s.mon.Status(svc.ID))
 	d.Logo, d.Icon = logoFor(s.icons, serviceHint(svc).withOverride(s.chosenIcons(r.Context())[serviceKey(svc.ID)], svc.IconFromFile), d.Icon)
-	s.pages.render(w, s.logger, "service", pageData{
+	s.page(w, r, http.StatusOK, pageData{
 		Title: svc.Name, Active: "services", ShowNav: true, Svc: &d, Tab: "metrics", Charts: serviceCharts(svc),
 	})
 }
@@ -145,19 +145,4 @@ func escapeID(id string) string {
 		parts[i] = url.PathEscape(p)
 	}
 	return strings.Join(parts, "/")
-}
-
-// liveFragment atiende /fragments/service/{id...}: contenedores, motivos y
-// el semáforo de la cabecera, que la página vuelve a pedir cada 15 s. Si el
-// servicio ya no existe da 404, y htmx deja lo que había.
-func (s *server) liveFragment(w http.ResponseWriter, r *http.Request) {
-	svc, ok := s.lookup(r.Context(), r.PathValue("id"))
-	if !ok {
-		http.Error(w, "servicio inexistente", http.StatusNotFound)
-		return
-	}
-	d := detail(svc, s.mon.Status(svc.ID))
-	d.Logo, d.Icon = logoFor(s.icons, serviceHint(svc).withOverride(s.chosenIcons(r.Context())[serviceKey(svc.ID)], svc.IconFromFile), d.Icon)
-	d.OOB = true
-	s.pages.renderFragmentData(w, s.logger, "service", "live", d)
 }

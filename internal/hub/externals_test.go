@@ -59,9 +59,18 @@ func TestSlugify(t *testing.T) {
 func TestServiciosExternos(t *testing.T) {
 	srv, p := pollerServer(t, map[string]catalog.FileService{"router": {Name: "Del archivo"}})
 	c := loggedIn(t, srv)
+	// post manda el formulario como la aplicación: los errores vuelven en
+	// el JSON de la página.
 	post := func(path string, form url.Values) (int, string) {
 		t.Helper()
-		res := postForm(t, c, srv.URL+path, form, srv.URL)
+		req, _ := http.NewRequest(http.MethodPost, srv.URL+path, strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Origin", srv.URL)
+		req.Header.Set("Accept", "application/json")
+		res, err := c.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
 		return res.StatusCode, body(t, res)
 	}
 	form := func(kv ...string) url.Values {
@@ -72,8 +81,7 @@ func TestServiciosExternos(t *testing.T) {
 		return v
 	}
 
-	res, _ := c.Get(srv.URL + "/externals/new")
-	if b := body(t, res); res.StatusCode != 200 || !strings.Contains(b, `name="target"`) {
+	if res, b := getPage(t, c, srv.URL+"/externals/new"); res.StatusCode != 200 || !strings.Contains(b, `"Kind":"http"`) {
 		t.Fatalf("formulario nuevo: %d", res.StatusCode)
 	}
 
@@ -82,7 +90,7 @@ func TestServiciosExternos(t *testing.T) {
 	if code != http.StatusBadRequest {
 		t.Fatalf("con errores = %d", code)
 	}
-	for _, want := range []string{"Falta el nombre", "Check TCP:", "Intervalo:", "sin usuario ni contraseña", `value="sin-puerto"`} {
+	for _, want := range []string{"Falta el nombre", "Check TCP:", "Intervalo:", "sin usuario ni contraseña", `"Target":"sin-puerto"`} {
 		if !strings.Contains(b, want) {
 			t.Errorf("faltan %q en:\n%.2000s", want, b)
 		}
@@ -117,17 +125,15 @@ func TestServiciosExternos(t *testing.T) {
 		t.Errorf("el del archivo cambió: %+v", r)
 	}
 
-	res, _ = c.Get(srv.URL + "/clasica")
-	b = body(t, res)
-	for _, want := range []string{">Router<", `data-group="Red"`, `href="/externals/router-2"`, ">Mi sitio<"} {
+	b = portadaBody(t, c, srv)
+	for _, want := range []string{`"name":"Router"`, `"name":"Red"`, `"editHref":"/externals/router-2"`, `"name":"Mi sitio"`} {
 		if !strings.Contains(b, want) {
 			t.Errorf("la portada no tiene %q", want)
 		}
 	}
 
 	// Editar: el formulario viene lleno; cambiar el check.
-	res, _ = c.Get(srv.URL + "/externals/router-2")
-	if b := body(t, res); !strings.Contains(b, `value="Router"`) || !strings.Contains(b, `value="192.168.0.1:80"`) || !strings.Contains(b, `value="30s"`) {
+	if _, b := getPage(t, c, srv.URL+"/externals/router-2"); !strings.Contains(b, `"Name":"Router"`) || !strings.Contains(b, `"Target":"192.168.0.1:80"`) || !strings.Contains(b, `"Interval":"30s"`) {
 		t.Errorf("el formulario de edición no viene lleno:\n%.1500s", b)
 	}
 	if code, _ := post("/externals/router-2", form("name", "Router casa", "kind", "http", "target", "http://192.168.0.1/")); code != http.StatusSeeOther {

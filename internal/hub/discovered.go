@@ -137,7 +137,7 @@ func (s *server) discoveredPage(w http.ResponseWriter, r *http.Request) {
 	snap := s.poller.Snapshot()
 	found := foundRows(snap.Discovered, shown)
 	decorateFound(s.icons, found, s.chosenIcons(r.Context()))
-	s.pages.render(w, s.logger, "discovered", pageData{
+	s.page(w, r, http.StatusOK, pageData{
 		Title: "Descubiertos", Active: "services", ShowNav: true,
 		Found: found, FoundPending: pending(snap.Discovered, shown),
 	})
@@ -173,7 +173,6 @@ func (s *server) showFound(w http.ResponseWriter, r *http.Request) {
 }
 
 // unshowFound atiende POST /discovered/unshow: lo devuelve a la bandeja.
-// Desde la portada (htmx) responde la grilla.
 func (s *server) unshowFound(w http.ResponseWriter, r *http.Request) {
 	key, ok := foundKey(w, r)
 	if !ok {
@@ -185,10 +184,6 @@ func (s *server) unshowFound(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.syncShown(r.Context())
-	if r.Header.Get("HX-Request") == "true" {
-		s.servicesFragment(w, r)
-		return
-	}
 	http.Redirect(w, r, "/discovered", http.StatusSeeOther)
 }
 

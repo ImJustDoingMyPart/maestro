@@ -19,21 +19,28 @@ func TestDemoRoutes(t *testing.T) {
 
 	tests := []struct {
 		path     string
+		json     bool // como lo pide el router de la aplicación
 		wantCode int
 		wantBody []string
 	}{
-		{"/clasica", http.StatusOK, []string{"Jellyfin", "AdGuard Home", "Forgejo", `class="dot down"`, "2 caídos"}},
-		{"/hardware", http.StatusOK, []string{"Hardware"}},
-		{"/discovered", http.StatusOK, []string{"AdGuardHome.service", "Volver a la bandeja", "disabled"}},
-		{"/static/beercss-5.0.3/beer.min.css", http.StatusOK, nil},
-		{"/static/htmx-2.0.11.min.js", http.StatusOK, nil},
-		{"/static/maestro.css", http.StatusOK, []string{".state-pill"}},
-		{"/no-existe", http.StatusNotFound, nil},
+		{"/", false, http.StatusOK, []string{`<div id="app" data-demo>`}},
+		{"/api/portada", false, http.StatusOK, []string{"Jellyfin", "AdGuard Home", "Forgejo", `"demo":true`}},
+		{"/hardware", true, http.StatusOK, []string{`"Title":"Hardware"`}},
+		{"/discovered", true, http.StatusOK, []string{"AdGuardHome.service", `"InFile":"adguard"`, `"Shown":true`}},
+		{"/muestrario", true, http.StatusOK, []string{`"Muestra":`, `"Cards":`}},
+		{"/static/beercss-5.0.3/beer.min.css", false, http.StatusOK, nil},
+		{"/static/gen/app/main.js", false, http.StatusOK, nil},
+		{"/static/maestro.css", false, http.StatusOK, []string{".state-pill"}},
+		{"/no-existe", false, http.StatusNotFound, nil},
 	}
 	for _, tt := range tests {
 		t.Run(tt.path, func(t *testing.T) {
 			rec := httptest.NewRecorder()
-			h.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, tt.path, nil))
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			if tt.json {
+				req.Header.Set("Accept", "application/json")
+			}
+			h.ServeHTTP(rec, req)
 			if rec.Code != tt.wantCode {
 				t.Fatalf("GET %s = %d, quería %d", tt.path, rec.Code, tt.wantCode)
 			}
