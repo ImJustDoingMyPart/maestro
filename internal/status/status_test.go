@@ -45,6 +45,14 @@ func TestEvaluate(t *testing.T) {
 			want: Status{Down, []string{"a reiniciándose (exit 1)", "b: paused", "c: dead"}},
 		},
 		{
+			name: "creado y sin arrancar no es caída",
+			in: Input{FromContainers: true, HostOK: true, Containers: []Container{
+				{Name: "a", State: "created"},
+				running("b"),
+			}},
+			want: Status{Unknown, []string{"a arrancando"}},
+		},
+		{
 			name: "unhealthy degrada",
 			in: Input{FromContainers: true, HostOK: true, Containers: []Container{
 				{Name: "a", State: "running", Health: "unhealthy"},

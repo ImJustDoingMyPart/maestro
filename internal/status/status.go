@@ -131,7 +131,10 @@ func (s Status) Reason() string {
 // Motivos de caída (Down):
 //   - contenedor que no está corriendo. State "exited": "<name> detenido
 //     (exit <ExitCode>)"; "restarting": "<name> reiniciándose (exit
-//     <ExitCode>)"; cualquier otro: "<name>: <State>".
+//     <ExitCode>)"; cualquier otro salvo "created": "<name>: <State>".
+//     "created" (creado y todavía sin arrancar: un docker run lo pasa
+//     por ese estado un instante) no es caída: va a Unknown como
+//     "<name> arrancando".
 //   - check http o tcp con Failures >= FailThreshold: "check <kind> falla:
 //     <Detail>".
 //   - check push con Failures >= 1: "push: <Detail>".
@@ -176,6 +179,10 @@ func Evaluate(in Input, now time.Time, p Params) Status {
 
 	if useContainers {
 		for _, c := range in.Containers {
+			if c.State == "created" {
+				unknown = append(unknown, c.Name+" arrancando")
+				continue
+			}
 			if c.State != "running" {
 				switch c.State {
 				case "exited":
